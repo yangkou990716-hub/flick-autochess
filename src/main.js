@@ -25,7 +25,7 @@
   function backText(U) {
     const b = U.back; if (!b) return '';
     return { atkPct: `${b.trait ? D.traits[b.trait].name + '角色' : '前台'}攻擊+${pct(b.val)}`, shield: `每回合前台護盾+${b.val}`, heal: `每回合前台回血+${b.val}`,
-      zap: `每回合電擊隨機敵人（${pct(b.mult)}攻擊）`, gravity: '每回合把敵人往中間吸' }[b.type];
+      zap: `每回合電擊隨機敵人（${pct(b.mult)}攻擊）`, gravity: '每回合把敵人往中間吸', cannon: `每回合炮擊隨機敵人（${pct(b.mult)}攻擊爆炸）`, revive: `第一隻陣亡的隊友以 ${pct(b.pct)} 生命復活` }[b.type];
   }
   function unitInfo(u) {
     const U = D.units[u.id], m = C.starMult[u.star - 1];
@@ -44,7 +44,11 @@
   function choiceCard(type, id) {
     if (type === 'opener') { const o = RD.openers[id]; return `<b>${o.name}</b><br>${o.desc}`; }
     if (type === 'env') { const o = RD.envs[id]; return `<b>🌐 ${o.name}</b><br>${o.desc}`; }
-    if (type === 'reward') { const o = RD.rewards[id]; return `<b>${o.name}</b><br>${o.desc}`; }
+    if (type === 'supply') { const o = RD.supplies[id]; return `<b>📦 ${o.name}</b><br>${o.desc}`; }
+    if (type === 'encounter') {
+      const e = RD.encounter[id], w = e.reward;
+      return `<b>❗ ${e.name}</b>${e.add ? `<span class="tier" style="color:#f88">敵人 +${e.add} 關${e.extra ? `、多 ${e.extra} 隻` : ''}</span>` : ''}<br>勝利獎勵：${[w.gold ? w.gold + ' 金' : '', w.item ? '裝備' : '', w.weapon ? '武器' : '', w.strategy ? RD.tiers[w.strategy].name + '投資策略' : ''].filter(Boolean).join('＋')}`;
+    }
     if (type === 'path') { const o = RD.nodeInfo[id]; return `<b>${o.icon} ${o.name}</b><br>${o.desc}`; }
     if (type === 'strategy') {
       const o = RD.strategies[id], T = RD.tiers[o.tier];
@@ -52,7 +56,7 @@
         (T.threat ? `<br><span style="color:#f88">之後敵人生命/攻擊 +${pct(T.threat)}${T.extraEnemy ? `、多 ${T.extraEnemy} 隻` : ''}</span>` : '');
     }
   }
-  const choiceTitle = { opener: '選擇開局詞綴', env: '投資環境', path: '選擇路線', reward: '獎勵 3 選 1', strategy: '投資策略' };
+  const choiceTitle = { opener: '選擇開局詞綴', env: '投資環境（持續整局）', path: '選擇路線', supply: '補給 3 選 1', encounter: '遭遇：選擇難度', strategy: '投資策略' };
   function flow() {
     if (!run) return;
     if (hs) {
@@ -76,10 +80,10 @@
     }
     const p = run.pending;
     if (p) {
-      const sub = p.type === 'env' ? `第 ${run.plane} 位面開始，整個位面生效` : p.type === 'path' ? `第 ${run.plane} 位面・節點 ${run.step + 1}/${RD.planes[run.plane - 1].steps + 1}` : '';
+      const sub = p.type === 'env' ? '開局選一次，整局都生效' : p.type === 'path' ? `第 ${run.plane} 位面・節點 ${run.step + 1}/${RUN.steps(run).length}` : p.type === 'strategy' ? (p.tier ? RD.tiers[p.tier].name + '投資策略' : '黃金、稜彩越強，之後敵人也越強') : '';
       $('modalBox').innerHTML = `<h2>${choiceTitle[p.type]}</h2>${sub ? `<div class="lbl">${sub}</div>` : ''}<div class="choices">` +
         p.options.map((id, i) => `<div class="choice" data-c="${i}">${choiceCard(p.type, id)}</div>`).join('') + '</div>' +
-        (p.type === 'path' ? '<button data-back="1">先回商店</button>' : '');
+        (p.type === 'path' || p.type === 'encounter' ? '<button data-back="1">先回商店</button>' : '');
       $('modal').classList.remove('hidden');
       $('modalBox').onclick = e => {
         if (e.target.dataset.back) { run.pending = null; $('modal').classList.add('hidden'); save(); renderShop(); return; }
@@ -96,13 +100,13 @@
 
   // ---------- 商店畫面 ----------
   function renderShop() {
-    const lv = RUN.lv(run), P = RD.planes[run.plane - 1], boss = RUN.isBoss(run);
-    $('tStage').textContent = `${hs ? hs.players[hs.cur].name + '｜' : ''}位面${run.plane}・${boss ? '👑首領' : `節點${run.step + 1}/${P.steps + 1}`}`;
+    const lv = RUN.lv(run), boss = RUN.isBoss(run);
+    $('tStage').textContent = `${hs ? hs.players[hs.cur].name + '｜' : ''}位面${run.plane}・${boss ? '👑首領' : `節點${run.step + 1}/${RUN.steps(run).length}`}`;
     $('tHp').textContent = `❤ ${run.hp}${run.lastStand ? ' 🛡' + (run.lastStand > 1 ? run.lastStand : '') : ''}`; $('tGold').textContent = `💰 ${run.gold}`;
     const nx = C.levels[run.level]; $('tLv').textContent = `Lv${run.level}${nx ? ` (${run.xp}/${nx.xp})` : ''}`;
     const env = run.env ? RD.envs[run.env] : null, s = RUN.sfx(run), e = RUN.efx(run);
     $('enemyInfo').innerHTML = `${env ? `🌐${env.name}：${env.desc}` : ''}　利息 +${Math.min(C.interestMax + s.interestAdd + (e.interestAdd || 0), Math.floor(run.gold / C.interestPer))}` +
-      (run.streak ? `　${run.streak > 0 ? '連勝' : '連敗'} ${Math.abs(run.streak)}` : '') + (run.threat ? `　<span style="color:#f88">敵強化 +${pct(run.threat)}</span>` : '');
+      (boss ? `　<b>首領：${RUN.bossInfo(run).name}</b>` : '') + (run.streak ? `　${run.streak > 0 ? '連勝' : '連敗'} ${Math.abs(run.streak)}` : '') + (run.threat ? `　<span style="color:#f88">敵強化 +${pct(run.threat)}</span>` : '');
     $('strats').innerHTML = run.strats.map(id => { const S = RD.strategies[id], T = RD.tiers[S.tier]; return `<span class="st-chip" style="border-color:${T.color};color:${T.color}" data-st="${id}">${S.name}</span>`; }).join('');
     const onTeam = run.front.slice(0, lv.front).concat(run.back.slice(0, lv.back)).filter(Boolean).map(u => u.id);
     const tt = FA.battle.traitTiers(onTeam);
@@ -121,7 +125,7 @@
     });
     const inv = run.items.map((it, i) => `<span class="item ${sel && sel.item === i ? 'sel' : ''}" data-it="${i}">${D.items[it.id].icon}${D.items[it.id].name}</span>`)
       .concat(run.weapons.map((w, i) => `<span class="item wp ${sel && sel.wp === i ? 'sel' : ''}" data-wp="${i}">${D.weapons[w].icon}${D.weapons[w].name}</span>`));
-    $('items').innerHTML = inv.length ? inv.join('') : '<span class="lbl">裝備/武器：打贏、精英、獎勵節點取得</span>';
+    $('items').innerHTML = inv.length ? inv.join('') : '<span class="lbl">裝備/武器：補給、遭遇、撲滿、首領取得</span>';
     let info = '';
     if (sel && sel.zone && RUN.unitAt(run, sel)) { const u = RUN.unitAt(run, sel); info = unitInfo(u) + `<button id="bSell">賣出 +${RUN.sellPrice(u)}</button>　<span class="lbl">點空位移動／點角色交換</span>`; }
     else if (sel && sel.item != null) info = itemText(run.items[sel.item]) + '<br><span class="lbl">點角色裝上（最多 3 件）。鐵拳＋彈簧＝爆裂彈簧；護符＋疾行靴＝吸血疾靴</span>';
@@ -135,7 +139,7 @@
       const U = D.units[id], cc = ['#888', '#3fb950', '#4ea0ff', '#b072ff', '#ffb000'][U.cost - 1];
       return `<div class="card" data-b="${i}" style="border-color:${cc}"><div class="dot" style="background:${U.color};width:${U.r * 1.2}px;height:${U.r * 1.2}px"></div>${U.name}<div class="c">${RUN.unitCost(run, id)}💰</div><div class="t">${U.traits.map(t => D.traits[t].name).join('・')}</div></div>`;
     }).join('');
-    $('bReroll').textContent = run.freeLeft ? `刷新 免費` : `刷新 ${C.rerollCost}`;
+    $('bReroll').textContent = run.freeLeft ? `免費刷新` : `刷新 ${C.rerollCost}`;
     $('bReroll').disabled = !run.freeLeft && run.gold < C.rerollCost; $('bXp').disabled = run.gold < C.xpCost || run.level >= C.levels.length;
     $('bLock').classList.toggle('on', run.locked); $('bLock').textContent = run.locked ? '已鎖定' : '鎖定';
   }
@@ -147,7 +151,7 @@
   $('shop').addEventListener('click', e => {
     const t = e.target.closest('[data-z],[data-it],[data-wp],[data-b],[data-tr],[data-st],#bSell'); if (!t) return;
     if (t.id === 'bSell') { RUN.sell(run, sel); sel = null; }
-    else if (t.dataset.b != null) { if (!RUN.buy(run, +t.dataset.b)) return flash('金幣或空位不足'); }
+    else if (t.dataset.b != null) { if (!RUN.buy(run, +t.dataset.b)) return flash('金幣或空位不足'); FA.sound.play('coin'); }
     else if (t.dataset.it != null) { const i = +t.dataset.it; sel = sel && sel.item === i ? null : { item: i }; }
     else if (t.dataset.wp != null) { const i = +t.dataset.wp; sel = sel && sel.wp === i ? null : { wp: i }; }
     else if (t.dataset.tr) sel = { trait: t.dataset.tr };
@@ -189,7 +193,8 @@
     const b = RUN.startBattle(run); if (!b) { run.node = null; show('shop'); renderShop(); return flash('前台至少要放 1 隻'); }
     battle = b; V.reset(); ai = null; ui.aim = null; show('battle'); V.resize(); save();
     if (run.enemy.boss) V.banner = { txt: '首領：' + run.enemy.name, life: 1.6 };
-    else if (run.node === 'elite') V.banner = { txt: '精英戰！', life: 1.2 };
+    else if (run.enemy.reward) V.banner = { txt: '打破撲滿！每隻 +' + RD.piggy.goldEach + ' 金', life: 1.6 };
+    else if (run.node === 'encounter') V.banner = { txt: '遭遇・' + RD.encounter[run.encLv].name, life: 1.2 };
   }
   function flash(t) { $('info').innerHTML = `<b style="color:#f88">${t}</b>`; }
 
@@ -222,7 +227,7 @@
     const env = run.env && mode !== 'duel' ? '🌐' + RD.envs[run.env].name : '';
     $('bhud').innerHTML = `位面${run.plane}｜${run.enemy.name}${b.rules.length ? '｜' + b.rules.map(r => D.enemies.ruleText[r]).join('、') : ''}　${env}<br>` +
       `<span style="color:#5cf">我方 ${hp(0)}　剩 ${b.shots[0]} 彈</span>　<span style="color:#f77">敵方 ${hp(1)}　剩 ${b.shots[1]} 彈</span>`;
-    ui.msg = b.phase === 'over' ? (b.winner === 0 ? '全滅敵人！' : '沒殺光…') : b.phase === 'aim' ? (b.turn === 0 ? '你的回合：按住棋子往後拉（殺光才算贏）' : '敵方瞄準中…') : '';
+    ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！剩 ${b.shots[0]} 彈` : b.phase === 'over' ? (b.winner === 0 ? '全滅敵人！' : '沒殺光…') : b.phase === 'aim' ? (b.turn === 0 ? '你的回合：按住棋子往後拉（殺光才算贏）' : '敵方瞄準中…') : '';
     ui.msgCol = b.turn === 0 ? '#ffe066' : '#f99';
   }
 
@@ -230,7 +235,7 @@
     if (!ai) ai = { t: 0, c: null };
     ai.t += dt;
     if (ai.t > 0.45 && !ai.c) {
-      const st = mode === 'duel' ? 15 : run.stage + 1 + (run.node === 'elite' ? D.enemies.eliteBonus : 0);
+      const st = mode === 'duel' ? 15 : run.stage + 1 + (run.node === 'encounter' ? RD.encounter[run.encLv].add : 0);
       ai.c = FA.ai.choose(battle, 1, D.enemies.difficulty(st), battle.rng);
       if (!ai.c) { ai = null; return; }
       ui.aim = { idx: ai.c.idx, angle: ai.c.angle, power: ai.c.power, enemy: true };
@@ -243,9 +248,11 @@
     if (battle.phase !== 'over') return;
     const b = battle;
     setTimeout(() => {
+      FA.sound.play(b.winner === 0 ? 'win' : 'lose');
       if (mode === 'duel') { battle = null; mode = 'run'; save(); return modal(`<h2>${b.winner === 0 ? '🎉 你贏了' : '💥 你輸了'}</h2>對手：${duelName}`, [{ t: '回商店', cls: 'go', f: () => { show('shop'); renderShop(); } }]); }
       const res = RUN.endBattle(run, b); battle = null; save();
       const loot = res.drops.map(itemText).concat(res.weapons.map(weaponText));
+      if (res.node === 'reward') return modal(`<h2>🐷 撲滿 ${res.pigs} 隻</h2>+${res.gold} 金${res.drops.length ? '<br>全破獎勵：' + res.drops.map(itemText).join('<br>') : ''}<br>收入 ${res.income}＋利息 ${res.interest}`, [{ t: '繼續', cls: 'go', f: flow }]);
       modal(`<h2>${res.win ? '🎉 全滅敵人' : '💥 沒殺光'}</h2>` +
         (res.win ? (res.heal ? `小隊 +${res.heal} ❤<br>` : '') : `小隊 -${res.dmg} ❤（剩 ${run.hp}）<br>`) +
         (res.saved ? '<b style="color:#ffe066">🛡 鎖血免死觸發！剩 1 血</b><br>' : '') +
@@ -282,14 +289,36 @@
   function pause() {
     if (screen !== 'battle' || paused) return;
     paused = true; ui.aim = null; drag = null; save();
-    modal('<h2>⏸ 暫停</h2>', [{ t: '繼續', cls: 'go', f: () => { paused = false; last = performance.now(); } }, { t: '回標題（進度已存）', f: () => { paused = false; toTitle(); } }]);
+    modal('<h2>⏸ 暫停</h2>', [{ t: '繼續', cls: 'go', f: () => { paused = false; last = performance.now(); } }, { t: `音效：${FA.sound.on ? '開' : '關'}`, f: () => { FA.sound.toggle(); paused = false; pause(); } }, { t: '回標題（進度已存）', f: () => { paused = false; toTitle(); } }]);
   }
   $('bPause').onclick = pause;
   document.addEventListener('visibilitychange', () => { if (document.hidden) { save(); pause(); } });
   addEventListener('pagehide', save);
 
+  // ---------- 圖鑑 ----------
+  const CODEX = {
+    角色: () => Object.keys(D.units).sort((a, b) => D.units[a].cost - D.units[b].cost).map(id => `<div class="choice">${unitInfo({ id, star: 1, items: [], weapon: null })}</div>`).join(''),
+    羈絆: () => Object.values(D.traits).map(T => `<div class="choice"><b style="color:${T.color}">${T.name}</b>：${Object.keys(D.units).filter(k => D.units[k].traits.includes(Object.keys(D.traits).find(x => D.traits[x] === T))).map(k => D.units[k].name).join('、')}<br>` + T.tiers.map(t => `${t.n}：${modsText(t.mods)}`).join('<br>') + '</div>').join(''),
+    裝備: () => Object.values(D.items).map(I => `<div class="choice"><b>${I.icon}${I.name}</b>${I.recipe ? `（${I.recipe.map(x => D.items[x].name).join('＋')}）` : '（基礎）'}<br>${Object.entries(I.affix).map(([k, v]) => D.modText[k] ? D.modText[k](v[0]) + (v[0] !== v[1] ? '～' + D.modText[k](v[1]).replace(/^[^\d+-]*/, '') : '') : '').join('、')}</div>`).join(''),
+    武器: () => Object.keys(D.weapons).map(id => `<div class="choice">${weaponText(id)}</div>`).join(''),
+    策略: () => ['silver', 'gold', 'prism'].map(t => Object.values(RD.strategies).filter(S => S.tier === t).map(S => `<div class="choice"><span class="tier" style="color:${RD.tiers[t].color}">${RD.tiers[t].name}</span><b>${S.name}</b><br>${S.desc}</div>`).join('')).join(''),
+    環境: () => '<div class="lbl">投資環境：開局選一次，整局都生效</div>' + Object.values(RD.envs).map(E => `<div class="choice"><b>🌐${E.name}</b><br>${E.desc}</div>`).join('') + '<h3>開局詞綴</h3>' + Object.values(RD.openers).map(E => `<div class="choice"><b>${E.name}</b><br>${E.desc}</div>`).join(''),
+    節點: () => Object.values(RD.nodeInfo).map(N => `<div class="choice"><b>${N.icon} ${N.name}</b><br>${N.desc}</div>`).join('') + '<div class="lbl">投資策略：開局 1 次、位面 1、2 首領後各 1 次，部分策略會延後再給（期貨）。黃金讓敵人 +6%、稜彩 +20% 且多 1 隻。</div>' +
+      '<h3>補給內容</h3>' + Object.values(RD.supplies).map(E => `<div class="choice"><b>${E.name}</b>：${E.desc}</div>`).join(''),
+    首領: () => D.enemies.bosses.map((L, i) => L.map(B => `<div class="choice"><b>位面${i + 1}：${B.name}</b><br>生命 ${B.hp}｜攻擊 ${B.atk}<br>${B.rules.map(r => D.enemies.ruleText[r]).join('、')}${B.split ? '、半血分裂' : ''}${B.ability ? '、' + ({ magnetStop: '停下吸附', freezeHit: '撞到冰凍', poisonHit: '撞到下毒', chainHit: '連鎖閃電' }[B.ability.type] || '') : ''}${B.zap ? '、每回合電擊' : ''}</div>`).join('')).join('')
+  };
+  function codex(tab) {
+    tab = tab || '角色';
+    $('modalBox').innerHTML = `<h2>📖 圖鑑</h2><div class="traits">${Object.keys(CODEX).map(k => `<span class="tr ${k === tab ? 'act' : ''}" style="${k === tab ? 'background:#ffc531' : ''}" data-tab="${k}">${k}</span>`).join('')}</div><div class="choices">${CODEX[tab]()}</div><button data-close="1">關閉</button>`;
+    $('modal').classList.remove('hidden'); $('modalBox').scrollTop = 0;
+    $('modalBox').onclick = e => { if (e.target.dataset.tab) codex(e.target.dataset.tab); else if (e.target.dataset.close) $('modal').classList.add('hidden'); };
+  }
+
   // ---------- 標題 ----------
   function toTitle() { battle = null; $('modal').classList.add('hidden'); show('title'); $('btnCont').classList.toggle('hidden', !load()); }
+  $('btnCodex').onclick = () => codex();
+  $('btnSound').onclick = () => { FA.sound.init(); $('btnSound').textContent = FA.sound.toggle() ? '🔊 音效開' : '🔇 音效關'; };
+  $('btnSound').textContent = FA.sound.on ? '🔊 音效開' : '🔇 音效關';
   $('selAsc').innerHTML = RD.ascensions.map((a, i) => `<option value="${i}">${a.name}：${a.desc}</option>`).join('');
   const seed = () => (Date.now() ^ (Math.random() * 1e9)) | 0, asc = () => +$('selAsc').value;
   const confirmNew = go => load() ? modal('<h2>開新局？</h2>目前進度會被覆蓋', [{ t: '開新局', cls: 'go', f: go }, { t: '取消' }]) : go();

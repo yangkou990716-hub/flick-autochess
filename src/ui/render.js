@@ -1,7 +1,8 @@
 // 戰鬥畫面：Canvas 向量繪製＋爽感回饋（頓幀、震動、粒子、傷害數字、連鎖計數）
 (function (g) {
   const FA = g.FA = g.FA || {};
-  const V = FA.view = { parts: [], texts: [], rings: [], shake: 0, hitstop: 0, banner: null, chainShow: 0, chainN: 0 };
+  const SND = n => FA.sound && FA.sound.play(n);
+  const V = FA.view = { trails: {}, bolts: [], parts: [], texts: [], rings: [], shake: 0, hitstop: 0, banner: null, chainShow: 0, chainN: 0 };
   let cv, ctx, W, H, dpr, S, CX, CY;
 
   V.init = c => { cv = c; ctx = c.getContext('2d'); V.resize(); addEventListener('resize', V.resize); };
@@ -11,7 +12,7 @@
     S = Math.min(W - 16, (H - 150)) / (2 * FA.DATA.config.arenaR + 10); CX = W / 2; CY = H / 2 + 10;
   };
   V.toWorld = (x, y) => ({ x: (x - CX) / S, y: (y - CY) / S });
-  V.reset = () => { V.parts = []; V.texts = []; V.rings = []; V.shake = 0; V.hitstop = 0; V.banner = null; V.chainN = 0; };
+  V.reset = () => { V.trails = {}; V.bolts = []; V.parts = []; V.texts = []; V.rings = []; V.shake = 0; V.hitstop = 0; V.banner = null; V.chainN = 0; };
 
   const burst = (x, y, col, n, sp) => { for (let i = 0; i < n; i++) { const a = Math.random() * 6.28, s = sp * (0.3 + Math.random()); V.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5 + Math.random() * 0.4, col }); } };
   const vib = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { } };
@@ -19,25 +20,32 @@
   // 消化戰鬥事件
   V.consume = b => {
     for (const e of b.events) {
-      if (e.t === 'dmg') {
+      if (e.t === 'dmg') { SND(e.kind === 'hit' ? 'hit' : e.kind === 'poison' ? 'poison' : 'bump');
         const big = e.amt > 45;
         V.texts.push({ x: e.x + (Math.random() - .5) * 16, y: e.y - 10, txt: Math.round(e.amt), life: 0.9, col: e.kind === 'blast' ? '#ffb347' : e.kind === 'reflect' ? '#9df' : e.kind === 'spike' ? '#f6a' : '#fff', big });
         burst(e.x, e.y, e.team === 0 ? '#7cf' : '#f87', big ? 14 : 7, big ? 260 : 160);
         if (big) { V.hitstop = Math.max(V.hitstop, 0.06); V.shake = Math.max(V.shake, 8); vib(15); }
-      } else if (e.t === 'boom') {
+      } else if (e.t === 'boom') { SND('boom');
         V.rings.push({ x: e.x, y: e.y, r: e.r, life: 0.35, max: 0.35, col: '#ff8a3d' }); burst(e.x, e.y, '#ffb347', 16, 300);
         V.shake = Math.max(V.shake, 10); if (e.n >= 2) { V.chainN = e.n; V.chainShow = 1.2; }
       } else if (e.t === 'pull') V.rings.push({ x: e.x, y: e.y, r: e.r, life: 0.4, max: 0.4, col: '#6b8cff', inward: true });
-      else if (e.t === 'death') { burst(e.x, e.y, e.color, 30, 380); V.hitstop = 0.1; V.shake = 14; vib(30); }
-      else if (e.t === 'combo') { V.texts.push({ x: e.x, y: e.y - 30, txt: '聯動！' + e.name, life: 1.4, col: '#ffe066', big: true }); V.hitstop = 0.12; V.shake = 12; }
+      else if (e.t === 'launch') SND('launch');
+      else if (e.t === 'freeze') { SND('freeze'); V.texts.push({ x: e.x, y: e.y - 22, txt: '❄ 冰凍', life: 0.8, col: '#8df' }); burst(e.x, e.y, '#bdf', 12, 200); }
+      else if (e.t === 'poison') { SND('poison'); burst(e.x, e.y, '#9ccc65', 6, 120); }
+      else if (e.t === 'bolt') { SND('zap'); V.bolts.push({ x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, life: 0.25 }); }
+      else if (e.t === 'heal') { SND('heal'); V.texts.push({ x: e.x, y: e.y - 20, txt: '+治療', life: 0.8, col: '#7f7' }); burst(e.x, e.y, '#7f7', 10, 150); }
+      else if (e.t === 'revive') { SND('heal'); V.banner = { txt: '復活！', life: 1.1 }; burst(e.x, e.y, '#fff3c4', 30, 300); }
+      else if (e.t === 'death') { SND('death'); burst(e.x, e.y, e.color, 30, 380); V.hitstop = 0.1; V.shake = 14; vib(30); }
+      else if (e.t === 'combo') { SND('combo'); V.texts.push({ x: e.x, y: e.y - 30, txt: '聯動！' + e.name, life: 1.4, col: '#ffe066', big: true }); V.hitstop = 0.12; V.shake = 12; }
       else if (e.t === 'shieldbreak') V.rings.push({ x: e.x, y: e.y, r: 40, life: 0.3, max: 0.3, col: '#8ef' });
-      else if (e.t === 'wall') burst(e.x, e.y, '#ccc', 4, 120);
+      else if (e.t === 'wall') { SND('wall'); burst(e.x, e.y, '#ccc', 4, 120); }
       else if (e.t === 'bump' && e.s > 300) V.shake = Math.max(V.shake, 4);
-      else if (e.t === 'zap') { V.rings.push({ x: e.x, y: e.y, r: 40, life: 0.3, max: 0.3, col: '#ffe066' }); burst(e.x, e.y, '#ffe066', 10, 220); }
+      else if (e.t === 'zap') { SND('zap'); V.rings.push({ x: e.x, y: e.y, r: 40, life: 0.3, max: 0.3, col: '#ffe066' }); burst(e.x, e.y, '#ffe066', 10, 220); }
       else if (e.t === 'split' || e.t === 'stick' || e.t === 'pierce') V.texts.push({ x: e.x, y: e.y - 20, txt: { split: '分裂！', stick: '黏住！', pierce: '穿透！' }[e.t], life: 0.7, col: '#cff' });
       else if (e.t === 'bossSplit') { V.banner = { txt: '首領分裂了！', life: 1.4 }; V.shake = 16; burst(e.x, e.y, '#c9a', 40, 400); }
       else if (e.t === 'boost') V.texts.push({ x: e.x, y: e.y - 20, txt: '加速！', life: 0.7, col: '#cff' });
-      else if (e.t === 'fullpower') { V.texts.push({ x: e.x, y: e.y - 40, txt: '全力！', life: 0.9, col: '#ff5', big: true }); V.shake = Math.max(V.shake, 6); }
+      else if (e.t === 'over') SND(e.winner === 0 ? 'win' : 'lose');
+      else if (e.t === 'fullpower') { SND('full'); V.texts.push({ x: e.x, y: e.y - 40, txt: '全力！', life: 0.9, col: '#ff5', big: true }); V.shake = Math.max(V.shake, 6); }
       else if (e.t === 'shrink') V.banner = { txt: '場地縮小！', life: 1.2 };
       else if (e.t === 'skip') V.banner = { txt: (e.team === 0 ? '我方' : '敵方') + '全員暈眩，跳過', life: 1.2 };
     }
@@ -48,7 +56,8 @@
     V.parts.forEach(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .9; p.vy *= .9; p.life -= dt; });
     V.parts = V.parts.filter(p => p.life > 0);
     V.texts.forEach(t => { t.y -= 40 * dt; t.life -= dt; }); V.texts = V.texts.filter(t => t.life > 0);
-    V.rings.forEach(r => r.life -= dt); V.rings = V.rings.filter(r => r.life > 0);
+    V.rings.forEach(r => r.life -= dt);
+    V.bolts.forEach(z => z.life -= dt); V.bolts = V.bolts.filter(z => z.life > 0); V.rings = V.rings.filter(r => r.life > 0);
     V.shake *= Math.pow(0.02, dt); V.chainShow -= dt;
     if (V.banner) { V.banner.life -= dt; if (V.banner.life <= 0) V.banner = null; }
   };
@@ -131,8 +140,21 @@
       }
     }
 
-    // 火焰地板
-    (b.zones || []).forEach(z => { ctx.fillStyle = z.team === 0 ? '#ff8a3d33' : '#ff3d3d33'; ctx.strokeStyle = '#ff8a3d88'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(CX + z.x * S, CY + z.y * S, z.r * S, 0, 6.28); ctx.fill(); ctx.stroke(); });
+    // 地板：火焰 / 地雷 / 毒池
+    (b.zones || []).forEach(z => {
+      const zx = CX + z.x * S, zy = CY + z.y * S;
+      if (z.kind === 'mine') { ctx.fillStyle = z.team === 0 ? '#5cf' : '#f55'; ctx.beginPath(); ctx.arc(zx, zy, 7, 0, 6.28); ctx.fill(); ctx.font = '14px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('💣', zx, zy + 5); return; }
+      const pool = z.kind === 'pool';
+      ctx.fillStyle = pool ? '#7cb34244' : z.team === 0 ? '#ff8a3d33' : '#ff3d3d33'; ctx.strokeStyle = pool ? '#9ccc6599' : '#ff8a3d88'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(zx, zy, z.r * S, 0, 6.28); ctx.fill(); ctx.stroke();
+    });
+    // 拖尾
+    b.bodies.forEach(o => {
+      const tr = V.trails[o.i] = V.trails[o.i] || [];
+      if (o.alive && (Math.abs(o.vx) + Math.abs(o.vy)) > 120) tr.push([o.x, o.y]); else if (tr.length) tr.shift();
+      if (tr.length > 14) tr.shift();
+      if (tr.length > 1) { ctx.strokeStyle = o.color; ctx.lineCap = 'round'; for (let k = 1; k < tr.length; k++) { ctx.globalAlpha = k / tr.length * 0.45; ctx.lineWidth = o.r * S * (k / tr.length) * 1.4; ctx.beginPath(); ctx.moveTo(CX + tr[k - 1][0] * S, CY + tr[k - 1][1] * S); ctx.lineTo(CX + tr[k][0] * S, CY + tr[k][1] * S); ctx.stroke(); } ctx.globalAlpha = 1; ctx.lineCap = 'butt'; }
+    });
     // 棋子
     const t = performance.now() / 1000;
     b.bodies.forEach(o => {
@@ -152,7 +174,8 @@
       if (o.weapon && FA.DATA.weapons[o.weapon]) { ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(FA.DATA.weapons[o.weapon].icon, x + r * .8, y - r * .6); }
       if (o.boss) { ctx.font = `${r * .6}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('👑', x, y - r - 4); }
       else if (o.star > 1) { ctx.fillStyle = '#ffe066'; ctx.font = `bold ${10}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★'.repeat(o.star), x, y - r - 3); }
-      if (o.stunned) { ctx.font = '14px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('💫', x + Math.sin(t * 4) * 8, y - r - 12); }
+      if (o.stunned) { ctx.fillStyle = '#9ddcff55'; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.28); ctx.fill(); ctx.font = '14px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('❄', x + Math.sin(t * 4) * 8, y - r - 12); }
+      if (o.poison) { ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('☠' + o.poison.turns, x - r * 0.9, y - r * 0.7); }
       const bw = r * 2, hpw = bw * Math.max(0, o.hp / o.maxHp);
       ctx.fillStyle = '#000a'; ctx.fillRect(x - r, y + r + 4, bw, 5);
       ctx.fillStyle = o.team === 0 ? '#5f5' : '#f55'; ctx.fillRect(x - r, y + r + 4, hpw, 5);
@@ -165,6 +188,12 @@
       ctx.strokeStyle = rg.col; ctx.globalAlpha = rg.life / rg.max; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.arc(CX + rg.x * S, CY + rg.y * S, Math.max(1, rr), 0, 6.28); ctx.stroke();
       if (!rg.inward) { ctx.fillStyle = rg.col + '44'; ctx.fill(); }
+    });
+    ctx.globalAlpha = 1;
+    V.bolts.forEach(z => {
+      ctx.strokeStyle = '#fff59d'; ctx.lineWidth = 3; ctx.globalAlpha = z.life * 4; ctx.beginPath(); ctx.moveTo(CX + z.x1 * S, CY + z.y1 * S);
+      for (let k = 1; k < 6; k++) { const f = k / 6; ctx.lineTo(CX + (z.x1 + (z.x2 - z.x1) * f) * S + (Math.random() - .5) * 14, CY + (z.y1 + (z.y2 - z.y1) * f) * S + (Math.random() - .5) * 14); }
+      ctx.lineTo(CX + z.x2 * S, CY + z.y2 * S); ctx.stroke();
     });
     ctx.globalAlpha = 1;
     V.parts.forEach(p => { ctx.globalAlpha = Math.min(1, p.life * 2); ctx.fillStyle = p.col; ctx.fillRect(CX + p.x * S - 2, CY + p.y * S - 2, 4, 4); });

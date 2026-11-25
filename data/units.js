@@ -5,7 +5,8 @@
 //   burn 撞到敵人留火焰地板 / magnetStop 停下時吸附 / heavyPush 推飛加倍 / guard 被撞減傷 / barrelBoom 被撞爆炸
 //   thorns 反傷 / explodeOnHit 撞擊爆炸 / pierce 穿過敵人 / allyBoost 被隊友撞到加速 / sticky 黏住敵人
 //   split 撞牆分裂 / boomerang 撞牆加速 / bigBounce 撞牆加成加大 / rage 越殘越痛
-// back（後台被動）type：heal 回血 / shield 護盾 / atkPct 加攻 / zap 電擊敵人 / gravity 把敵人往中間吸
+//   poisonHit 撞到下毒 / freezeHit 撞到冰凍 / chainHit 連鎖閃電 / vamp 吸血 / mineDrop 停下放地雷 / healTouch 碰隊友治療
+// back（後台被動）type：heal 回血 / shield 護盾 / atkPct 加攻 / zap 電擊敵人 / gravity 把敵人往中間吸 / cannon 炮擊 / revive 復活一次
 (function (g) {
   const FA = g.FA = g.FA || {}; FA.DATA = FA.DATA || {};
   FA.DATA.units = {
@@ -42,7 +43,7 @@
     tesla: { name: '磁暴', cost: 3, traits: ['magnet'], role: 'back', hp: 130, atk: 26, mass: 1.2, r: 24, speed: 1, color: '#8a6bff',
       back: { type: 'zap', mult: 0.8 },
       link: { with: 'detonator', combo: { type: 'pullBlast', r: 220, mult: 1.4, name: '電磁爆縮' } } },
-    splitter: { name: '分裂球', cost: 3, traits: ['bounce', 'blast'], role: 'front', hp: 140, atk: 30, mass: 1.1, r: 24, speed: 1.05, color: '#ff5fa2',
+    splitter: { name: '分裂球', cost: 3, traits: ['bounce', 'blast'], role: 'front', hp: 150, atk: 33, mass: 1.1, r: 24, speed: 1.05, color: '#ff5fa2',
       ability: { type: 'split', n: 2, desc: '第一次撞牆分裂出 2 顆小球（本發有效）' },
       link: { with: 'spring', combo: { type: 'blast', r: 130, mult: 1.2, name: '彈幕' } } },
     berserker: { name: '狂戰士', cost: 3, traits: ['heavy', 'swift'], role: 'front', hp: 200, atk: 34, mass: 1.6, r: 26, speed: 1.05, color: '#d6453d',
@@ -51,14 +52,38 @@
     detonator: { name: '引爆者', cost: 4, traits: ['blast'], role: 'front', hp: 180, atk: 34, mass: 1.4, r: 26, speed: 1, color: '#e0402f',
       ability: { type: 'explodeOnHit', r: 95, mult: 0.4, desc: '每次撞到敵人都爆炸' },
       link: { with: 'tesla', combo: { type: 'pullBlast', r: 220, mult: 1.4, name: '電磁爆縮' } } },
-    spring: { name: '彈簧王', cost: 4, traits: ['bounce', 'wall'], role: 'front', hp: 210, atk: 34, mass: 1.3, r: 27, speed: 1.1, color: '#2ec4b6',
+    spring: { name: '彈簧王', cost: 4, traits: ['bounce', 'wall'], role: 'front', hp: 200, atk: 31, mass: 1.3, r: 27, speed: 1.1, color: '#2ec4b6',
       ability: { type: 'bigBounce', per: 0.5, extra: 2, desc: '每次撞牆加成 +50%，可多疊 2 次' },
       link: { with: 'splitter', combo: { type: 'blast', r: 130, mult: 1.2, name: '彈幕' } } },
-    bullet: { name: '彈頭', cost: 5, traits: ['swift', 'blast'], role: 'front', hp: 190, atk: 29, mass: 1.3, r: 22, speed: 1.3, color: '#ffc531',
+    bullet: { name: '彈頭', cost: 5, traits: ['swift', 'blast'], role: 'front', hp: 180, atk: 27, mass: 1.3, r: 22, speed: 1.3, color: '#ffc531',
       ability: { type: 'pierce', n: 1, desc: '穿過第 1 個撞到的敵人繼續飛' },
       link: { with: 'medic', combo: { type: 'healAll', pct: 0.2, name: '急救彈' } } },
     blackhole: { name: '黑洞', cost: 5, traits: ['magnet', 'heavy'], role: 'both', hp: 240, atk: 36, mass: 3, r: 34, speed: 0.8, color: '#3a2a6b',
       ability: { type: 'magnetStop', r: 230, pull: 700, mult: 0.55, desc: '停下時把大範圍敵人吸過來' }, back: { type: 'gravity', pull: 260 },
-      link: { with: 'jelly', combo: { type: 'pullBlast', r: 240, mult: 1.3, name: '重力井' } } }
+      link: { with: 'jelly', combo: { type: 'pullBlast', r: 240, mult: 1.3, name: '重力井' } } },
+    // 獎勵節點的撲滿（不進商店、不會攻擊）
+    piggy: { name: '撲滿', cost: 1, noShop: true, traits: [], role: 'front', hp: 120, atk: 0, mass: 1.4, r: 26, speed: 1, color: '#f8a5c2' },
+    // ---- 擴充 ----
+    shroom: { name: '毒菇', cost: 1, traits: ['toxic'], role: 'front', hp: 120, atk: 26, mass: 0.9, r: 21, speed: 1, color: '#9ccc65',
+      ability: { type: 'poisonHit', mult: 0.5, turns: 3, desc: '撞到敵人下毒（3 回合，每回合扣血）' },
+      link: { with: 'vampire', combo: { type: 'poisonCloud', r: 170, mult: 0.4, name: '毒霧' } } },
+    mine: { name: '地雷', cost: 2, traits: ['blast', 'toxic'], role: 'front', hp: 120, atk: 26, mass: 1.2, r: 22, speed: 0.95, color: '#8d6e63',
+      ability: { type: 'mineDrop', r: 110, mult: 1.4, desc: '停下時在原地放地雷，敵人碰到就爆' },
+      link: { with: 'spark', combo: { type: 'blast', r: 140, mult: 1.4, name: '連環雷' } } },
+    icy: { name: '冰晶', cost: 2, traits: ['wall', 'bounce'], role: 'front', hp: 140, atk: 24, mass: 1.1, r: 23, speed: 1.05, color: '#81d4fa',
+      ability: { type: 'freezeHit', desc: '撞到的敵人被冰凍，下回合不能彈' },
+      link: { with: 'thunder', combo: { type: 'freezeBlast', r: 190, name: '冰雷爆' } } },
+    vampire: { name: '吸血鬼', cost: 3, traits: ['heavy', 'toxic'], role: 'front', hp: 210, atk: 32, mass: 1.5, r: 26, speed: 1, color: '#8e244d',
+      ability: { type: 'vamp', val: 0.4, desc: '碰撞傷害 40% 轉為回血' },
+      link: { with: 'shroom', combo: { type: 'poisonCloud', r: 170, mult: 0.4, name: '毒霧' } } },
+    turret: { name: '炮台', cost: 4, traits: ['blast', 'wall'], role: 'back', hp: 180, atk: 34, mass: 2, r: 27, speed: 0.8, color: '#607d8b',
+      back: { type: 'cannon', mult: 0.75, r: 75 },
+      link: { with: 'detonator', combo: { type: 'blast', r: 160, mult: 1.5, name: '飽和轟炸' } } },
+    thunder: { name: '雷鳥', cost: 4, traits: ['swift', 'magnet'], role: 'front', hp: 160, atk: 31, mass: 1, r: 23, speed: 1.2, color: '#fff176',
+      ability: { type: 'chainHit', n: 2, mult: 0.5, r: 220, desc: '撞到敵人時閃電連鎖附近 2 隻敵人' },
+      link: { with: 'icy', combo: { type: 'freezeBlast', r: 190, name: '冰雷爆' } } },
+    angel: { name: '天使', cost: 5, traits: ['wall', 'swift'], role: 'both', hp: 230, atk: 30, mass: 1.2, r: 26, speed: 1.15, color: '#fff3e0',
+      ability: { type: 'healTouch', pct: 0.2, desc: '碰到隊友時替他回 20% 生命' }, back: { type: 'revive', pct: 0.4 },
+      link: { with: 'berserker', combo: { type: 'healAll', pct: 0.25, name: '聖光' } } }
   };
 })(globalThis);

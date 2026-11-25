@@ -5,7 +5,7 @@ const path = require('path');
   .forEach(f => require(path.join(__dirname, '..', f + '.js')));
 const FA = globalThis.FA, D = FA.DATA;
 const N = +process.argv[2] || 1000, rs = { s: +process.argv[3] || 1 };
-const ids = Object.keys(D.units), traitIds = Object.keys(D.traits), baseItems = Object.keys(D.items).filter(k => D.items[k].tier === 'base');
+const ids = Object.keys(D.units).filter(k => !D.units[k].noShop), traitIds = Object.keys(D.traits), baseItems = Object.keys(D.items).filter(k => D.items[k].tier === 'base');
 
 function team() {
   const main = FA.rng.pick(rs, traitIds);

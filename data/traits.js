@@ -8,6 +8,7 @@
     wall: { name: '鐵壁', color: '#7fbf5a', tiers: [{ n: 2, mods: { shieldPct: 0.15 } }, { n: 4, mods: { shieldPct: 0.25 } }, { n: 6, mods: { shieldPct: 0.45 } }] },
     swift: { name: '疾風', color: '#7fe3ff', tiers: [{ n: 2, mods: { speedPct: 0.1 } }, { n: 4, mods: { speedPct: 0.12 } }] },
     heavy: { name: '重裝', color: '#b08d57', tiers: [{ n: 2, mods: { massPct: 0.2, hpPct: 0.1 } }, { n: 4, mods: { massPct: 0.4, hpPct: 0.2 } }] },
+    toxic: { name: '毒素', color: '#9ccc65', tiers: [{ n: 2, mods: { poisonMul: 0.6, hpPct: 0.05 } }, { n: 3, mods: { poisonMul: 0.7, hpPct: 0.1 } }] },
     bounce: { name: '彈跳', color: '#2ec4b6', tiers: [{ n: 2, mods: { wallAdd: 0.1 } }, { n: 4, mods: { wallAdd: 0.3, bounces: 2 } }] }
   };
   // 詞條顯示名稱（羈絆、裝備、武器、策略共用）
@@ -15,6 +16,6 @@
   FA.DATA.modText = {
     atkPct: v => `攻擊${s(v)}${p(v)}`, hpPct: v => `生命${s(v)}${p(v)}`, speedPct: v => `速度${s(v)}${p(v)}`, massPct: v => `重量${s(v)}${p(v)}`,
     blastMul: v => `爆炸傷害+${p(v)}`, pullMul: v => `吸力+${p(v)}`, shieldPct: v => `開場護盾 ${p(v)} 生命`, wallAdd: v => `每次撞牆加成+${p(v)}`,
-    bounces: v => `撞牆加成可疊+${v}`, lifesteal: v => `吸血${p(v)}`, blastR: v => `撞擊爆炸範圍${v}`, blastMult: v => `撞擊爆炸${p(v)}攻擊`
+    bounces: v => `撞牆加成可疊+${v}`, poisonMul: v => `毒傷+${p(v)}`, lifesteal: v => `吸血${p(v)}`, blastR: v => `撞擊爆炸範圍${v}`, blastMult: v => `撞擊爆炸${p(v)}攻擊`
   };
 })(globalThis);

@@ -29,10 +29,10 @@
     const cfg = C(), rm = env.radiusMul || 1;
     const base = { team, alive: true, x: 0, y: 0, vx: 0, vy: 0, wallHits: 0, stunned: false, chained: false, hitCount: 0, shield: 0, lifesteal: 0, blastR: 0, blastMult: 0, blastMul: 0, pullMul: 0, wallAdd: 0, fx: {} };
     if (inst.boss) {
-      const B = D().enemies.bosses[inst.plane - 1], sc = 1 + (inst.threat || 0);
+      const B = D().enemies.bosses[inst.plane - 1][inst.variant || 0], sc = 1 + (inst.threat || 0);
       return Object.assign(base, { id: 'boss', name: B.name, boss: true, star: 1, traits: [], color: B.color, r: B.r * rm, m: B.mass,
         hp: B.hp * sc, maxHp: B.hp * sc, atk: B.atk * sc, baseAtk: B.atk * sc, bounces: cfg.baseBounces, speed: 0.9,
-        ab: B.ability ? Object.assign({}, B.ability) : null, split: B.split ? Object.assign({}, B.split) : null });
+        zapMult: B.zap || 0, ab: B.ability ? Object.assign({}, B.ability) : null, split: B.split ? Object.assign({}, B.split) : null });
     }
     const U = D().units[inst.id], m = cfg.starMult[inst.star - 1];
     const mods = addMods({}, sideMods);
@@ -43,7 +43,7 @@
     const b = Object.assign(base, { id: inst.id, name: U.name, star: inst.star, traits: U.traits.slice(), color: U.color,
       r: (U.r + (inst.star - 1) * 2) * rm, m: Math.max(0.3, U.mass * (1 + (mods.massPct || 0))), hp, maxHp: hp, atk, baseAtk: atk,
       speed: U.speed * (1 + (mods.speedPct || 0)), bounces: cfg.baseBounces + (mods.bounces || 0), wallAdd: mods.wallAdd || 0,
-      lifesteal: mods.lifesteal || 0, blastR: mods.blastR || 0, blastMult: mods.blastMult || 0, blastMul: mods.blastMul || 0, pullMul: mods.pullMul || 0,
+      lifesteal: mods.lifesteal || 0, blastR: mods.blastR || 0, blastMult: mods.blastMult || 0, blastMul: mods.blastMul || 0, pullMul: mods.pullMul || 0, poisonMul: mods.poisonMul || 0,
       link: U.link ? U.link.with : null, weapon: inst.weapon || null });
     b.shield = hp * (mods.shieldPct || 0);
     if (inst.weapon) b.fx = Object.assign({}, D().weapons[inst.weapon].fx);
@@ -51,6 +51,7 @@
       b.ab = Object.assign({}, U.ability); delete b.ab.desc;
       if (b.ab.type === 'bigBounce') { b.wallAdd += b.ab.per; b.bounces += b.ab.extra; }
       if (b.ab.type === 'pierce') b.pierceLeft = b.ab.n;
+      if (b.ab.type === 'vamp') b.lifesteal += b.ab.val;
     }
     return b;
   }
@@ -66,7 +67,10 @@
     if (team === 1 && env.enemyHp) sideMods.hpPct = (sideMods.hpPct || 0) + env.enemyHp;
     const bodies = front.filter(Boolean).map(u => makeBody(u.boss ? Object.assign({}, u, { threat: ext.threat }) : u, team, sideMods, tt.active, env));
     const side = { traits: tt.active, counts: tt.counts, turnHeal: 0, turnShield: 0, zap: 0, gravity: 0,
-      shotsAdd: ext.shots || 0, chainAll: !!ext.chainAll, echo: ext.echo || null, blastGold: ext.blastGold || 0 };
+      shotsAdd: ext.shots || 0, chainAll: !!ext.chainAll, echo: ext.echo || null, blastGold: ext.blastGold || 0,
+      cannon: [], revive: ext.revive || 0, revivePct: 0.4, openFreeze: ext.openFreeze || 0, stormZap: ext.stormZap || 0, stormDmg: 0 };
+    bodies.forEach(b => { if (b.zapMult) side.zap += b.atk * b.zapMult; });
+    if (bodies.length) side.stormDmg = bodies.reduce((s, b) => s + b.atk, 0) / bodies.length * 0.8;
     back.filter(Boolean).forEach(u => {
       const U = D().units[u.id]; if (!U || !U.back || U.role === 'front') return;
       const k = cfg.starMult[u.star - 1], bk = U.back;
@@ -75,6 +79,8 @@
       if (bk.type === 'heal') side.turnHeal += bk.val * k;
       if (bk.type === 'zap') side.zap += U.atk * k * bk.mult;
       if (bk.type === 'gravity') side.gravity += bk.pull * (1 + 0.3 * (u.star - 1));
+      if (bk.type === 'cannon') side.cannon.push({ dmg: U.atk * k * bk.mult, r: bk.r });
+      if (bk.type === 'revive') { side.revive += 1; side.revivePct = Math.max(side.revivePct, bk.pct + 0.1 * (u.star - 1)); }
     });
     return { bodies, side };
   }
@@ -98,10 +104,13 @@
     const bodies = p.bodies.concat(e.bodies);
     bodies.forEach((b, i) => b.i = i);
     const T = cfg.turnsEach;
+    if (o.eNoShots) e.side.shotsAdd = -T;
     const bt = { R, R0: R, rules: o.rules || [], env, bodies, sides: [p.side, e.side], turn: 0, shots: [T + p.side.shotsAdd, T + e.side.shotsAdd],
       phase: 'aim', winner: null, rng: { s: o.seed | 0 }, events: [], simT: 0, mover: -1, chain: 0, hits: 0, pending: [], comboUsed: {},
       shotCount: 0, zones: [], ghost: {}, echoUsed: false, gold: 0, stopDone: false };
     relax(bt);
+    if (bt.rules.includes('swamp')) [[-0.45, 0.12], [0.45, 0.12], [0, -0.02]].forEach(([x, y]) => bt.zones.push({ kind: 'pool', x: x * R, y: y * R, r: 50, dmg: 0, team: 1, left: 999, hit: {}, pDmg: 18, turns: 2 }));
+    [0, 1].forEach(t => { for (let k = 0; k < bt.sides[t].openFreeze; k++) { const f = alive(bt, 1 - t); if (f.length) { const x = rng.pick(bt.rng, f); x.stunned = true; bt.events.push({ t: 'freeze', x: x.x, y: x.y }); } } });
     startTurn(bt);
     return bt;
   }
@@ -136,6 +145,13 @@
       const foes = alive(b, foe);
       if (foes.length) { const t = rng.pick(b.rng, foes); b.events.push({ t: 'zap', x: t.x, y: t.y }); dealDamage(b, t, s.zap, null, 'zap'); }
     }
+    b.bodies.forEach(x => {
+      if (!x.alive || x.team !== b.turn) return;
+      if (x.poison && x.poison.turns > 0) { const pz = x.poison; pz.turns--; if (!pz.turns) x.poison = null; dealDamage(b, x, pz.dmg, null, 'poison'); }
+      if (b.env.fog && x.alive) dealDamage(b, x, x.maxHp * b.env.fog, null, 'poison');
+    });
+    s.cannon.forEach(cn => { const f = alive(b, foe); if (f.length) { const t = rng.pick(b.rng, f); explode(b, t.x, t.y, cn.r, cn.dmg, b.turn, null, false); } });
+    for (let k = 0; k < s.stormZap; k++) { const f = alive(b, foe); if (f.length) { const t = rng.pick(b.rng, f); b.events.push({ t: 'zap', x: t.x, y: t.y }); dealDamage(b, t, s.stormDmg, null, 'zap'); } }
     if (s.gravity) { b.events.push({ t: 'pull', x: 0, y: 0, r: b.R }); shift(b, foe, 0, 0, s.gravity * 0.15); }
     if (b.env.storm) { const a = rng.range(b.rng, 0, 6.283), rr = rng.range(b.rng, 0, b.R * 0.5), x = Math.cos(a) * rr, y = Math.sin(a) * rr; b.events.push({ t: 'pull', x, y, r: b.R * 0.8 }); shift(b, null, x, y, b.env.storm * 0.1); }
     if (b.turn === 0 && b.shotCount > 0 && b.rules.includes('shrink')) { b.R = Math.max(170, b.R - 14); relax(b); b.events.push({ t: 'shrink' }); }
@@ -153,7 +169,7 @@
     const sp = power * cfg.maxLaunch * x.speed * (full ? 1 + cfg.fullPowerBonus : 1);
     if (full) b.events.push({ t: 'fullpower', x: x.x, y: x.y });
     x.vx = Math.cos(angle) * sp; x.vy = Math.sin(angle) * sp;
-    b.bodies.forEach(y => { y.wallHits = 0; y.boomUsed = false; y.burnUsed = false; y.splitDone = false; if (y.ab && y.ab.type === 'pierce') y.pierceLeft = y.ab.n; });
+    b.bodies.forEach(y => { y.wallHits = 0; y.boomUsed = false; y.burnUsed = false; y.splitDone = false; y.healed = false; if (y.ab && y.ab.type === 'pierce') y.pierceLeft = y.ab.n; });
     b.zones.forEach(z => z.hit = {});
     b.phase = 'moving'; b.mover = idx; b.simT = 0; b.chain = 0; b.hits = 0; b.pending = []; b.ghost = {}; b.echoUsed = false; b.stopDone = false;
     b.events.push({ t: 'launch', i: idx });
@@ -182,6 +198,8 @@
       const c = JSON.parse(JSON.stringify(tgt)); c.i = b.bodies.length; c.x += tgt.r * 1.2; c.y -= tgt.r * 0.4; c.vx = -tgt.vx; c.vy = tgt.vy + 200; c.name += '分身';
       b.bodies.push(c); b.events.push({ t: 'bossSplit', x: tgt.x, y: tgt.y });
     }
+    const sd = b.sides[tgt.team];
+    if (tgt.hp <= 0 && sd.revive > 0 && !tgt.boss) { sd.revive--; tgt.hp = tgt.maxHp * sd.revivePct; tgt.poison = null; b.events.push({ t: 'revive', x: tgt.x, y: tgt.y }); }
     if (tgt.hp <= 0) {
       tgt.hp = 0; tgt.alive = false; tgt.vx = tgt.vy = 0;
       b.events.push({ t: 'death', x: tgt.x, y: tgt.y, team: tgt.team, color: tgt.color });
@@ -220,6 +238,15 @@
     });
   }
 
+  function poison(b, tgt, dmg, turns) {
+    if (!tgt.poison || tgt.poison.dmg < dmg) tgt.poison = { dmg, turns }; else tgt.poison.turns = Math.max(tgt.poison.turns, turns);
+    b.events.push({ t: 'poison', x: tgt.x, y: tgt.y });
+  }
+  function bolt(b, from, n, dmg, r, src) {
+    const cand = b.bodies.filter(o => o.alive && !o.temp && o.team === from.team && o !== from).map(o => [o, Math.hypot(o.x - from.x, o.y - from.y)]).filter(a => a[1] < r).sort((a, c) => a[1] - c[1]).slice(0, n);
+    cand.forEach(([o]) => { b.events.push({ t: 'bolt', x1: from.x, y1: from.y, x2: o.x, y2: o.y }); dealDamage(b, o, dmg, src, 'zap'); });
+  }
+
   function atkOf(o) { return o.ab && o.ab.type === 'rage' ? o.baseAtk * (1 + o.ab.max * (1 - o.hp / o.maxHp)) : o.atk; }
 
   function onHit(b, src, tgt, speed) {
@@ -234,6 +261,11 @@
     if (src.fx.hitPull) pull(b, tgt.x, tgt.y, src.fx.hitPull.r, src.fx.hitPull.pull * (1 + src.pullMul), src.team, tgt, 0, src);
     if (src.fx.everyN && src.hitCount % src.fx.everyN.n === 0) explode(b, tgt.x, tgt.y, src.fx.everyN.r, atk * src.fx.everyN.mult, src.team, src, false);
     if (sd.echo && !b.echoUsed) { b.echoUsed = true; explode(b, tgt.x, tgt.y, sd.echo.r, atk * sd.echo.mult, src.team, src, false); }
+    const ph = (ab && ab.type === 'poisonHit' && ab) || src.fx.poisonHit;
+    if (ph && tgt.alive) poison(b, tgt, atk * ph.mult * (1 + (src.poisonMul || 0)), ph.turns);
+    if (tgt.alive && ((ab && ab.type === 'freezeHit') || (src.fx.freezeEvery && src.hitCount % src.fx.freezeEvery === 0)) && !tgt.boss) { tgt.stunned = true; b.events.push({ t: 'freeze', x: tgt.x, y: tgt.y }); }
+    const ch = (ab && ab.type === 'chainHit' && ab) || src.fx.chainHit;
+    if (ch) bolt(b, tgt, ch.n, atk * ch.mult, ch.r, src);
     if (tgt.alive && tgt.ab && tgt.ab.type === 'barrelBoom' && !tgt.boomUsed) { tgt.boomUsed = true; explode(b, tgt.x, tgt.y, tgt.ab.r, atkOf(tgt) * tgt.ab.mult, tgt.team, tgt, false); }
   }
 
@@ -249,6 +281,8 @@
     if (cb.type === 'shieldAll') b.bodies.forEach(o => { if (o.alive && o.team === team) o.shield += cb.amt * (a.star + c.star) / 2; });
     if (cb.type === 'healAll') b.bodies.forEach(o => { if (o.alive && o.team === team && !o.temp) o.hp = Math.min(o.maxHp, o.hp + o.maxHp * cb.pct); });
     if (cb.type === 'pullBlast') { pull(b, x, y, cb.r, 520, team, null, 0, owner); b.pending.push({ at: b.simT + 0.35, x, y, r: 110, dmg: atk * cb.mult, team, src: owner.i }); }
+    if (cb.type === 'poisonCloud') { b.events.push({ t: 'pull', x, y, r: cb.r }); b.bodies.forEach(o => { if (o.alive && !o.temp && o.team !== team && Math.hypot(o.x - x, o.y - y) < cb.r + o.r) poison(b, o, atk * cb.mult, 3); }); }
+    if (cb.type === 'freezeBlast') { b.events.push({ t: 'boom', x, y, r: cb.r, n: 0 }); b.bodies.forEach(o => { if (o.alive && !o.temp && o.team !== team && !o.boss && Math.hypot(o.x - x, o.y - y) < cb.r + o.r) { o.stunned = true; dealDamage(b, o, atk * 0.5, owner, 'zap'); b.events.push({ t: 'freeze', x: o.x, y: o.y }); } }); }
     if (cb.type === 'launch') {
       const slow = Math.hypot(a.vx, a.vy) < Math.hypot(c.vx, c.vy) ? a : c;
       let best = null, bd = 1e9;
@@ -296,9 +330,14 @@
     }
     // 火焰地板
     b.zones.forEach(z => bs.forEach(o => {
-      if (!o.alive || o.temp || o.team === z.team || z.hit[o.i]) return;
-      if (Math.hypot(o.x - z.x, o.y - z.y) < z.r + o.r) { z.hit[o.i] = 1; dealDamage(b, o, z.dmg, null, 'burn'); }
+      if (z.left <= 0 || !o.alive || o.temp || o.team === z.team || z.hit[o.i]) return;
+      if (Math.hypot(o.x - z.x, o.y - z.y) >= z.r + o.r) return;
+      z.hit[o.i] = 1;
+      if (z.kind === 'mine') { z.left = 0; explode(b, z.x, z.y, z.br, z.dmg, z.team, null, false); }
+      else if (z.kind === 'pool') poison(b, o, z.pDmg, z.turns);
+      else dealDamage(b, o, z.dmg, null, 'burn');
     }));
+    if (b.zones.some(z => z.left <= 0)) b.zones = b.zones.filter(z => z.left > 0);
     const n = bs.length;
     for (let i = 0; i < n; i++) {
       const a = bs[i]; if (!a.alive) continue;
@@ -338,6 +377,7 @@
         } else {
           // 撞隊友：被撞方加速（羽毛）、聯動組合技
           if (c.ab && c.ab.type === 'allyBoost' && sa > 100) { c.vx *= c.ab.mult; c.vy *= c.ab.mult; b.events.push({ t: 'boost', x: c.x, y: c.y }); }
+          [[a, c, sa], [c, a, sc]].forEach(([h, t, s]) => { if (h.ab && h.ab.type === 'healTouch' && s > 80 && !t.healed && !t.temp) { t.healed = true; t.hp = Math.min(t.maxHp, t.hp + t.maxHp * h.ab.pct); b.events.push({ t: 'heal', x: t.x, y: t.y }); } });
           if (a.ab && a.ab.type === 'allyBoost' && sc > 100) { a.vx *= a.ab.mult; a.vy *= a.ab.mult; b.events.push({ t: 'boost', x: a.x, y: a.y }); }
           if (((a.link && a.link === c.id) || (c.link && c.link === a.id)) && !a.temp && !c.temp && Math.max(Math.abs(sa), Math.abs(sc)) > 150) combo(b, a, c, px, py);
         }
@@ -351,6 +391,9 @@
     if (b.simT > cfg.maxSimSec) { bs.forEach(o => { o.vx = o.vy = 0; }); return true; }
     if (!moving) {
       const mv = bs[b.mover];
+      if (!b.stopDone && mv && mv.alive && mv.ab && mv.ab.type === 'mineDrop') {
+        b.stopDone = true; b.zones.push({ kind: 'mine', x: mv.x, y: mv.y, r: 18, br: mv.ab.r, dmg: atkOf(mv) * mv.ab.mult * (1 + (mv.blastMul || 0)), team: mv.team, left: 6, hit: {} });
+      }
       if (!b.stopDone && mv && mv.alive && mv.ab && mv.ab.type === 'magnetStop') {
         b.stopDone = true; pull(b, mv.x, mv.y, mv.ab.r, mv.ab.pull * (1 + mv.pullMul), mv.team, null, atkOf(mv) * mv.ab.mult, mv); return false;
       }
