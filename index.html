@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#14121f">
+<title>彈射自走棋</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <section id="title" class="screen">
+    <h1>彈射自走棋</h1>
+    <p class="sub">經營商店・彈射碰撞・連鎖爆炸</p>
+    <button id="btnCont" class="big hidden">繼續遊戲</button>
+    <button id="btnNew" class="big">新遊戲</button>
+    <p class="hint">拖曳己方棋子往反方向拉，放開彈射</p>
+  </section>
+
+  <section id="shop" class="screen hidden">
+    <div class="top">
+      <span id="tStage"></span><span id="tHp"></span><span id="tGold"></span><span id="tLv"></span>
+    </div>
+    <div id="enemyInfo" class="enemy"></div>
+    <div id="traits" class="traits"></div>
+    <div class="lbl">前台（上場彈射）</div><div id="front" class="row"></div>
+    <div class="lbl">後台（每回合被動）</div><div id="back" class="row"></div>
+    <div class="lbl">備戰區</div><div id="bench" class="row"></div>
+    <div id="items" class="items"></div>
+    <div id="info" class="info"></div>
+    <div id="shopRow" class="shoprow"></div>
+    <div class="ctrls">
+      <button id="bReroll">刷新 2</button><button id="bLock">鎖定</button><button id="bXp">經驗 4</button>
+      <button id="bFight" class="go">開戰 ▶</button>
+    </div>
+  </section>
+
+  <section id="battle" class="screen hidden">
+    <canvas id="cv"></canvas>
+    <div id="bhud" class="bhud"></div>
+    <button id="bPause" class="pausebtn">⏸</button>
+  </section>
+
+  <div id="modal" class="modal hidden"><div id="modalBox" class="box"></div></div>
+</div>
+<script src="data/config.js"></script>
+<script src="data/units.js"></script>
+<script src="data/traits.js"></script>
+<script src="data/items.js"></script>
+<script src="data/enemies.js"></script>
+<script src="src/core/battle.js"></script>
+<script src="src/core/ai.js"></script>
+<script src="src/core/run.js"></script>
+<script src="src/ui/render.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
