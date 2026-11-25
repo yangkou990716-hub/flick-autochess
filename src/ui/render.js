@@ -36,6 +36,7 @@
       else if (e.t === 'zap') { V.rings.push({ x: e.x, y: e.y, r: 40, life: 0.3, max: 0.3, col: '#ffe066' }); burst(e.x, e.y, '#ffe066', 10, 220); }
       else if (e.t === 'split' || e.t === 'stick' || e.t === 'pierce') V.texts.push({ x: e.x, y: e.y - 20, txt: { split: '分裂！', stick: '黏住！', pierce: '穿透！' }[e.t], life: 0.7, col: '#cff' });
       else if (e.t === 'bossSplit') { V.banner = { txt: '首領分裂了！', life: 1.4 }; V.shake = 16; burst(e.x, e.y, '#c9a', 40, 400); }
+      else if (e.t === 'boost') V.texts.push({ x: e.x, y: e.y - 20, txt: '加速！', life: 0.7, col: '#cff' });
       else if (e.t === 'fullpower') { V.texts.push({ x: e.x, y: e.y - 40, txt: '全力！', life: 0.9, col: '#ff5', big: true }); V.shake = Math.max(V.shake, 6); }
       else if (e.t === 'shrink') V.banner = { txt: '場地縮小！', life: 1.2 };
       else if (e.t === 'skip') V.banner = { txt: (e.team === 0 ? '我方' : '敵方') + '全員暈眩，跳過', life: 1.2 };
@@ -106,10 +107,17 @@
 
     // 瞄準線
     if (ui.aim) {
-      const o = b.bodies[ui.aim.idx], pts = V.path(b, o, ui.aim.angle, ui.aim.power);
-      ctx.strokeStyle = ui.aim.enemy ? '#ff7a7a' : '#ffe066'; ctx.lineWidth = 3; ctx.setLineDash([8, 8]); ctx.beginPath();
-      pts.forEach((p, i) => i ? ctx.lineTo(CX + p[0] * S, CY + p[1] * S) : ctx.moveTo(CX + p[0] * S, CY + p[1] * S)); ctx.stroke(); ctx.setLineDash([]);
-      const last = pts[pts.length - 1]; ctx.beginPath(); ctx.arc(CX + last[0] * S, CY + last[1] * S, o.r * S, 0, 6.28); ctx.stroke();
+      const o = b.bodies[ui.aim.idx], k = ui.aim.angle.toFixed(3) + '|' + ui.aim.power.toFixed(3) + '|' + ui.aim.idx;
+      if (!ui.pred || ui.predKey !== k) { ui.pred = FA.battle.predict(b, ui.aim.idx, ui.aim.angle, ui.aim.power); ui.predKey = k; }
+      const pr = ui.pred, col = ui.aim.enemy ? '#ff7a7a' : '#ffe066';
+      if (pr) {
+        const line = (arr, a0, a1) => { ctx.beginPath(); for (let i = a0; i <= a1 && i < arr.length; i++) { const p = arr[i]; i === a0 ? ctx.moveTo(CX + p[0] * S, CY + p[1] * S) : ctx.lineTo(CX + p[0] * S, CY + p[1] * S); } ctx.stroke(); };
+        ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.setLineDash([8, 7]); line(pr.pts, 0, pr.cut); ctx.setLineDash([]);
+        const cp = pr.pts[pr.cut]; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(CX + cp[0] * S, CY + cp[1] * S, pr.r * S, 0, 6.28); ctx.stroke();
+        ctx.globalAlpha = 0.5; ctx.setLineDash([3, 5]); line(pr.pts, pr.cut, pr.pts.length - 1); ctx.setLineDash([]);
+        if (pr.hit && pr.hit.length > 1) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; line(pr.hit, 0, pr.hit.length - 1); const e = pr.hit[pr.hit.length - 1]; ctx.beginPath(); ctx.arc(CX + e[0] * S, CY + e[1] * S, 4, 0, 6.28); ctx.fillStyle = '#fff'; ctx.fill(); }
+        ctx.globalAlpha = 1;
+      }
       if (!ui.aim.enemy) { // 力道條
         const fp = FA.DATA.config.fullPowerAt, full = ui.aim.power >= fp, bx = CX + o.x * S - 34, by = CY + o.y * S - o.r * S - 30;
         ctx.fillStyle = '#000b'; ctx.fillRect(bx - 2, by - 2, 72, 12);

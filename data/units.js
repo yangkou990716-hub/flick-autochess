@@ -3,7 +3,7 @@
 // role: front 前台 / back 後台 / both 兩用（前台用 ability，後台用 back）
 // ability（前台能力）type：
 //   burn 撞到敵人留火焰地板 / magnetStop 停下時吸附 / heavyPush 推飛加倍 / guard 被撞減傷 / barrelBoom 被撞爆炸
-//   thorns 反傷 / explodeOnHit 撞擊爆炸 / pierce 穿過敵人 / ghost 穿過隊友 / sticky 黏住敵人
+//   thorns 反傷 / explodeOnHit 撞擊爆炸 / pierce 穿過敵人 / allyBoost 被隊友撞到加速 / sticky 黏住敵人
 //   split 撞牆分裂 / boomerang 撞牆加速 / bigBounce 撞牆加成加大 / rage 越殘越痛
 // back（後台被動）type：heal 回血 / shield 護盾 / atkPct 加攻 / zap 電擊敵人 / gravity 把敵人往中間吸
 (function (g) {
@@ -19,7 +19,7 @@
       ability: { type: 'guard', red: 0.4, desc: '被撞減傷 40%' },
       link: { with: 'captain', combo: { type: 'shieldAll', amt: 40, name: '盾陣' } } },
     feather: { name: '羽毛', cost: 1, traits: ['swift', 'bounce'], role: 'front', hp: 85, atk: 26, mass: 0.5, r: 17, speed: 1.4, color: '#e8f3ff',
-      ability: { type: 'ghost', desc: '穿過隊友，不會被自己人擋住' },
+      ability: { type: 'allyBoost', mult: 1.6, desc: '被隊友撞到會加速衝出（速度×1.6）' },
       link: { with: 'boomer', combo: { type: 'launch', speed: 1000, name: '旋風' } } },
     barrel: { name: '油桶', cost: 2, traits: ['blast', 'heavy'], role: 'both', hp: 170, atk: 20, mass: 1.9, r: 28, speed: 0.85, color: '#c0632d',
       ability: { type: 'barrelBoom', r: 120, mult: 1.2, desc: '被敵人撞到就爆炸（每發一次）' }, back: { type: 'atkPct', val: 0.15, trait: 'blast' },

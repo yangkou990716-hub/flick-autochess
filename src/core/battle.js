@@ -307,7 +307,6 @@
         const dx = c.x - a.x, dy = c.y - a.y, rr = a.r + c.r, d2 = dx * dx + dy * dy;
         if (d2 >= rr * rr) continue;
         const same = a.team === c.team;
-        if (same && ((a.ab && a.ab.type === 'ghost') || (c.ab && c.ab.type === 'ghost'))) continue;
         const key = i + '-' + j;
         if (b.ghost[key]) continue;
         const d = Math.sqrt(d2) || 0.001, nx = dx / d, ny = dy / d;
@@ -336,8 +335,11 @@
           }
           if (sa > mh) onHit(b, a, c, sa);
           if (sc > mh && c.alive && a.alive) onHit(b, c, a, sc);
-        } else if ((a.link && a.link === c.id) || (c.link && c.link === a.id)) {
-          if (!a.temp && !c.temp && Math.max(Math.abs(sa), Math.abs(sc)) > 150) combo(b, a, c, px, py);
+        } else {
+          // 撞隊友：被撞方加速（羽毛）、聯動組合技
+          if (c.ab && c.ab.type === 'allyBoost' && sa > 100) { c.vx *= c.ab.mult; c.vy *= c.ab.mult; b.events.push({ t: 'boost', x: c.x, y: c.y }); }
+          if (a.ab && a.ab.type === 'allyBoost' && sc > 100) { a.vx *= a.ab.mult; a.vy *= a.ab.mult; b.events.push({ t: 'boost', x: a.x, y: a.y }); }
+          if (((a.link && a.link === c.id) || (c.link && c.link === a.id)) && !a.temp && !c.temp && Math.max(Math.abs(sa), Math.abs(sc)) > 150) combo(b, a, c, px, py);
         }
       }
     }
@@ -383,7 +385,29 @@
 
   function finish(b, w) { if (b.phase === 'over') return; b.phase = 'over'; b.winner = w; b.events.push({ t: 'over', winner: w }); }
 
+  // 瞄準預演：用同一套物理跑一次，回傳彈射棋子路線（撞到東西或撞牆上限後再多畫一小段）與第一個被撞棋子的去向
+  function predict(b, idx, angle, power) {
+    const c = JSON.parse(JSON.stringify(b)); c.events = [];
+    if (!launch(c, idx, angle, power)) return null;
+    const o = c.bodies[idx], pts = [[o.x, o.y]], EXTRA = 80;
+    let cut = -1, after = 0, hit = -1, hitPts = null, px = o.x, py = o.y;
+    for (let k = 0; k < 1500; k++) {
+      const done = step(c);
+      if (hit < 0) {
+        const j = c.bodies.findIndex((q, n) => n !== idx && !q.temp && q.alive && (Math.abs(q.vx) > 1 || Math.abs(q.vy) > 1));
+        if (j >= 0) { hit = j; hitPts = [[c.bodies[j].x, c.bodies[j].y]]; }
+      }
+      if (cut < 0 && (hit >= 0 || o.wallHits > Math.max(1, o.bounces))) cut = pts.length;
+      if (cut >= 0) { after += Math.hypot(o.x - px, o.y - py); if (hit >= 0) { const q = c.bodies[hit]; hitPts.push([q.x, q.y]); } }
+      px = o.x; py = o.y;
+      if (k % 2 === 0 || cut >= 0) pts.push([o.x, o.y]);
+      if (after > EXTRA || done || !o.alive) break;
+    }
+    pts.push([o.x, o.y]);
+    return { pts, cut: cut < 0 ? pts.length - 1 : cut, hit: hitPts, r: o.r };
+  }
+
   function runShot(b) { let k = 0; while (!step(b) && k++ < 2500); }
 
-  FA.battle = { create, launch, step, endShot, runShot, startTurn, alive, hpSum, traitTiers, dealDamage, canMove, addMods, atkOf };
+  FA.battle = { create, launch, step, endShot, runShot, predict, startTurn, alive, hpSum, traitTiers, dealDamage, canMove, addMods, atkOf };
 })(globalThis);
