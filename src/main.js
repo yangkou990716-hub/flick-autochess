@@ -4,9 +4,16 @@
   const $ = id => document.getElementById(id), KEY = 'flick_autochess_save_v2';
   let run = null, battle = null, sel = null, screen = 'title', paused = false, ai = null, drag = null, hs = null, mode = 'run', duelName = '';
   const ui = { aim: null, msg: '' };
+  let bst = null; // 本場戰鬥統計（在 V.consume 清空事件前掃描）
+
+  // ---------- 設定（震動、播放速度）：FA.settings 給 render.js 共用 ----------
+  const SET_KEY = 'fa_settings';
+  FA.settings = Object.assign({ vibrate: true, speed: 1 }, (() => { try { return JSON.parse(localStorage.getItem(SET_KEY)) || {}; } catch (e) { return {}; } })());
+  const saveSet = () => { try { localStorage.setItem(SET_KEY, JSON.stringify(FA.settings)); } catch (e) { } };
+  const vib = ms => { if (FA.settings.vibrate) try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { } };
 
   // ---------- 存檔 ----------
-  const save = () => { try { if (run) localStorage.setItem(KEY, JSON.stringify(hs ? { hs, battle, mode } : { run, battle, mode })); } catch (e) { } };
+  const save = () => { try { if (run) localStorage.setItem(KEY, JSON.stringify(hs ? { hs, battle, mode, bst } : { run, battle, mode, bst })); } catch (e) { } };
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } };
   const clearSave = () => { try { localStorage.removeItem(KEY); } catch (e) { } };
 
@@ -95,7 +102,7 @@
       };
       return;
     }
-    show('shop'); renderShop();
+    show('shop'); renderShop(); setTimeout(tutShop, 30);
   }
 
   // ---------- 商店畫面 ----------
@@ -137,11 +144,23 @@
     $('shopRow').innerHTML = run.shop.map((id, i) => {
       if (!id) return `<div class="card empty"></div>`;
       const U = D.units[id], cc = ['#888', '#3fb950', '#4ea0ff', '#b072ff', '#ffb000'][U.cost - 1];
-      return `<div class="card" data-b="${i}" style="border-color:${cc}"><div class="dot" style="background:${U.color};width:${U.r * 1.2}px;height:${U.r * 1.2}px"></div>${U.name}<div class="c">${RUN.unitCost(run, id)}💰</div><div class="t">${U.traits.map(t => D.traits[t].name).join('・')}</div></div>`;
+      return `<div class="card" data-b="${i}" style="border-color:${cc}"><div class="dot" style="background:${U.color};width:${U.r * 1.2}px;height:${U.r * 1.2}px"></div>${U.name}<div class="c">${RUN.unitCost(run, id)}💰</div><div class="t">${U.traits.map(t => D.traits[t].name).join('・')}</div>${cardHint(id, onTeam, tt)}</div>`;
     }).join('');
     $('bReroll').textContent = run.freeLeft ? `免費刷新` : `刷新 ${C.rerollCost}`;
     $('bReroll').disabled = !run.freeLeft && run.gold < C.rerollCost; $('bXp').disabled = run.gold < C.xpCost || run.level >= C.levels.length;
     $('bLock').classList.toggle('on', run.locked); $('bLock').textContent = run.locked ? '已鎖定' : '鎖定';
+  }
+  // 場上已有幾隻（升星進度）＋買了能不能湊羈絆
+  function owned(id) { const c = [0, 0, 0]; ['front', 'back', 'bench'].forEach(z => run[z].forEach(u => { if (u && u.id === id) c[u.star - 1]++; })); return c; }
+  function cardHint(id, onTeam, tt) {
+    const c = owned(id); let h = '';
+    if (c[0] || c[1]) h += `<div class="ux-own ${c[0] === 2 ? 'up' : ''}">${c[0] === 2 ? '再1隻升星！' : c[0] ? `已有 ${c[0]}/3` : ''}${c[1] ? `${c[0] ? ' ' : ''}★★×${c[1]}${c[1] === 2 ? '(差1)' : ''}` : ''}</div>`;
+    if (!onTeam.includes(id)) D.units[id].traits.forEach(t => {
+      const T = D.traits[t], n = (tt.counts[t] || 0) + 1, hit = T.tiers.find(x => x.n === n);
+      if (hit) h += `<div class="ux-syn">湊${T.name}${n}</div>`;
+      else if (tt.counts[t]) { const nx = T.tiers.find(x => x.n > n); if (nx) h += `<div class="ux-syn near">${T.name}${n}/${nx.n}</div>`; }
+    });
+    return h;
   }
   function unitHTML(u) {
     const U = D.units[u.id];
@@ -165,6 +184,86 @@
     }
     renderShop(); save();
   });
+
+  // ---------- 商店拖曳／長按（pointer events；短按仍走上面的 click）----------
+  let pd = null, noClickUntil = 0;
+  $('shop').addEventListener('contextmenu', e => e.preventDefault());
+  $('shop').addEventListener('click', e => { if (performance.now() < noClickUntil) { e.stopPropagation(); e.preventDefault(); } }, true);
+  $('shop').addEventListener('pointerdown', e => {
+    if (e.button > 0 || pd || !run) return;
+    const t = e.target.closest('[data-z],[data-b]'); if (!t) return;
+    const src = t.dataset.b != null ? { buy: +t.dataset.b } : { zone: t.dataset.z, i: +t.dataset.i };
+    if (src.buy != null ? !run.shop[src.buy] : !RUN.unitAt(run, src)) return;
+    pd = { src, el: t, x: e.clientX, y: e.clientY, id: e.pointerId, drag: false, over: null, ghost: null };
+    pd.timer = setTimeout(() => { if (pd && !pd.drag) { const s = pd.src; endDrag(); noClickUntil = performance.now() + 600; vib(10); detail(s); } }, 450);
+  });
+  addEventListener('pointermove', e => {
+    if (!pd || e.pointerId !== pd.id) return;
+    if (!pd.drag) { if (Math.hypot(e.clientX - pd.x, e.clientY - pd.y) < 9) return; clearTimeout(pd.timer); startDrag(); }
+    e.preventDefault();
+    pd.ghost.style.left = e.clientX + 'px'; pd.ghost.style.top = e.clientY + 'px';
+    const tg = dropAt(e.clientX, e.clientY), el = tg ? tg.el : null;
+    if (pd.over !== el) { pd.over && pd.over.classList.remove('ux-over'); el && el.classList.add('ux-over'); pd.over = el; }
+  }, { passive: false });
+  addEventListener('pointerup', e => {
+    if (!pd || e.pointerId !== pd.id) return;
+    const d = pd, tg = d.drag ? dropAt(e.clientX, e.clientY) : null; endDrag(); // 先找目標，再收起賣出區
+    if (d.drag) { noClickUntil = performance.now() + 250; doDrop(d.src, tg); }
+  });
+  addEventListener('pointercancel', e => { if (pd && e.pointerId === pd.id) endDrag(); });
+  function startDrag() {
+    pd.drag = true; sel = null;
+    const u = pd.src.buy != null ? null : RUN.unitAt(run, pd.src), id = u ? u.id : run.shop[pd.src.buy];
+    const g = document.createElement('div'); g.className = 'ux-ghost';
+    g.innerHTML = unitHTML(u || { id, star: 1, items: [], weapon: null });
+    document.body.appendChild(g); pd.ghost = g; g.style.left = pd.x + 'px'; g.style.top = pd.y + 'px';
+    $('shop').classList.add('ux-dragging'); pd.el.style.opacity = '.35';
+    if (u) { $('uxSell').textContent = `拖到這裡賣出 +${RUN.sellPrice(u)} 💰`; $('uxSell').classList.remove('hidden'); }
+  }
+  function endDrag() {
+    if (!pd) return; clearTimeout(pd.timer);
+    if (pd.ghost) pd.ghost.remove(); if (pd.over) pd.over.classList.remove('ux-over'); pd.el.style.opacity = '';
+    $('shop').classList.remove('ux-dragging'); $('uxSell').classList.add('hidden'); pd = null;
+  }
+  // 手指下方的放置目標：賣出區／格子／整排（放到該排第一個空位）
+  function dropAt(x, y) {
+    const el = document.elementFromPoint(x, y); if (!el) return null;
+    if (el.closest('#uxSell')) return { sell: true, el: $('uxSell') };
+    const s = el.closest('[data-z]');
+    if (s && !s.classList.contains('lock')) return { loc: { zone: s.dataset.z, i: +s.dataset.i }, el: s };
+    const row = el.closest('#front,#back,#bench');
+    if (row) {
+      const lim = row.id === 'front' ? RUN.lv(run).front : row.id === 'back' ? RUN.lv(run).back : C.benchSize, k = run[row.id].findIndex((u, i) => !u && i < lim);
+      if (k >= 0) return { loc: { zone: row.id, i: k }, el: row };
+    }
+    return null;
+  }
+  function doDrop(src, tg) {
+    if (!tg) return;
+    if (src.buy != null) {
+      if (!tg.loc) return;
+      const uid = run.uid;
+      if (!RUN.buy(run, src.buy)) { renderShop(); return flash('金幣或空位不足'); }
+      FA.sound.play('coin');
+      let from = null; ['front', 'back', 'bench'].forEach(z => run[z].forEach((u, i) => { if (u && u.uid === uid) from = { zone: z, i }; }));
+      if (from && !(from.zone === tg.loc.zone && from.i === tg.loc.i)) RUN.move(run, from, tg.loc);
+      renderShop(); save(); if (!from) flash('升星！'); return;
+    }
+    if (tg.sell) { RUN.sell(run, src); FA.sound.play('coin'); }
+    else if (!(src.zone === tg.loc.zone && src.i === tg.loc.i) && !RUN.move(run, src, tg.loc)) { renderShop(); return flash('該格尚未解鎖'); }
+    renderShop(); save();
+  }
+  // 長按：詳細資訊
+  function detail(src) {
+    const shopCard = src.buy != null, id = shopCard ? run.shop[src.buy] : RUN.unitAt(run, src).id;
+    const u = shopCard ? { id, star: 1, items: [], weapon: null } : RUN.unitAt(run, src), c = owned(id);
+    const prog = `<span class="k">升星：</span>1星 ${c[0]}/3　2星 ${c[1]}/3${c[2] ? `　3星 ×${c[2]}` : ''}`;
+    const tr = D.units[id].traits.map(t => { const T = D.traits[t]; return `<span class="k">${T.name}：</span>` + T.tiers.map(x => `${x.n}隻 ${modsText(x.mods)}`).join('；'); }).join('<br>');
+    const btns = shopCard ? [{ t: `購買 ${RUN.unitCost(run, id)}💰`, cls: 'go', f: () => { if (!RUN.buy(run, src.buy)) flash('金幣或空位不足'); else FA.sound.play('coin'); renderShop(); save(); } }, { t: '關閉' }]
+      : [{ t: `賣出 +${RUN.sellPrice(u)}`, f: () => { RUN.sell(run, src); renderShop(); save(); } }, { t: '關閉', cls: 'go' }];
+    modal(`<div class="ux-detail">${unitInfo(u)}${prog}<br>${tr}</div>`, btns);
+  }
+
   $('bReroll').onclick = () => { RUN.reroll(run); renderShop(); save(); };
   $('bLock').onclick = () => { run.locked = !run.locked; renderShop(); save(); };
   $('bXp').onclick = () => { RUN.buyXp(run); renderShop(); save(); };
@@ -183,7 +282,7 @@
         const team = RUN.importTeam(document.getElementById('duelCode').value || '');
         if (!team) return flash('代碼無效');
         const b = RUN.duelBattle(run, team); if (!b) return flash('雙方前台都至少要 1 隻');
-        mode = 'duel'; duelName = team.name; battle = b; V.reset(); ai = null; ui.aim = null; show('battle'); V.resize(); save();
+        mode = 'duel'; duelName = team.name; battle = b; bst = newStats(); hideBInfo(); V.reset(); ai = null; ui.aim = null; show('battle'); V.resize(); save();
         V.banner = { txt: '對戰 ' + team.name, life: 1.4 };
       } }, { t: '取消' }]);
   };
@@ -191,7 +290,8 @@
   function startFight() {
     mode = 'run';
     const b = RUN.startBattle(run); if (!b) { run.node = null; show('shop'); renderShop(); return flash('前台至少要放 1 隻'); }
-    battle = b; V.reset(); ai = null; ui.aim = null; show('battle'); V.resize(); save();
+    battle = b; bst = newStats(); V.reset(); ai = null; ui.aim = null; hideBInfo(); show('battle'); V.resize(); save();
+    setTimeout(tutBattle, 60);
     if (run.enemy.boss) V.banner = { txt: '首領：' + run.enemy.name, life: 1.6 };
     else if (run.enemy.reward) V.banner = { txt: '打破撲滿！每隻 +' + RD.piggy.goldEach + ' 金', life: 1.6 };
     else if (run.node === 'encounter') V.banner = { txt: '遭遇・' + RD.encounter[run.encLv].name, life: 1.2 };
@@ -201,9 +301,15 @@
   // ---------- 戰鬥 ----------
   const cv = $('cv'); V.init(cv);
   const ptr = e => V.toWorld(e.clientX, e.clientY);
+  let tap = null, binfoT = 0;
   cv.addEventListener('pointerdown', e => {
-    if (paused || !battle || battle.phase !== 'aim' || battle.turn !== 0) return;
-    const w = ptr(e); let best = null, bd = 1e9;
+    if (paused || !battle || tutOn) return;
+    const w = ptr(e);
+    tap = { x: e.clientX, y: e.clientY, t: performance.now(), body: bodyAt(w) };
+    if (!tap.body) hideBInfo();
+    if (battle.phase === 'aim' && battle.turn === 1 && !tap.body) { if (!ai) ai = { t: 0, c: null }; ai.ff = true; } // 敵方瞄準：點空白快轉
+    if (battle.phase !== 'aim' || battle.turn !== 0) return;
+    let best = null, bd = 1e9;
     battle.bodies.forEach(o => { if (o.alive && !o.temp && o.team === 0 && !o.stunned) { const d = Math.hypot(o.x - w.x, o.y - w.y); if (d < o.r + 22 && d < bd) { bd = d; best = o; } } });
     if (best) { drag = best.i; cv.setPointerCapture(e.pointerId); }
   });
@@ -212,14 +318,38 @@
     const w = ptr(e), o = battle.bodies[drag], vx = o.x - w.x, vy = o.y - w.y, len = Math.hypot(vx, vy);
     const was = ui.aim && ui.aim.power >= C.fullPowerAt;
     ui.aim = len < 12 ? null : { idx: drag, angle: Math.atan2(vy, vx), power: Math.min(1, len / 140) };
-    if (ui.aim && ui.aim.power >= C.fullPowerAt && !was) try { navigator.vibrate && navigator.vibrate(20); } catch (e) { }
+    if (ui.aim && ui.aim.power >= C.fullPowerAt && !was) vib(20);
   });
-  const up = () => {
-    if (drag == null) return;
-    if (ui.aim && ui.aim.power > 0.1) FA.battle.launch(battle, ui.aim.idx, ui.aim.angle, ui.aim.power);
-    ui.aim = null; drag = null;
+  // 短按＝看資訊（不彈射）；拖曳＝彈射
+  const up = e => {
+    const tp = tap; tap = null;
+    const isTap = tp && Math.hypot(e.clientX - tp.x, e.clientY - tp.y) < 12 && performance.now() - tp.t < 500;
+    if (drag != null) {
+      if (!isTap && ui.aim && ui.aim.power > 0.1) { FA.battle.launch(battle, ui.aim.idx, ui.aim.angle, ui.aim.power); hideBInfo(); }
+      ui.aim = null; drag = null;
+    }
+    if (isTap && tp.body && battle) showBInfo(tp.body);
   };
-  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', () => { ui.aim = null; drag = null; });
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', () => { ui.aim = null; drag = null; tap = null; });
+  function bodyAt(w) {
+    let best = null, bd = 1e9;
+    battle.bodies.forEach(o => { if (o.alive && !o.temp) { const d = Math.hypot(o.x - w.x, o.y - w.y); if (d < o.r + 14 && d < bd) { bd = d; best = o; } } });
+    return best;
+  }
+  function showBInfo(o) {
+    const U = D.units[o.id], B = o.boss ? (mode === 'duel' ? null : RUN.bossInfo(run)) : null;
+    let h = `<b style="color:${o.team === 0 ? '#5cf' : '#f77'}">${o.team === 0 ? '我方' : '敵方'}・${o.name}${o.star > 1 ? ' ' + '★'.repeat(o.star) : ''}</b>　❤ ${Math.ceil(o.hp)}/${Math.round(o.maxHp)}　⚔ ${Math.round(o.atk)}${o.shield > 0 ? `　🛡 ${Math.round(o.shield)}` : ''}<br>`;
+    const st = [];
+    if (o.stunned) st.push('<span style="color:#8df">❄ 冰凍：這回合不能彈射</span>');
+    if (o.poison) st.push(`<span style="color:#9ccc65">☠ 中毒：每回合 ${Math.round(o.poison.dmg)} 傷害，剩 ${o.poison.turns} 回合</span>`);
+    if (st.length) h += st.join('　') + '<br>';
+    if (U && U.ability && U.role !== 'back') h += `<span class="k">能力：</span>${U.ability.desc}<br>`;
+    if (U && U.traits.length) h += `<span class="k">羈絆：</span>${U.traits.map(t => D.traits[t].name).join('・')}　速度 ${U.speed}｜重量 ${U.mass}<br>`;
+    if (B) h += `<span class="k">首領：</span>${B.rules.map(r => D.enemies.ruleText[r]).join('、')}${B.split ? '、半血分裂' : ''}${B.zap ? '、每回合電擊' : ''}<br>`;
+    if (o.weapon && D.weapons[o.weapon]) h += weaponText(o.weapon);
+    $('uxBinfo').innerHTML = h; $('uxBinfo').classList.remove('hidden'); binfoT = 4;
+  }
+  function hideBInfo() { $('uxBinfo').classList.add('hidden'); binfoT = 0; }
 
   function hud() {
     const b = battle, hp = t => Math.round(FA.battle.hpSum(b, t));
@@ -234,13 +364,15 @@
   function enemyThink(dt) {
     if (!ai) ai = { t: 0, c: null };
     ai.t += dt;
-    if (ai.t > 0.45 && !ai.c) {
+    if (ai.ff && ai.t < 0.45) ai.t = 0.45;
+    if (ai.t >= 0.45 && !ai.c) {
       const st = mode === 'duel' ? 15 : run.stage + 1 + (run.node === 'encounter' ? RD.encounter[run.encLv].add : 0);
       ai.c = FA.ai.choose(battle, 1, D.enemies.difficulty(st), battle.rng);
       if (!ai.c) { ai = null; return; }
+      if (ai.ff) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power); ui.aim = null; ai = null; return; }
       ui.aim = { idx: ai.c.idx, angle: ai.c.angle, power: ai.c.power, enemy: true };
     }
-    if (ai.c && ai.t > 1.25) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power); ui.aim = null; ai = null; }
+    if (ai.c && (ai.t > 1.25 || ai.ff)) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power); ui.aim = null; ai = null; }
   }
 
   function afterShot() {
@@ -248,38 +380,64 @@
     if (battle.phase !== 'over') return;
     const b = battle;
     setTimeout(() => {
-      FA.sound.play(b.winner === 0 ? 'win' : 'lose');
-      if (mode === 'duel') { battle = null; mode = 'run'; save(); return modal(`<h2>${b.winner === 0 ? '🎉 你贏了' : '💥 你輸了'}</h2>對手：${duelName}`, [{ t: '回商店', cls: 'go', f: () => { show('shop'); renderShop(); } }]); }
+      FA.sound.play(b.winner === 0 ? 'win' : 'lose'); hideBInfo();
+      const stats = statsHTML(); bst = null;
+      if (mode === 'duel') { battle = null; mode = 'run'; save(); modal(`<h2>${b.winner === 0 ? '🎉 你贏了' : '💥 你輸了'}</h2>對手：${duelName}${stats}`, [{ t: '回商店', cls: 'go', f: () => { show('shop'); renderShop(); } }]); return tutResult(); }
       const res = RUN.endBattle(run, b); battle = null; save();
       const loot = res.drops.map(itemText).concat(res.weapons.map(weaponText));
-      if (res.node === 'reward') return modal(`<h2>🐷 撲滿 ${res.pigs} 隻</h2>+${res.gold} 金${res.drops.length ? '<br>全破獎勵：' + res.drops.map(itemText).join('<br>') : ''}<br>收入 ${res.income}＋利息 ${res.interest}`, [{ t: '繼續', cls: 'go', f: flow }]);
-      modal(`<h2>${res.win ? '🎉 全滅敵人' : '💥 沒殺光'}</h2>` +
-        (res.win ? (res.heal ? `小隊 +${res.heal} ❤<br>` : '') : `小隊 -${res.dmg} ❤（剩 ${run.hp}）<br>`) +
-        (res.saved ? '<b style="color:#ffe066">🛡 鎖血免死觸發！剩 1 血</b><br>' : '') +
-        `收入 ${res.income}＋利息 ${res.interest}${res.streakBonus ? `＋連${run.streak > 0 ? '勝' : '敗'} ${res.streakBonus}` : ''}${res.gold ? `＋戰利 ${res.gold}` : ''}` +
-        (loot.length ? '<br>獲得：<br>' + loot.join('<br>') : ''),
+      const gold = `<div class="ux-res">💰 收入 ${res.income}＋利息 ${res.interest}${res.streakBonus ? `＋連${run.streak > 0 ? '勝' : '敗'} ${res.streakBonus}` : ''}${res.gold ? `＋戰利 ${res.gold}` : ''}　→ 共 ${run.gold} 金</div>`;
+      if (res.node === 'reward') modal(`<h2>🐷 撲滿 ${res.pigs} 隻</h2>${stats}<div class="ux-res">+${res.gold} 金${res.drops.length ? '<br>全破獎勵：' + res.drops.map(itemText).join('<br>') : ''}</div>${gold}`, [{ t: '繼續', cls: 'go', f: flow }]);
+      else modal(`<h2>${res.win ? '🎉 全滅敵人' : '💥 沒殺光'}</h2>${stats}<div class="ux-res">` +
+        (res.win ? `❤ 小隊 ${res.heal ? '+' + res.heal : '±0'}（${run.hp}）` : `<b style="color:#f88">❤ 小隊 -${res.dmg}（剩 ${run.hp}）</b>`) + '</div>' +
+        (res.saved ? '<b style="color:#ffe066">🛡 鎖血免死觸發！剩 1 血</b><br>' : '') + gold +
+        (loot.length ? '<div class="ux-res">🎁 獲得：<br>' + loot.join('<br>') + '</div>' : ''),
         [{ t: '繼續', cls: 'go', f: flow }]);
-    }, 900);
+      tutResult();
+    }, 900 / (FA.settings.speed > 1 ? 2 : 1));
   }
+
+  // 戰鬥統計：V.consume 會清空 battle.events，所以每次呼叫前先掃
+  const newStats = () => ({ dealt: 0, taken: 0, maxHit: 0, maxShot: 0, shot: 0, shotTeam: 0, kills: 0, lost: 0 });
+  function track(b) {
+    if (!bst) bst = newStats();
+    for (const e of b.events) {
+      if (e.t === 'launch') { bst.shot = 0; bst.shotTeam = b.bodies[e.i] ? b.bodies[e.i].team : b.turn; }
+      else if (e.t === 'dmg') {
+        if (e.team === 1) { bst.dealt += e.amt; bst.maxHit = Math.max(bst.maxHit, e.amt); if (bst.shotTeam === 0) { bst.shot += e.amt; bst.maxShot = Math.max(bst.maxShot, bst.shot); } }
+        else bst.taken += e.amt;
+      } else if (e.t === 'death') { if (e.team === 1) bst.kills++; else bst.lost++; }
+    }
+  }
+  const consume = b => { track(b); V.consume(b); };
+  function statsHTML() {
+    const s = bst || newStats(), r = Math.round;
+    return `<div class="ux-stats"><div><b>${r(s.maxHit)}</b>最高單擊傷害</div><div><b>${r(s.maxShot)}</b>單發最高總傷</div><div><b>${s.kills}</b>擊殺</div><div><b>${r(s.dealt)}</b>總輸出</div></div>` +
+      `<div class="lbl">承受 ${r(s.taken)} 傷害・我方陣亡 ${s.lost}</div>`;
+  }
+  const speedBtn = () => { const b = $('uxSpeed'); b.textContent = (FA.settings.speed || 1) + 'x'; b.classList.toggle('on', FA.settings.speed > 1); };
+  $('uxSpeed').onclick = () => { FA.settings.speed = FA.settings.speed > 1 ? 1 : 2; saveSet(); speedBtn(); };
+  speedBtn();
 
   let last = performance.now(), acc = 0;
   function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const dt0 = Math.min(0.05, (now - last) / 1000); last = now;
+    const spd = FA.settings.speed > 1 ? 2 : 1, dt = dt0 * spd; // 加速只加快播放：物理仍是固定步長，結果不變
     if (screen === 'battle' && battle) {
-      if (!paused) {
+      if (!paused && !tutOn) {
         if (battle.phase === 'moving') {
           if (V.hitstop > 0) V.hitstop -= dt;
           else {
             acc += dt; let n = 0;
-            while (acc >= C.dt && n++ < 16) {
+            while (acc >= C.dt && n++ < 16 * spd) {
               acc -= C.dt;
-              if (FA.battle.step(battle)) { FA.battle.endShot(battle); acc = 0; V.consume(battle); afterShot(); break; }
+              if (FA.battle.step(battle)) { FA.battle.endShot(battle); acc = 0; consume(battle); afterShot(); break; }
             }
           }
         } else if (battle.phase === 'aim' && battle.turn === 1) enemyThink(dt);
-        if (battle) { V.consume(battle); V.update(dt); }
+        if (battle) { consume(battle); V.update(dt); }
+        if (binfoT > 0 && (binfoT -= dt0) <= 0) hideBInfo();
       }
-      if (battle) { hud(); V.draw(battle, ui, paused ? 0 : dt); }
+      if (battle) { hud(); V.draw(battle, ui, paused || tutOn ? 0 : dt); }
     }
     requestAnimationFrame(frame);
   }
@@ -289,7 +447,9 @@
   function pause() {
     if (screen !== 'battle' || paused) return;
     paused = true; ui.aim = null; drag = null; save();
-    modal('<h2>⏸ 暫停</h2>', [{ t: '繼續', cls: 'go', f: () => { paused = false; last = performance.now(); } }, { t: `音效：${FA.sound.on ? '開' : '關'}`, f: () => { FA.sound.toggle(); paused = false; pause(); } }, { t: '回標題（進度已存）', f: () => { paused = false; toTitle(); } }]);
+    modal('<h2>⏸ 暫停</h2>', [{ t: '繼續', cls: 'go', f: () => { paused = false; last = performance.now(); } }, { t: `音效：${FA.sound.on ? '開' : '關'}`, f: () => { FA.sound.toggle(); setBtns(); paused = false; pause(); } },
+      { t: `震動：${FA.settings.vibrate ? '開' : '關'}`, f: () => { toggleVib(); paused = false; pause(); } }, { t: `播放速度：${FA.settings.speed > 1 ? '2x' : '1x'}`, f: () => { $('uxSpeed').click(); paused = false; pause(); } },
+      { t: '回標題（進度已存）', f: () => { paused = false; toTitle(); } }]);
   }
   $('bPause').onclick = pause;
   document.addEventListener('visibilitychange', () => { if (document.hidden) { save(); pause(); } });
@@ -314,11 +474,67 @@
     $('modalBox').onclick = e => { if (e.target.dataset.tab) codex(e.target.dataset.tab); else if (e.target.dataset.close) $('modal').classList.add('hidden'); };
   }
 
+  // ---------- 新手教學：第一次玩分步提示（localStorage 標記，可跳過，標題可重看）----------
+  const TUT_KEY = 'fa_tut';
+  let tutSeen = (() => { try { return JSON.parse(localStorage.getItem(TUT_KEY)) || {}; } catch (e) { return {}; } })(), tutOn = false;
+  const saveTut = () => { try { localStorage.setItem(TUT_KEY, JSON.stringify(tutSeen)); } catch (e) { } };
+  // 戰場棋子的螢幕座標（由 V.toWorld 反推）
+  function bodyRect() {
+    if (!battle) return null;
+    const o = battle.bodies.find(x => x.alive && !x.temp && x.team === 0 && !x.stunned); if (!o) return null;
+    const w0 = V.toWorld(0, 0), w1 = V.toWorld(1, 0), S = 1 / (w1.x - w0.x), x = o.x * S - w0.x * S, y = o.y * S - w0.y * S, r = o.r * S + 12;
+    return { left: x - r, top: y - r, width: r * 2, height: r * 2 };
+  }
+  const TUT = {
+    intro: [{ t: '歡迎來到<b>彈射自走棋</b>！在商店買角色組隊，再到戰場把棋子彈出去撞敵人。第一次玩時會在需要的地方給你簡短提示，隨時可按「跳過教學」，之後在標題「📘 教學」可重看。' },
+      { el: '#btnNew', t: '按「單人新遊戲」開始。開局會連續選：開局詞綴 → 投資環境（整局生效）→ 投資策略，點一張卡片就選定。' }],
+    shop: [{ el: '#shopRow', t: '① <b>買角色</b>：點商店卡片購買，或直接把卡片<b>拖到</b>前台／後台格子。卡片下方顯示已有幾隻（3 隻同星自動升星）和能不能湊羈絆。<b>長按</b>看詳細。' },
+      { el: '#front', t: '② <b>前台</b>：上場彈射的棋子。把角色拖到這裡（也可以先點角色、再點格子）。' },
+      { el: '#back', t: '③ <b>後台</b>：不上場，每回合給前台被動效果（加攻、護盾、電擊…）。「兩用」角色放哪邊效果不同。' },
+      { el: '#bench', t: '④ <b>備戰區</b>：買來先放這。拖曳時底部會出現「賣出」區，拖過去就賣掉。' },
+      { el: '#traits', t: '⑤ <b>羈絆</b>：前台＋後台同羈絆的不同角色湊 2 隻起有加成，點羈絆看說明。' },
+      { el: '#bFight', t: '⑥ 佈好陣按「<b>前進</b>」，選一條路線：戰鬥、遭遇（自選難度）、撲滿（拿錢）、補給、首領。' }],
+    battle: [{ el: bodyRect, t: '① <b>你的回合</b>：按住自己的棋子（藍框），往<b>反方向</b>拉，放開就彈射出去。' },
+      { el: bodyRect, t: '② 拉越長力道越大，棋子上方有<b>力道條</b>；拉到 95% 以上是「<b>全力</b>」，速度 +15%。' },
+      { el: bodyRect, t: '③ 拉的時候會出現<b>瞄準預演線</b>：虛線是你的路徑（含反彈），白線是被撞棋子的去向。' },
+      { el: '#bhud', t: '④ 雙方輪流，彈數有限。要把敵人<b>全部殺光</b>才算贏；沒殺光會扣小隊血量。' },
+      { el: '#uxSpeed', t: '⑤ 這裡切 <b>1x／2x</b> 播放速度。敵方瞄準時點空白處可快轉；<b>短按</b>任何棋子看能力、血量、中毒/冰凍狀態。' }],
+    result: [{ el: '#modalBox', t: '<b>結算</b>：勝負、本場最高傷害與擊殺、小隊血量變化、金幣（收入＋利息＋連勝敗）和戰利品。按「繼續」回到路線／商店。' }]
+  };
+  function tutor(key, steps) {
+    if (tutSeen.skip || tutSeen[key] || tutOn) return false;
+    tutSeen[key] = 1; saveTut(); tutOn = true; ui.aim = null; drag = null;
+    let k = 0;
+    const box = $('uxBubble'), ring = $('uxRing');
+    const end = () => { tutOn = false; $('uxTut').classList.add('hidden'); last = performance.now(); };
+    const stepK = () => {
+      const st = steps[k], el = typeof st.el === 'function' ? st.el() : st.el ? document.querySelector(st.el) : null;
+      const r = el ? (el.getBoundingClientRect ? el.getBoundingClientRect() : el) : null, H = innerHeight;
+      if (r && r.width) Object.assign(ring.style, { display: 'block', left: r.left - 4 + 'px', top: r.top - 4 + 'px', width: r.width + 8 + 'px', height: r.height + 8 + 'px' });
+      else Object.assign(ring.style, { display: 'block', left: '50%', top: '50%', width: '0px', height: '0px' });
+      box.innerHTML = `<div class="n">新手教學 ${k + 1}/${steps.length}</div>${st.t}<div class="bt"><button id="uxTutSkip">跳過教學</button><button id="uxTutNext" class="go">${k === steps.length - 1 ? '知道了' : '下一步'}</button></div>`;
+      const below = r && r.width && (r.top + r.height / 2) < H / 2;
+      const has = r && r.width, room = has && !below && r.top < 190; // 上方放不下就貼底
+      box.style.top = below ? Math.min(H - 190, r.top + r.height + 14) + 'px' : ''; box.style.bottom = below ? '' : (room ? 10 : has ? H - r.top + 14 : H / 2 - 80) + 'px';
+      $('uxTutNext').onclick = () => { if (++k >= steps.length) end(); else stepK(); };
+      $('uxTutSkip').onclick = () => { tutSeen.skip = 1; saveTut(); end(); };
+    };
+    $('uxTut').classList.remove('hidden'); stepK();
+    return true;
+  }
+  const tutShop = () => { if (screen === 'shop' && $('modal').classList.contains('hidden')) tutor('shop', TUT.shop); };
+  const tutBattle = () => { if (screen === 'battle' && battle && battle.phase === 'aim' && battle.turn === 0 && !paused) tutor('battle', TUT.battle); };
+  const tutResult = () => tutor('result', TUT.result);
+
   // ---------- 標題 ----------
   function toTitle() { battle = null; $('modal').classList.add('hidden'); show('title'); $('btnCont').classList.toggle('hidden', !load()); }
   $('btnCodex').onclick = () => codex();
-  $('btnSound').onclick = () => { FA.sound.init(); $('btnSound').textContent = FA.sound.toggle() ? '🔊 音效開' : '🔇 音效關'; };
-  $('btnSound').textContent = FA.sound.on ? '🔊 音效開' : '🔇 音效關';
+  const setBtns = () => { $('btnSound').textContent = FA.sound.on ? '🔊 音效開' : '🔇 音效關'; $('uxVib').textContent = FA.settings.vibrate ? '📳 震動開' : '📴 震動關'; };
+  const toggleVib = () => { FA.settings.vibrate = !FA.settings.vibrate; saveSet(); setBtns(); vib(30); };
+  $('btnSound').onclick = () => { FA.sound.init(); FA.sound.toggle(); setBtns(); };
+  $('uxVib').onclick = toggleVib;
+  $('uxTutBtn').onclick = () => { tutSeen = {}; saveTut(); tutor('intro', TUT.intro.concat([{ t: '教學已重置：之後進入商店、戰鬥、結算時會再提示一次。' }])); };
+  setBtns();
   $('selAsc').innerHTML = RD.ascensions.map((a, i) => `<option value="${i}">${a.name}：${a.desc}</option>`).join('');
   const seed = () => (Date.now() ^ (Math.random() * 1e9)) | 0, asc = () => +$('selAsc').value;
   const confirmNew = go => load() ? modal('<h2>開新局？</h2>目前進度會被覆蓋', [{ t: '開新局', cls: 'go', f: go }, { t: '取消' }]) : go();
@@ -330,10 +546,12 @@
   } })).concat([{ t: '取消' }])));
   $('btnCont').onclick = () => {
     const s = load(); if (!s) return;
-    hs = s.hs || null; run = hs ? hs.players[hs.cur].run : s.run; battle = s.battle; mode = s.mode || 'run'; sel = null;
+    hs = s.hs || null; run = hs ? hs.players[hs.cur].run : s.run; battle = s.battle; mode = s.mode || 'run'; sel = null; bst = s.bst || (battle ? newStats() : null);
     if (battle) { show('battle'); V.reset(); V.resize(); paused = false; pause(); } else { show('shop'); renderShop(); flow(); }
   };
   toTitle();
+  setTimeout(() => tutor('intro', TUT.intro), 300);
+  FA.debug = () => ({ run, battle, bst }); // 測試／除錯用
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 })();
