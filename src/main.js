@@ -144,7 +144,7 @@
     $('shopRow').innerHTML = run.shop.map((id, i) => {
       if (!id) return `<div class="card empty"></div>`;
       const U = D.units[id], cc = ['#888', '#3fb950', '#4ea0ff', '#b072ff', '#ffb000'][U.cost - 1];
-      return `<div class="card" data-b="${i}" style="border-color:${cc}"><div class="dot" style="background:${U.color};width:${U.r * 1.2}px;height:${U.r * 1.2}px"></div>${U.name}<div class="c">${RUN.unitCost(run, id)}💰</div><div class="t">${U.traits.map(t => D.traits[t].name).join('・')}</div>${cardHint(id, onTeam, tt)}</div>`;
+      return `<div class="card" data-b="${i}" style="border-color:${cc}">${icon(id, 1, 40) ? `<img src="${icon(id, 1, 40)}" style="width:${U.r * 1.4}px;height:${U.r * 1.4}px;display:block;margin:0 auto">` : `<div class="dot" style="background:${U.color};width:${U.r * 1.2}px;height:${U.r * 1.2}px"></div>`}${U.name}<div class="c">${RUN.unitCost(run, id)}💰</div><div class="t">${U.traits.map(t => D.traits[t].name).join('・')}</div>${cardHint(id, onTeam, tt)}</div>`;
     }).join('');
     $('bReroll').textContent = run.freeLeft ? `免費刷新` : `刷新 ${C.rerollCost}`;
     $('bReroll').disabled = !run.freeLeft && run.gold < C.rerollCost; $('bXp').disabled = run.gold < C.xpCost || run.level >= C.levels.length;
@@ -162,8 +162,10 @@
     });
     return h;
   }
+  const icon = (id, star, px) => { try { return FA.sprites && FA.sprites.icon ? FA.sprites.icon(id, star, px) : null; } catch (e) { return null; } };
   function unitHTML(u) {
-    const U = D.units[u.id];
+    const U = D.units[u.id], ic = icon(u.id, u.star, 56);
+    if (ic) return `<div class="u" style="background:url(${ic}) center/92% no-repeat;border-color:transparent"><span class="st" style="margin-top:auto">${'★'.repeat(u.star)}</span>${u.items.length ? `<span class="it">${u.items.map(i => D.items[i.id].icon).join('')}</span>` : ''}${u.weapon ? `<span class="wp">${D.weapons[u.weapon].icon}</span>` : ''}</div>`;
     return `<div class="u" style="background:${U.color};color:${U.id === 'feather' ? '#333' : '#fff'}"><span>${U.name}</span><span class="st">${'★'.repeat(u.star)}</span>${u.items.length ? `<span class="it">${u.items.map(i => D.items[i.id].icon).join('')}</span>` : ''}${u.weapon ? `<span class="wp">${D.weapons[u.weapon].icon}</span>` : ''}</div>`;
   }
 
