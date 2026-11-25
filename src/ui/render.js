@@ -33,6 +33,9 @@
       else if (e.t === 'shieldbreak') V.rings.push({ x: e.x, y: e.y, r: 40, life: 0.3, max: 0.3, col: '#8ef' });
       else if (e.t === 'wall') burst(e.x, e.y, '#ccc', 4, 120);
       else if (e.t === 'bump' && e.s > 300) V.shake = Math.max(V.shake, 4);
+      else if (e.t === 'zap') { V.rings.push({ x: e.x, y: e.y, r: 40, life: 0.3, max: 0.3, col: '#ffe066' }); burst(e.x, e.y, '#ffe066', 10, 220); }
+      else if (e.t === 'split' || e.t === 'stick' || e.t === 'pierce') V.texts.push({ x: e.x, y: e.y - 20, txt: { split: '分裂！', stick: '黏住！', pierce: '穿透！' }[e.t], life: 0.7, col: '#cff' });
+      else if (e.t === 'bossSplit') { V.banner = { txt: '首領分裂了！', life: 1.4 }; V.shake = 16; burst(e.x, e.y, '#c9a', 40, 400); }
       else if (e.t === 'fullpower') { V.texts.push({ x: e.x, y: e.y - 40, txt: '全力！', life: 0.9, col: '#ff5', big: true }); V.shake = Math.max(V.shake, 6); }
       else if (e.t === 'shrink') V.banner = { txt: '場地縮小！', life: 1.2 };
       else if (e.t === 'skip') V.banner = { txt: (e.team === 0 ? '我方' : '敵方') + '全員暈眩，跳過', life: 1.2 };
@@ -120,6 +123,8 @@
       }
     }
 
+    // 火焰地板
+    (b.zones || []).forEach(z => { ctx.fillStyle = z.team === 0 ? '#ff8a3d33' : '#ff3d3d33'; ctx.strokeStyle = '#ff8a3d88'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(CX + z.x * S, CY + z.y * S, z.r * S, 0, 6.28); ctx.fill(); ctx.stroke(); });
     // 棋子
     const t = performance.now() / 1000;
     b.bodies.forEach(o => {
@@ -135,6 +140,8 @@
       ctx.lineWidth = 3; ctx.strokeStyle = o.team === 0 ? '#5cf' : '#f55'; ctx.stroke();
       if (o.shield > 0) { ctx.strokeStyle = '#9ef'; ctx.lineWidth = 2 + Math.min(4, o.shield / 20); ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.28); ctx.stroke(); }
       face(o, x, y, r);
+      if (o.temp) return;
+      if (o.weapon && FA.DATA.weapons[o.weapon]) { ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(FA.DATA.weapons[o.weapon].icon, x + r * .8, y - r * .6); }
       if (o.boss) { ctx.font = `${r * .6}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('👑', x, y - r - 4); }
       else if (o.star > 1) { ctx.fillStyle = '#ffe066'; ctx.font = `bold ${10}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('★'.repeat(o.star), x, y - r - 3); }
       if (o.stunned) { ctx.font = '14px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('💫', x + Math.sin(t * 4) * 8, y - r - 12); }

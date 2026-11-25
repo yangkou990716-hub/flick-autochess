@@ -7,7 +7,7 @@
     restitution: 0.97, wallRest: 0.95,
     fullPowerAt: 0.95, fullPowerBonus: 0.15, // 力道：拉滿 95% 以上為「全力」，速度 +15%
     turnsEach: 5,
-    squadHp: 80, winHeal: 2, lastStand: 1, // 開局 80 血；贏 +2（上限 80）；一次鎖一血免死 battles: 15, bossEvery: 5,
+    squadHp: 80, winHeal: 2, lastStand: 1, // 開局 80 血；贏 +2（上限 80）；一次鎖一血免死
     startGold: 8, baseIncome: 5, interestPer: 10, interestMax: 5,
     streak: [[2, 1], [4, 2], [6, 3]],
     rerollCost: 2, xpCost: 4, xpGain: 4, xpPerRound: 2,
@@ -18,7 +18,7 @@
       { xp: 26, front: 6, back: 3 }
     ],
     odds: [[70, 25, 5, 0, 0], [45, 35, 15, 5, 0], [30, 30, 25, 12, 3], [15, 25, 30, 20, 10]],
-    shopSize: 5, benchSize: 6, starMult: [1, 1.8, 3.2], maxItems: 3,
+    shopSize: 5, benchSize: 6, starMult: [1, 1.8, 3.2], maxItems: 3, maxFront: 7,
     lossDamage: { base: 3, perEnemy: 2, perStage: 0.4 }, // 沒殺光敵人就算輸：基礎 + 每隻存活敵人 + 關卡
     dropChance: 0.35
   };

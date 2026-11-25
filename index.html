@@ -18,7 +18,9 @@
     <h1>彈射自走棋</h1>
     <p class="sub">經營商店・彈射碰撞・連鎖爆炸</p>
     <button id="btnCont" class="big hidden">繼續遊戲</button>
-    <button id="btnNew" class="big">新遊戲</button>
+    <button id="btnNew" class="big">單人新遊戲</button>
+    <button id="btnHot" class="big">同手機輪流（2～4 人）</button>
+    <div class="asc">難度 <select id="selAsc"></select></div>
     <p class="hint">拖曳己方棋子往反方向拉，放開彈射</p>
   </section>
 
@@ -27,6 +29,7 @@
       <span id="tStage"></span><span id="tHp"></span><span id="tGold"></span><span id="tLv"></span>
     </div>
     <div id="enemyInfo" class="enemy"></div>
+    <div id="strats" class="traits"></div>
     <div id="traits" class="traits"></div>
     <div class="lbl">前台（上場彈射）</div><div id="front" class="row"></div>
     <div class="lbl">後台（每回合被動）</div><div id="back" class="row"></div>
@@ -36,8 +39,9 @@
     <div id="shopRow" class="shoprow"></div>
     <div class="ctrls">
       <button id="bReroll">刷新 2</button><button id="bLock">鎖定</button><button id="bXp">經驗 4</button>
-      <button id="bFight" class="go">開戰 ▶</button>
+      <button id="bFight" class="go">前進 ▶</button>
     </div>
+    <div class="ctrls sub2"><button id="bExport">📤 匯出隊伍代碼</button><button id="bDuel">⚔ 代碼對戰</button><button id="bQuit">🏠</button></div>
   </section>
 
   <section id="battle" class="screen hidden">
@@ -53,6 +57,7 @@
 <script src="data/traits.js"></script>
 <script src="data/items.js"></script>
 <script src="data/enemies.js"></script>
+<script src="data/run.js"></script>
 <script src="src/core/battle.js"></script>
 <script src="src/core/ai.js"></script>
 <script src="src/core/run.js"></script>

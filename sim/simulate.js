@@ -1,7 +1,7 @@
 // 平衡模擬器：node sim/simulate.js [場數=1000] [seed=1]
 // AI 互打，統計各角色、羈絆、裝備勝率（目標 45%～55%）
 const path = require('path');
-['data/config', 'data/units', 'data/traits', 'data/items', 'data/enemies', 'src/core/battle', 'src/core/ai', 'src/core/run']
+['data/config', 'data/units', 'data/traits', 'data/items', 'data/enemies', 'data/run', 'src/core/battle', 'src/core/ai', 'src/core/run']
   .forEach(f => require(path.join(__dirname, '..', f + '.js')));
 const FA = globalThis.FA, D = FA.DATA;
 const N = +process.argv[2] || 1000, rs = { s: +process.argv[3] || 1 };
@@ -12,8 +12,8 @@ function team() {
   const pool = ids.filter(id => D.units[id].traits.includes(main));
   const pick = () => FA.rng.next(rs) < 0.7 ? FA.rng.pick(rs, pool) : FA.rng.pick(rs, ids);
   const mk = id => {
-    const u = { id, star: FA.rng.next(rs) < 0.3 ? 2 : 1, items: [] };
-    if (FA.rng.next(rs) < 0.35) { const it = FA.rng.next(rs) < 0.25 ? 'blastspring' : FA.rng.pick(rs, baseItems); u.items.push(FA.run.makeItem({ rng: rs }, it)); }
+    const u = { id, star: FA.rng.next(rs) < 0.3 ? 2 : 1, items: [], weapon: FA.rng.next(rs) < 0.25 ? FA.rng.pick(rs, Object.keys(D.weapons)) : null };
+    if (FA.rng.next(rs) < 0.35) { const it = FA.rng.next(rs) < 0.25 ? FA.rng.pick(rs, ['blastspring', 'vampboots']) : FA.rng.pick(rs, baseItems); u.items.push(FA.run.makeItem({ rng: rs }, it)); }
     return u;
   };
   const front = [], back = [];
@@ -22,7 +22,7 @@ function team() {
   return { front, back };
 }
 
-const st = { unit: {}, trait: {}, item: {} };
+const st = { unit: {}, trait: {}, item: {}, weapon: {} };
 const rec = (k, key, w) => { const o = st[k][key] = st[k][key] || [0, 0]; o[0]++; if (w) o[1]++; };
 const diff = { aimNoise: 0.06, candidates: 10 };
 const t0 = Date.now(); let wipes = 0;
@@ -45,6 +45,7 @@ for (let n = 0; n < N; n++) {
     const tt = FA.battle.traitTiers(all.map(u => u.id));
     for (const k in tt.active) if (tt.active[k]) rec('trait', D.traits[k].name + tt.active[k].n, w);
     new Set(all.flatMap(u => u.items.map(i => i.id))).forEach(id => rec('item', D.items[id].name, w));
+    new Set(all.map(u => u.weapon).filter(Boolean)).forEach(id => rec('weapon', D.weapons[id].name, w));
   });
 }
 const out = {};

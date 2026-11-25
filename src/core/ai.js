@@ -8,18 +8,18 @@
     if (!FA.battle.launch(c, idx, ang, pw)) return -1e9;
     FA.battle.runShot(c);
     let s = 0;
-    c.bodies.forEach((o, i) => {
-      const o0 = b.bodies[i], lost = (o0.hp + o0.shield) - (o.hp + o.shield);
+    b.bodies.forEach((o0, i) => {
+      const o = c.bodies[i], lost = (o0.hp + o0.shield) - (o.hp + o.shield);
       if (o.team === team) { s -= lost * 0.9; if (o0.alive && !o.alive) s -= 120; }
-      else { s += lost; if (o0.alive && !o.alive) s += 150; if (o.stunned) s += 20; }
+      else { s += lost; if (o0.alive && !o.alive) s += 150;  }
     });
     return s;
   }
 
   // diff: {aimNoise, candidates}
   function choose(b, team, diff, r) {
-    const mine = b.bodies.filter(o => o.alive && o.team === team && !o.stunned);
-    const foes = b.bodies.filter(o => o.alive && o.team !== team);
+    const mine = b.bodies.filter(o => o.alive && !o.temp && o.team === team && !o.stunned);
+    const foes = b.bodies.filter(o => o.alive && !o.temp && o.team !== team);
     const cands = [];
     mine.forEach(m => foes.forEach(f => {
       const a = Math.atan2(f.y - m.y, f.x - m.x);

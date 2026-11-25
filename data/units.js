@@ -1,35 +1,64 @@
-// 角色資料
-// role: front 前台 / back 後台 / both 兩用（站位賦能：前台用 front 能力，後台用 back 被動）
-// back.type: atkPct 前台加攻 / shield 每回合護盾 / heal 每回合回血 / bounce 反彈加成次數 / launchPct 彈射速度
-// front.type: deathBlast 陣亡爆炸 / thorns 反傷
-// link.combo.type: blast 大爆炸 / launch 把夥伴射向最近敵人 / shieldAll 全隊護盾 / pullBlast 吸附再爆炸 / healAll 全隊回血
+// 角色資料：每隻有自己的 生命/攻擊/重量/大小/速度 + 專屬能力
+// speed：彈射最高速倍率；mass：越重撞人越遠、越難被撞飛；r：半徑
+// role: front 前台 / back 後台 / both 兩用（前台用 ability，後台用 back）
+// ability（前台能力）type：
+//   burn 撞到敵人留火焰地板 / magnetStop 停下時吸附 / heavyPush 推飛加倍 / guard 被撞減傷 / barrelBoom 被撞爆炸
+//   thorns 反傷 / explodeOnHit 撞擊爆炸 / pierce 穿過敵人 / ghost 穿過隊友 / sticky 黏住敵人
+//   split 撞牆分裂 / boomerang 撞牆加速 / bigBounce 撞牆加成加大 / rage 越殘越痛
+// back（後台被動）type：heal 回血 / shield 護盾 / atkPct 加攻 / zap 電擊敵人 / gravity 把敵人往中間吸
 (function (g) {
   const FA = g.FA = g.FA || {}; FA.DATA = FA.DATA || {};
   FA.DATA.units = {
-    spark: { name: '火花', cost: 1, traits: ['blast'], role: 'front', hp: 100, atk: 32, mass: 1, r: 22, color: '#ff7a45',
+    spark: { name: '火花', cost: 1, traits: ['blast', 'swift'], role: 'front', hp: 95, atk: 27, mass: 0.8, r: 20, speed: 1.15, color: '#ff7a45',
+      ability: { type: 'burn', r: 60, mult: 0.5, shots: 3, desc: '撞到敵人留下火焰地板（3 發內碰到就燒）' },
       link: { with: 'barrel', combo: { type: 'blast', r: 150, mult: 1.6, name: '火海' } } },
-    barrel: { name: '油桶', cost: 2, traits: ['blast'], role: 'both', hp: 160, atk: 20, mass: 1.8, r: 27, color: '#c0632d',
-      front: { type: 'deathBlast', r: 130, mult: 1.5 }, back: { type: 'atkPct', val: 0.15, trait: 'blast' },
-      link: { with: 'spark', combo: { type: 'blast', r: 150, mult: 1.6, name: '火海' } } },
-    magnet: { name: '小磁', cost: 1, traits: ['magnet'], role: 'front', hp: 125, atk: 32, mass: 1, r: 22, color: '#5b8cff',
-      link: { with: 'ironball', combo: { type: 'launch', speed: 850, name: '磁軌砲' } } },
-    ironball: { name: '鐵球', cost: 2, traits: ['wall', 'magnet'], role: 'front', hp: 170, atk: 26, mass: 2.2, r: 28, color: '#7d8aa3',
-      link: { with: 'magnet', combo: { type: 'launch', speed: 850, name: '磁軌砲' } } },
-    shield: { name: '盾兵', cost: 1, traits: ['wall'], role: 'front', hp: 150, atk: 16, mass: 1.6, r: 25, color: '#8fbf5a',
+    magnet: { name: '小磁', cost: 1, traits: ['magnet'], role: 'front', hp: 155, atk: 33, mass: 1, r: 22, speed: 1, color: '#5b8cff',
+      ability: { type: 'magnetStop', r: 160, pull: 560, mult: 0.4, desc: '停下時把周圍敵人吸過來並造成傷害' },
+      link: { with: 'ironball', combo: { type: 'launch', speed: 900, name: '磁軌砲' } } },
+    shield: { name: '盾兵', cost: 1, traits: ['wall'], role: 'front', hp: 160, atk: 18, mass: 1.6, r: 25, speed: 0.9, color: '#8fbf5a',
+      ability: { type: 'guard', red: 0.4, desc: '被撞減傷 40%' },
       link: { with: 'captain', combo: { type: 'shieldAll', amt: 40, name: '盾陣' } } },
-    captain: { name: '守衛長', cost: 3, traits: ['wall'], role: 'both', hp: 200, atk: 22, mass: 2, r: 28, color: '#4f9a3c',
-      front: { type: 'thorns', val: 0.2 }, back: { type: 'shield', val: 15 },
-      link: { with: 'shield', combo: { type: 'shieldAll', amt: 40, name: '盾陣' } } },
-    tesla: { name: '磁暴', cost: 3, traits: ['magnet'], role: 'back', hp: 130, atk: 22, mass: 1.2, r: 24, color: '#8a6bff',
-      back: { type: 'atkPct', val: 0.25, trait: 'magnet' },
-      link: { with: 'detonator', combo: { type: 'pullBlast', r: 220, mult: 1.4, name: '電磁爆縮' } } },
-    detonator: { name: '引爆者', cost: 4, traits: ['blast'], role: 'front', hp: 170, atk: 40, mass: 1.4, r: 26, color: '#e0402f',
-      link: { with: 'tesla', combo: { type: 'pullBlast', r: 220, mult: 1.4, name: '電磁爆縮' } } },
-    medic: { name: '醫官', cost: 2, traits: ['wall'], role: 'back', hp: 120, atk: 14, mass: 1.2, r: 23, color: '#3fc1a5',
-      back: { type: 'heal', val: 10 },
+    feather: { name: '羽毛', cost: 1, traits: ['swift', 'bounce'], role: 'front', hp: 85, atk: 26, mass: 0.5, r: 17, speed: 1.4, color: '#e8f3ff',
+      ability: { type: 'ghost', desc: '穿過隊友，不會被自己人擋住' },
+      link: { with: 'boomer', combo: { type: 'launch', speed: 1000, name: '旋風' } } },
+    barrel: { name: '油桶', cost: 2, traits: ['blast', 'heavy'], role: 'both', hp: 170, atk: 20, mass: 1.9, r: 28, speed: 0.85, color: '#c0632d',
+      ability: { type: 'barrelBoom', r: 120, mult: 1.2, desc: '被敵人撞到就爆炸（每發一次）' }, back: { type: 'atkPct', val: 0.15, trait: 'blast' },
+      link: { with: 'spark', combo: { type: 'blast', r: 150, mult: 1.6, name: '火海' } } },
+    ironball: { name: '鐵球', cost: 2, traits: ['heavy', 'wall'], role: 'front', hp: 200, atk: 33, mass: 2.6, r: 29, speed: 0.8, color: '#7d8aa3',
+      ability: { type: 'heavyPush', mult: 2.2, desc: '超重，撞到的敵人被推飛 2.2 倍' },
+      link: { with: 'magnet', combo: { type: 'launch', speed: 900, name: '磁軌砲' } } },
+    medic: { name: '醫官', cost: 2, traits: ['wall'], role: 'back', hp: 120, atk: 14, mass: 1.2, r: 23, speed: 1, color: '#3fc1a5',
+      back: { type: 'heal', val: 12 },
       link: { with: 'bullet', combo: { type: 'healAll', pct: 0.2, name: '急救彈' } } },
-    bullet: { name: '彈頭', cost: 5, traits: ['magnet', 'blast'], role: 'front', hp: 180, atk: 40, mass: 1.3, r: 24, color: '#ffc531',
-      pierce: true, launchPct: 0.15,
-      link: { with: 'medic', combo: { type: 'healAll', pct: 0.2, name: '急救彈' } } }
+    jelly: { name: '黏黏', cost: 2, traits: ['magnet', 'heavy'], role: 'front', hp: 170, atk: 30, mass: 1.5, r: 26, speed: 0.95, color: '#c46bff',
+      ability: { type: 'sticky', desc: '撞到敵人會黏住一起滑走' },
+      link: { with: 'blackhole', combo: { type: 'pullBlast', r: 240, mult: 1.3, name: '重力井' } } },
+    boomer: { name: '迴力鏢', cost: 2, traits: ['bounce', 'swift'], role: 'front', hp: 115, atk: 30, mass: 0.9, r: 21, speed: 1.1, color: '#ffd166',
+      ability: { type: 'boomerang', boost: 0.35, desc: '每次撞牆速度 +35%' },
+      link: { with: 'feather', combo: { type: 'launch', speed: 1000, name: '旋風' } } },
+    captain: { name: '守衛長', cost: 3, traits: ['wall', 'heavy'], role: 'both', hp: 220, atk: 24, mass: 2.1, r: 29, speed: 0.85, color: '#4f9a3c',
+      ability: { type: 'thorns', val: 0.25, desc: '反彈 25% 碰撞傷害' }, back: { type: 'shield', val: 18 },
+      link: { with: 'shield', combo: { type: 'shieldAll', amt: 40, name: '盾陣' } } },
+    tesla: { name: '磁暴', cost: 3, traits: ['magnet'], role: 'back', hp: 130, atk: 26, mass: 1.2, r: 24, speed: 1, color: '#8a6bff',
+      back: { type: 'zap', mult: 0.8 },
+      link: { with: 'detonator', combo: { type: 'pullBlast', r: 220, mult: 1.4, name: '電磁爆縮' } } },
+    splitter: { name: '分裂球', cost: 3, traits: ['bounce', 'blast'], role: 'front', hp: 140, atk: 30, mass: 1.1, r: 24, speed: 1.05, color: '#ff5fa2',
+      ability: { type: 'split', n: 2, desc: '第一次撞牆分裂出 2 顆小球（本發有效）' },
+      link: { with: 'spring', combo: { type: 'blast', r: 130, mult: 1.2, name: '彈幕' } } },
+    berserker: { name: '狂戰士', cost: 3, traits: ['heavy', 'swift'], role: 'front', hp: 200, atk: 34, mass: 1.6, r: 26, speed: 1.05, color: '#d6453d',
+      ability: { type: 'rage', max: 0.6, desc: '血越少攻擊越高（最多 +60%）' },
+      link: { with: 'medic', combo: { type: 'healAll', pct: 0.15, name: '戰地急救' } } },
+    detonator: { name: '引爆者', cost: 4, traits: ['blast'], role: 'front', hp: 180, atk: 34, mass: 1.4, r: 26, speed: 1, color: '#e0402f',
+      ability: { type: 'explodeOnHit', r: 95, mult: 0.4, desc: '每次撞到敵人都爆炸' },
+      link: { with: 'tesla', combo: { type: 'pullBlast', r: 220, mult: 1.4, name: '電磁爆縮' } } },
+    spring: { name: '彈簧王', cost: 4, traits: ['bounce', 'wall'], role: 'front', hp: 210, atk: 34, mass: 1.3, r: 27, speed: 1.1, color: '#2ec4b6',
+      ability: { type: 'bigBounce', per: 0.5, extra: 2, desc: '每次撞牆加成 +50%，可多疊 2 次' },
+      link: { with: 'splitter', combo: { type: 'blast', r: 130, mult: 1.2, name: '彈幕' } } },
+    bullet: { name: '彈頭', cost: 5, traits: ['swift', 'blast'], role: 'front', hp: 190, atk: 29, mass: 1.3, r: 22, speed: 1.3, color: '#ffc531',
+      ability: { type: 'pierce', n: 1, desc: '穿過第 1 個撞到的敵人繼續飛' },
+      link: { with: 'medic', combo: { type: 'healAll', pct: 0.2, name: '急救彈' } } },
+    blackhole: { name: '黑洞', cost: 5, traits: ['magnet', 'heavy'], role: 'both', hp: 240, atk: 36, mass: 3, r: 34, speed: 0.8, color: '#3a2a6b',
+      ability: { type: 'magnetStop', r: 230, pull: 700, mult: 0.55, desc: '停下時把大範圍敵人吸過來' }, back: { type: 'gravity', pull: 260 },
+      link: { with: 'jelly', combo: { type: 'pullBlast', r: 240, mult: 1.3, name: '重力井' } } }
   };
 })(globalThis);

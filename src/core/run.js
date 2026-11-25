@@ -1,21 +1,40 @@
-// 一局流程：商店、經濟、升星、裝備、敵人生成、結算
+// 一局流程：開局詞綴 → 位面（投資環境）→ 節點（戰鬥/精英/獎勵/首領）→ 投資策略；商店、經濟、升星、裝備、武器
 (function (g) {
   const FA = g.FA = g.FA || {};
-  const D = () => FA.DATA, C = () => FA.DATA.config, R = () => FA.rng;
+  const D = () => FA.DATA, C = () => FA.DATA.config, RD = () => FA.DATA.run, R = () => FA.rng;
   const ZONES = ['front', 'back', 'bench'];
 
-  function newRun(seed) {
-    const c = C();
-    const r = { v: 1, rng: { s: seed | 0 }, stage: 1, hp: c.squadHp, gold: c.startGold, level: 1, xp: 0, streak: 0,
-      front: Array(6).fill(null), back: Array(3).fill(null), bench: Array(c.benchSize).fill(null),
-      items: [], shop: [], locked: false, uid: 1, over: null, last: null, lastStand: c.lastStand };
+  function pickN(r, arr, n) { const a = arr.slice(), out = []; while (out.length < n && a.length) out.push(a.splice(R().int(r.rng, a.length), 1)[0]); return out; }
+
+  function newRun(seed, asc) {
+    const c = C(), A = RD().ascensions[asc || 0];
+    const r = { v: 2, rng: { s: seed | 0 }, plane: 1, step: 0, stage: 0, asc: asc || 0, hp: A.hp, maxHp: A.hp, gold: c.startGold, level: 1, xp: 0, streak: 0,
+      front: Array(c.maxFront).fill(null), back: Array(3).fill(null), bench: Array(c.benchSize).fill(null),
+      items: [], weapons: [], shop: [], locked: false, uid: 1, over: null, last: null, lastStand: c.lastStand, freeReroll: 0, freeLeft: 0,
+      strats: [], threat: A.threat, extraEnemy: 0, env: null, opener: null, node: null, bossStrat: false };
+    r.pending = { type: 'opener', options: pickN(r, Object.keys(RD().openers), 3) };
     rollShop(r, true);
     return r;
   }
 
-  const lv = r => C().levels[r.level - 1];
+  // ---- 策略／環境效果彙總 ----
+  function sfx(r) {
+    const o = { mods: {}, income: 0, shots: 0, chainAll: false, echo: null, blastGold: 0, streakAdd: 0, interestAdd: 0, frontAdd: 0 };
+    r.strats.forEach(id => {
+      const f = RD().strategies[id].fx;
+      if (f.mods) FA.battle.addMods(o.mods, f.mods);
+      ['income', 'shots', 'blastGold', 'streakAdd', 'interestAdd', 'frontAdd'].forEach(k => { if (f[k]) o[k] += f[k]; });
+      if (f.chainAll) o.chainAll = true; if (f.echo) o.echo = f.echo;
+    });
+    return o;
+  }
+  const efx = r => (r.env && RD().envs[r.env].fx) || {};
+
+  const lv = r => { const L = C().levels[r.level - 1]; return { front: Math.min(C().maxFront, L.front + sfx(r).frontAdd), back: L.back }; };
   const unitAt = (r, l) => r[l.zone][l.i];
   const sellPrice = u => D().units[u.id].cost * Math.pow(3, u.star - 1) - (u.star > 1 ? 1 : 0);
+  const unitCost = (r, id) => D().units[id].cost + (efx(r).costAdd || 0);
+  const isBoss = r => r.step >= RD().planes[r.plane - 1].steps;
 
   function rollShop(r, force) {
     if (r.locked && !force) return;
@@ -30,36 +49,40 @@
     }
   }
 
-  function reroll(r) { if (r.gold < C().rerollCost) return false; r.gold -= C().rerollCost; rollShop(r, true); return true; }
-  function buyXp(r) {
-    if (r.gold < C().xpCost || r.level >= C().levels.length) return false;
-    r.gold -= C().xpCost; addXp(r, C().xpGain); return true;
+  function reroll(r) {
+    if (r.freeLeft > 0) { r.freeLeft--; rollShop(r, true); return true; }
+    if (r.gold < C().rerollCost) return false; r.gold -= C().rerollCost; rollShop(r, true); return true;
   }
-  function addXp(r, n) {
-    r.xp += n;
-    while (r.level < C().levels.length && r.xp >= C().levels[r.level].xp) r.level++;
-  }
+  function buyXp(r) { if (r.gold < C().xpCost || r.level >= C().levels.length) return false; r.gold -= C().xpCost; addXp(r, C().xpGain); return true; }
+  function addXp(r, n) { r.xp += n; while (r.level < C().levels.length && r.xp >= C().levels[r.level].xp) r.level++; }
 
   function count(r, id, star) { let n = 0; ZONES.forEach(z => r[z].forEach(u => { if (u && u.id === id && u.star === star) n++; })); return n; }
 
+  function absorb(r, keep, others) {
+    const items = keep.items.concat(...others.map(o => o.items));
+    keep.items = items.slice(0, C().maxItems); r.items.push(...items.slice(C().maxItems));
+    others.forEach(o => { if (o.weapon) { if (!keep.weapon) keep.weapon = o.weapon; else r.weapons.push(o.weapon); } });
+  }
+
+  function addUnit(r, id, star) {
+    const slot = r.bench.indexOf(null); if (slot < 0) return false;
+    r.bench[slot] = { uid: r.uid++, id, star, items: [], weapon: null }; merge(r); return true;
+  }
+
   function buy(r, i) {
     const id = r.shop[i]; if (!id) return false;
-    const cost = D().units[id].cost; if (r.gold < cost) return false;
-    let slot = r.bench.indexOf(null);
-    if (slot < 0 && count(r, id, 1) < 2) return false; // 板凳滿且無法合成
+    const cost = unitCost(r, id); if (r.gold < cost) return false;
+    const slot = r.bench.indexOf(null);
+    if (slot < 0 && count(r, id, 1) < 2) return false;
     r.gold -= cost; r.shop[i] = null;
-    const u = { uid: r.uid++, id, star: 1, items: [] };
-    if (slot < 0) { // 板凳滿：直接和場上兩隻合成
+    if (slot < 0) {
       const locs = []; ZONES.forEach(z => r[z].forEach((x, k) => { if (x && x.id === id && x.star === 1) locs.push({ zone: z, i: k }); }));
       const keep = unitAt(r, locs[0]), o = unitAt(r, locs[1]);
-      r[locs[1].zone][locs[1].i] = null; keep.star = 2;
-      const items = keep.items.concat(o.items); keep.items = items.slice(0, C().maxItems); r.items.push(...items.slice(C().maxItems));
-      merge(r);
-    } else { r.bench[slot] = u; merge(r); }
+      r[locs[1].zone][locs[1].i] = null; keep.star = 2; absorb(r, keep, [o]); merge(r);
+    } else { r.bench[slot] = { uid: r.uid++, id, star: 1, items: [], weapon: null }; merge(r); }
     return true;
   }
 
-  // 3 隻同角色同星 → 升星（優先保留前台位置）
   function merge(r) {
     let again = true;
     while (again) {
@@ -67,19 +90,17 @@
       const groups = {};
       ZONES.forEach(z => r[z].forEach((u, i) => { if (u && u.star < 3) (groups[u.id + '_' + u.star] = groups[u.id + '_' + u.star] || []).push({ zone: z, i }); }));
       for (const k in groups) {
-        const g = groups[k]; if (g.length < 3) continue;
-        const keep = unitAt(r, g[0]), others = [g[1], g[2]].map(l => unitAt(r, l));
-        let items = keep.items.concat(...others.map(o => o.items));
-        others.forEach((o, n) => { r[g[n + 1].zone][g[n + 1].i] = null; });
-        keep.star++; keep.items = items.slice(0, C().maxItems); r.items.push(...items.slice(C().maxItems));
-        again = true; break;
+        const gq = groups[k]; if (gq.length < 3) continue;
+        const keep = unitAt(r, gq[0]), others = [gq[1], gq[2]].map(l => unitAt(r, l));
+        others.forEach((o, n) => { r[gq[n + 1].zone][gq[n + 1].i] = null; });
+        keep.star++; absorb(r, keep, others); again = true; break;
       }
     }
   }
 
   function sell(r, l) {
     const u = unitAt(r, l); if (!u) return false;
-    r.gold += sellPrice(u); r.items.push(...u.items); r[l.zone][l.i] = null; return true;
+    r.gold += sellPrice(u); r.items.push(...u.items); if (u.weapon) r.weapons.push(u.weapon); r[l.zone][l.i] = null; return true;
   }
 
   function slotOk(r, l) {
@@ -101,14 +122,15 @@
     }
     return { id, rolls };
   }
+  const randomBase = r => R().pick(r.rng, Object.keys(D().items).filter(k => D().items[k].tier === 'base'));
+  const randomWeapon = r => R().pick(r.rng, Object.keys(D().weapons));
 
   function equip(r, itemIdx, l) {
     const u = unitAt(r, l), it = r.items[itemIdx]; if (!u || !it) return false;
-    // 嘗試合成
     if (D().items[it.id].tier === 'base') {
       for (const aid in D().items) {
         const A = D().items[aid]; if (!A.recipe) continue;
-        const need = A.recipe.slice(); const pi = need.indexOf(it.id); if (pi < 0) continue; need.splice(pi, 1);
+        const need = A.recipe.slice(), pi = need.indexOf(it.id); if (pi < 0) continue; need.splice(pi, 1);
         const hi = u.items.findIndex(x => x.id === need[0]);
         if (hi >= 0) { u.items.splice(hi, 1); u.items.push(makeItem(r, aid)); r.items.splice(itemIdx, 1); return 'combine'; }
       }
@@ -116,62 +138,180 @@
     if (u.items.length >= C().maxItems) return false;
     u.items.push(it); r.items.splice(itemIdx, 1); return true;
   }
+  function equipWeapon(r, wi, l) {
+    const u = unitAt(r, l), w = r.weapons[wi]; if (!u || !w) return false;
+    r.weapons.splice(wi, 1); if (u.weapon) r.weapons.push(u.weapon); u.weapon = w; return true;
+  }
 
-  function isBoss(stage) { return stage % C().bossEvery === 0; }
+  // ---- 選擇（開局詞綴、環境、路線、獎勵、策略）----
+  function applyFx(r, f) {
+    if (f.gold) r.gold += f.gold;
+    if (f.xp) addXp(r, f.xp);
+    if (f.lastStand) r.lastStand += f.lastStand;
+    if (f.heal) r.hp = Math.min(r.maxHp || C().squadHp, r.hp + f.heal);
+    if (f.freeReroll) { r.freeReroll += f.freeReroll; r.freeLeft = r.freeReroll; }
+    for (let k = 0; k < (f.weapon || 0); k++) r.weapons.push(randomWeapon(r));
+    for (let k = 0; k < (f.item || 0); k++) r.items.push(makeItem(r, randomBase(r)));
+    for (let k = 0; k < (f.unit2 || 0); k++) {
+      const id = R().pick(r.rng, Object.keys(D().units).filter(i => D().units[i].cost <= 2));
+      if (!addUnit(r, id, 2)) r.gold += 4;
+    }
+  }
 
-  function randomBase(r) { const ids = Object.keys(D().items).filter(k => D().items[k].tier === 'base'); return R().pick(r.rng, ids); }
+  function strategyOptions(r) {
+    const T = RD().tiers, S = RD().strategies, out = [];
+    for (let k = 0; k < 3; k++) {
+      let x = R().next(r.rng) * 100, tier = 'silver';
+      for (const t in T) { if (x < T[t].chance) { tier = t; break; } x -= T[t].chance; }
+      let pool = Object.keys(S).filter(id => S[id].tier === tier && !r.strats.includes(id) && !out.includes(id));
+      if (!pool.length) pool = Object.keys(S).filter(id => !r.strats.includes(id) && !out.includes(id));
+      if (pool.length) out.push(R().pick(r.rng, pool));
+    }
+    return out;
+  }
 
+  function nodeOptions(r) {
+    if (isBoss(r)) return ['boss'];
+    const w = RD().nodeWeights, roll = () => { let x = R().next(r.rng) * (w.battle + w.elite + w.reward); for (const k in w) { if (x < w[k]) return k; x -= w[k]; } return 'battle'; };
+    const a = roll(); let b = roll(), guard = 0; while (b === a && guard++ < 5) b = roll();
+    if (r.plane === 1 && r.step === 0) return ['battle', a === 'battle' ? b : a]; // 第一步必有一般戰鬥
+    return [a, b];
+  }
+
+  function advance(r) { r.pending = { type: 'path', options: nodeOptions(r) }; }
+
+  // 回傳 'battle' 代表要開戰；其他回傳 null
+  function choose(r, i) {
+    const p = r.pending; if (!p) return null;
+    const id = p.options[i];
+    r.pending = null;
+    if (p.type === 'opener') { r.opener = id; applyFx(r, RD().openers[id].fx); r.pending = { type: 'env', options: pickN(r, Object.keys(RD().envs), 3) }; }
+    else if (p.type === 'env') { r.env = id; }
+    else if (p.type === 'path') {
+      if (id === 'reward') {
+        const pool = Object.keys(RD().rewards).filter(k => k !== 'strategy');
+        const opts = pickN(r, pool, 3); if (R().next(r.rng) < 0.25) opts[2] = 'strategy';
+        r.pending = { type: 'reward', options: opts };
+      } else { r.node = id; return 'battle'; }
+    }
+    else if (p.type === 'reward') {
+      const f = RD().rewards[id].fx;
+      if (f.strategy) r.pending = { type: 'strategy', options: strategyOptions(r) };
+      else applyFx(r, f);
+      r.node = 'reward'; finishNode(r, null);
+    }
+    else if (p.type === 'strategy') {
+      const S = RD().strategies[id], T = RD().tiers[S.tier];
+      r.strats.push(id); r.threat += T.threat; r.extraEnemy += T.extraEnemy;
+      applyFx(r, { lastStand: S.fx.lastStand, heal: S.fx.heal });
+      if (r.bossStrat) { r.bossStrat = false; r.plane++; r.step = 0; r.pending = { type: 'env', options: pickN(r, Object.keys(RD().envs).filter(e => e !== r.env), 3) }; }
+    }
+    return null;
+  }
+
+  // ---- 敵人 ----
   function enemyTeam(r) {
-    const st = r.stage, df = D().enemies.difficulty(st), E = D().enemies;
+    const E = D().enemies, elite = r.node === 'elite', boss = r.node === 'boss';
+    const st = r.stage + 1 + (elite ? E.eliteBonus : 0), df = E.difficulty(st);
     const mk = id => {
       const x = R().next(r.rng), star = x < df.star3 ? 3 : x < df.star3 + df.star2 ? 2 : 1;
-      const u = { id, star, items: [] };
-      if (R().next(r.rng) < df.itemChance) u.items.push(makeItem(r, randomBase(r)));
+      const u = { id, star, items: [], weapon: null };
+      if (elite || R().next(r.rng) < df.itemChance) u.items.push(makeItem(r, randomBase(r)));
+      if (elite && st >= 8) u.weapon = randomWeapon(r);
       return u;
     };
-    if (isBoss(st)) {
-      const a = R().pick(r.rng, E.archetypes), n = Math.max(1, df.front - 3);
-      return { name: E.boss.name, boss: true, rules: E.boss.rules[st] || ['spikes', 'shrink'],
-        front: [{ boss: true, stage: st, id: 'boss', star: 1, items: [] }].concat(a.front.slice(0, n).map(mk)), back: a.back.slice(0, df.back).map(mk) };
-    }
     const a = R().pick(r.rng, E.archetypes);
-    return { name: a.name, rules: [], front: a.front.slice(0, df.front).map(mk), back: a.back.slice(0, df.back).map(mk) };
+    let nf = df.front + r.extraEnemy;
+    if (boss) {
+      nf = Math.max(1, df.front - 2 + r.extraEnemy);
+      const B = E.bosses[r.plane - 1];
+      return { name: B.name, boss: true, rules: B.rules,
+        front: [{ boss: true, plane: r.plane, id: 'boss', star: 1, items: [] }].concat(a.front.slice(0, Math.min(5, nf)).map(mk)), back: a.back.slice(0, df.back).map(mk) };
+    }
+    const fr = []; for (let k = 0; k < Math.min(C().maxFront, nf); k++) fr.push(a.front[k % a.front.length]);
+    return { name: (elite ? '精英・' : '') + a.name, rules: [], front: fr.map(mk), back: a.back.slice(0, df.back).map(mk) };
   }
 
   function startBattle(r) {
-    const en = enemyTeam(r);
+    const en = enemyTeam(r), s = sfx(r);
     r.enemy = { name: en.name, boss: !!en.boss, rules: en.rules };
     const front = r.front.slice(0, lv(r).front).filter(Boolean);
     if (!front.length) return null;
-    return FA.battle.create({ pFront: front, pBack: r.back.slice(0, lv(r).back), eFront: en.front, eBack: en.back, rules: en.rules,
+    return FA.battle.create({ pFront: front, pBack: r.back.slice(0, lv(r).back), eFront: en.front, eBack: en.back, rules: en.rules, env: efx(r),
+      pExt: { mods: s.mods, shots: s.shots, chainAll: s.chainAll, echo: s.echo, blastGold: s.blastGold }, eExt: { threat: r.threat },
       seed: Math.floor(R().next(r.rng) * 2 ** 31) });
   }
 
+  // 每個節點結束：收入、經驗、前進
+  function finishNode(r, res) {
+    const c = C(), s = sfx(r), e = efx(r);
+    const interest = Math.min(c.interestMax + s.interestAdd + (e.interestAdd || 0), Math.floor(r.gold / c.interestPer));
+    let sb = 0;
+    if (res) { c.streak.forEach(([n, v]) => { if (Math.abs(r.streak) >= n) sb = v; }); if (sb) sb += s.streakAdd; }
+    const inc = c.baseIncome + s.income;
+    r.gold += inc + interest + sb;
+    if (res) Object.assign(res, { income: inc, interest, streakBonus: sb });
+    addXp(r, c.xpPerRound);
+    r.freeLeft = r.freeReroll;
+    const wasBoss = r.node === 'boss';
+    r.stage++; r.step++; r.node = null;
+    if (r.hp <= 0) r.over = 'lose';
+    else if (wasBoss) {
+      if (r.plane >= RD().planes.length) r.over = 'win';
+      else { r.bossStrat = true; r.pending = { type: 'strategy', options: strategyOptions(r) }; }
+    }
+    rollShop(r);
+  }
+
   function endBattle(r, b) {
-    const c = C(), win = b.winner === 0, res = { win, stage: r.stage, boss: isBoss(r.stage), dmg: 0, drops: [] };
+    const c = C(), win = b.winner === 0, e = efx(r);
+    const res = { win, node: r.node, dmg: 0, drops: [], weapons: [], gold: 0 };
     r.streak = win ? Math.max(1, r.streak + 1) : Math.min(-1, r.streak - 1);
     if (!win) {
       const left = FA.battle.alive(b, 1).length, L = c.lossDamage;
-      res.dmg = Math.round(L.base + left * L.perEnemy + r.stage * L.perStage);
+      res.dmg = Math.round(L.base + left * L.perEnemy + (r.stage + 1) * L.perStage + (r.node === 'boss' ? 4 : 0) + RD().ascensions[r.asc || 0].lossAdd);
       r.hp = Math.max(0, r.hp - res.dmg);
       if (r.hp <= 0 && r.lastStand > 0) { r.lastStand--; r.hp = 1; res.saved = true; }
-    } else { res.heal = Math.min(c.winHeal, c.squadHp - r.hp); r.hp += res.heal; }
-    const interest = Math.min(c.interestMax, Math.floor(r.gold / c.interestPer));
-    let sb = 0; c.streak.forEach(([n, v]) => { if (Math.abs(r.streak) >= n) sb = v; });
-    res.income = c.baseIncome; res.interest = interest; res.streakBonus = sb; res.winBonus = win ? 1 : 0;
-    r.gold += c.baseIncome + interest + sb + res.winBonus;
-    if (win && (res.boss || R().next(r.rng) < c.dropChance)) {
-      const it = makeItem(r, randomBase(r)); r.items.push(it); res.drops.push(it);
-      if (res.boss) { const it2 = makeItem(r, randomBase(r)); r.items.push(it2); res.drops.push(it2); }
+    } else {
+      res.heal = Math.min(c.winHeal, (r.maxHp || c.squadHp) - r.hp); r.hp += res.heal;
+      res.gold = 1 + (e.winGold || 0);
+      if (r.node === 'elite') { const w = randomWeapon(r); r.weapons.push(w); res.weapons.push(w); }
+      if (r.node === 'boss') { const w = randomWeapon(r); r.weapons.push(w); res.weapons.push(w); }
+      const nItems = r.node === 'boss' ? 2 : r.node === 'elite' ? 1 : (R().next(r.rng) < c.dropChance ? 1 : 0);
+      for (let k = 0; k < nItems; k++) { const it = makeItem(r, randomBase(r)); r.items.push(it); res.drops.push(it); }
     }
-    addXp(r, c.xpPerRound);
-    r.stage++;
-    if (r.hp <= 0) r.over = 'lose';
-    else if (r.stage > c.battles) r.over = 'win';
-    rollShop(r);
+    res.gold += b.gold || 0; r.gold += res.gold;
+    finishNode(r, res);
     r.last = res;
     return res;
   }
 
-  FA.run = { newRun, rollShop, reroll, buyXp, buy, sell, move, equip, merge, makeItem, startBattle, endBattle, enemyTeam, sellPrice, lv, isBoss, unitAt };
+  // ---- 隊伍代碼（匯出／匯入）----
+  function exportTeam(r, name) {
+    const L = lv(r), pack = u => u && [u.id, u.star, u.weapon || '', u.items.map(it => [it.id, it.rolls])];
+    const data = { v: 1, n: name || '對手', f: r.front.slice(0, L.front).filter(Boolean).map(pack), b: r.back.slice(0, L.back).filter(Boolean).map(pack), s: r.strats };
+    const json = JSON.stringify(data);
+    return typeof btoa === 'function' ? btoa(unescape(encodeURIComponent(json))) : Buffer.from(json, 'utf8').toString('base64');
+  }
+  function importTeam(code) {
+    try {
+      const json = typeof atob === 'function' ? decodeURIComponent(escape(atob(code.trim()))) : Buffer.from(code.trim(), 'base64').toString('utf8');
+      const d = JSON.parse(json), un = a => {
+        if (!D().units[a[0]]) throw 0;
+        return { id: a[0], star: Math.max(1, Math.min(3, a[1] | 0)), weapon: D().weapons[a[2]] ? a[2] : null, items: (a[3] || []).filter(x => D().items[x[0]]).slice(0, 3).map(x => ({ id: x[0], rolls: x[1] })) };
+      };
+      return { name: String(d.n || '對手').slice(0, 12), front: d.f.slice(0, 7).map(un), back: d.b.slice(0, 3).map(un), strats: (d.s || []).filter(s => RD().strategies[s]) };
+    } catch (e) { return null; }
+  }
+  function duelBattle(r, team) {
+    const s = sfx(r), mine = r.front.slice(0, lv(r).front).filter(Boolean);
+    if (!mine.length || !team.front.length) return null;
+    const t = { strats: team.strats }, s2 = sfx(t);
+    return FA.battle.create({ pFront: mine, pBack: r.back.slice(0, lv(r).back), eFront: team.front, eBack: team.back, rules: [], env: {},
+      pExt: { mods: s.mods, shots: s.shots, chainAll: s.chainAll, echo: s.echo }, eExt: { mods: s2.mods, shots: s2.shots, chainAll: s2.chainAll, echo: s2.echo },
+      seed: Math.floor(R().next(r.rng) * 2 ** 31) });
+  }
+
+  FA.run = { newRun, rollShop, reroll, buyXp, buy, sell, move, equip, equipWeapon, merge, makeItem, startBattle, endBattle, enemyTeam,
+    sellPrice, unitCost, lv, isBoss, unitAt, choose, advance, sfx, efx, nodeOptions, exportTeam, importTeam, duelBattle };
 })(globalThis);
