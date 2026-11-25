@@ -25,7 +25,7 @@ function team() {
 const st = { unit: {}, trait: {}, item: {} };
 const rec = (k, key, w) => { const o = st[k][key] = st[k][key] || [0, 0]; o[0]++; if (w) o[1]++; };
 const diff = { aimNoise: 0.06, candidates: 10 };
-const t0 = Date.now();
+const t0 = Date.now(); let wipes = 0;
 for (let n = 0; n < N; n++) {
   const A = team(), B = team();
   const b = FA.battle.create({ pFront: A.front, pBack: A.back, eFront: B.front, eBack: B.back, seed: FA.rng.int(rs, 1e9) });
@@ -36,8 +36,11 @@ for (let n = 0; n < N; n++) {
     FA.battle.launch(b, ch.idx, ch.angle, ch.power); b.events = [];
     FA.battle.runShot(b); FA.battle.endShot(b); b.events = [];
   }
+  if (!FA.battle.alive(b, 0).length || !FA.battle.alive(b, 1).length) wipes++;
   [A, B].forEach((T, side) => {
-    const w = b.winner === side, all = T.front.concat(T.back);
+    const hp = t => b.bodies.filter(o => o.team === t).reduce((s, o) => s + o.hp / o.maxHp, 0);
+    const ws = !FA.battle.alive(b, 1).length ? 0 : !FA.battle.alive(b, 0).length ? 1 : (hp(0) > hp(1) ? 0 : 1);
+    const w = ws === side, all = T.front.concat(T.back);
     new Set(all.map(u => u.id)).forEach(id => rec('unit', D.units[id].name, w));
     const tt = FA.battle.traitTiers(all.map(u => u.id));
     for (const k in tt.active) if (tt.active[k]) rec('trait', D.traits[k].name + tt.active[k].n, w);
@@ -50,4 +53,4 @@ for (const k in st) {
   console.log('\n== ' + k + ' ==');
   out[k].forEach(x => console.log(`${x.name.padEnd(6, '　')} ${String(x.rate).padStart(5)}%  (${x.n})${x.rate > 55 || x.rate < 45 ? '  ⚠' : ''}`));
 }
-console.log(`\n${N} 場，${((Date.now() - t0) / 1000).toFixed(1)}s`);
+console.log(`\n殺光率 ${(wipes / N * 100).toFixed(1)}%｜${N} 場，${((Date.now() - t0) / 1000).toFixed(1)}s`);

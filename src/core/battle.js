@@ -113,7 +113,9 @@
     const x = b.bodies[idx], cfg = C();
     if (!x || !x.alive || x.team !== b.turn || x.stunned || b.phase !== 'aim') return false;
     power = Math.max(0, Math.min(1, power));
-    const sp = power * cfg.maxLaunch * (1 + x.launchPct);
+    const full = power >= cfg.fullPowerAt;
+    const sp = power * cfg.maxLaunch * (1 + x.launchPct) * (full ? 1 + cfg.fullPowerBonus : 1);
+    if (full) b.events.push({ t: 'fullpower', x: x.x, y: x.y });
     x.vx = Math.cos(angle) * sp; x.vy = Math.sin(angle) * sp;
     b.bodies.forEach(y => y.wallHits = 0);
     b.phase = 'moving'; b.mover = idx; b.simT = 0; b.chain = 0; b.hits = 0; b.pending = [];
@@ -277,8 +279,9 @@
     b.bodies.forEach(o => { if (o.team === t) o.stunned = false; o.wallHits = 0; });
     b.phase = 'aim'; b.mover = -1;
     const p = alive(b, 0).length, e = alive(b, 1).length;
-    if (!p || !e) return finish(b, p ? 0 : 1);
-    if (!b.shots[0] && !b.shots[1]) return finish(b, hpSum(b, 0) > hpSum(b, 1) ? 0 : 1);
+    if (!e) return finish(b, 0);
+    if (!p) return finish(b, 1);
+    if (!b.shots[0] && !b.shots[1]) return finish(b, 1); // 沒殺光不算贏
     b.turn = b.shots[1 - t] ? 1 - t : t;
     startTurn(b);
   }

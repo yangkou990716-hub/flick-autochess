@@ -8,7 +8,7 @@
     const c = C();
     const r = { v: 1, rng: { s: seed | 0 }, stage: 1, hp: c.squadHp, gold: c.startGold, level: 1, xp: 0, streak: 0,
       front: Array(6).fill(null), back: Array(3).fill(null), bench: Array(c.benchSize).fill(null),
-      items: [], shop: [], locked: false, uid: 1, over: null, last: null };
+      items: [], shop: [], locked: false, uid: 1, over: null, last: null, lastStand: c.lastStand };
     rollShop(r, true);
     return r;
   }
@@ -154,7 +154,8 @@
       const left = FA.battle.alive(b, 1).length, L = c.lossDamage;
       res.dmg = Math.round(L.base + left * L.perEnemy + r.stage * L.perStage);
       r.hp = Math.max(0, r.hp - res.dmg);
-    }
+      if (r.hp <= 0 && r.lastStand > 0) { r.lastStand--; r.hp = 1; res.saved = true; }
+    } else { res.heal = Math.min(c.winHeal, c.squadHp - r.hp); r.hp += res.heal; }
     const interest = Math.min(c.interestMax, Math.floor(r.gold / c.interestPer));
     let sb = 0; c.streak.forEach(([n, v]) => { if (Math.abs(r.streak) >= n) sb = v; });
     res.income = c.baseIncome; res.interest = interest; res.streakBonus = sb; res.winBonus = win ? 1 : 0;

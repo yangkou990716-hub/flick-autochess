@@ -42,7 +42,7 @@
   function renderShop() {
     const lv = RUN.lv(run), boss = RUN.isBoss(run.stage);
     $('tStage').textContent = `第 ${run.stage}/${C.battles} 戰${boss ? ' 👑' : ''}`;
-    $('tHp').textContent = `❤ ${run.hp}`; $('tGold').textContent = `💰 ${run.gold}`;
+    $('tHp').textContent = `❤ ${run.hp}${run.lastStand ? ' 🛡' : ''}`; $('tGold').textContent = `💰 ${run.gold}`;
     const nx = C.levels[run.level]; $('tLv').textContent = `Lv${run.level}${nx ? ` (${run.xp}/${nx.xp})` : ''}`;
     $('enemyInfo').textContent = boss ? `下一戰 BOSS：${D.enemies.boss.name}｜${(D.enemies.boss.rules[run.stage] || ['spikes', 'shrink']).map(r => D.enemies.ruleText[r]).join('、')}` :
       (run.streak ? (run.streak > 0 ? `連勝 ${run.streak}` : `連敗 ${-run.streak}`) : '') + `　利息 +${Math.min(C.interestMax, Math.floor(run.gold / C.interestPer))}`;
@@ -64,7 +64,7 @@
     if (sel && sel.zone && RUN.unitAt(run, sel)) { const u = RUN.unitAt(run, sel); info = unitInfo(u) + `<button id="bSell">賣出 +${RUN.sellPrice(u)}</button>　<span class="lbl">點空位移動／點其他角色交換</span>`; }
     else if (sel && sel.item != null) info = itemText(run.items[sel.item]) + '<br><span class="lbl">點角色裝上。鐵拳＋彈簧＝爆裂彈簧</span>';
     else if (sel && sel.trait) { const T = D.traits[sel.trait]; info = `<b>${T.name}</b><br>${T.desc.join('<br>')}<br><span class="k">${T.counter}</span>`; }
-    else info = '<span class="lbl">點商店卡片購買；點角色查看／移動；3 隻同角色同星自動升星。<br>前台人數隨等級增加（3→6）。</span>';
+    else info = '<span class="lbl">殺光敵人才算贏，贏 +2 血；🛡＝一次鎖血免死。<br>點商店卡片購買；點角色查看／移動；3 隻同角色同星自動升星。<br>前台人數隨等級增加（3→6）。</span>';
     $('info').innerHTML = info;
     $('shopRow').innerHTML = run.shop.map((id, i) => {
       if (!id) return `<div class="card empty"></div>`;
@@ -115,7 +115,9 @@
   cv.addEventListener('pointermove', e => {
     if (drag == null) return;
     const w = ptr(e), o = battle.bodies[drag], vx = o.x - w.x, vy = o.y - w.y, len = Math.hypot(vx, vy);
+    const was = ui.aim && ui.aim.power >= C.fullPowerAt;
     ui.aim = len < 12 ? null : { idx: drag, angle: Math.atan2(vy, vx), power: Math.min(1, len / 140) };
+    if (ui.aim && ui.aim.power >= C.fullPowerAt && !was) try { navigator.vibrate && navigator.vibrate(20); } catch (e) { }
   });
   const up = () => {
     if (drag == null) return;
@@ -128,7 +130,7 @@
     const b = battle, hp = t => Math.round(FA.battle.hpSum(b, t));
     $('bhud').innerHTML = `第 ${run.stage} 戰｜${run.enemy.name}${b.rules.length ? '｜' + b.rules.map(r => D.enemies.ruleText[r]).join('、') : ''}<br>` +
       `<span style="color:#5cf">我方 ${hp(0)}　剩 ${b.shots[0]} 彈</span>　<span style="color:#f77">敵方 ${hp(1)}　剩 ${b.shots[1]} 彈</span>`;
-    ui.msg = b.phase === 'over' ? (b.winner === 0 ? '勝利！' : '落敗…') : b.phase === 'aim' ? (b.turn === 0 ? '你的回合：按住棋子往後拉' : '敵方瞄準中…') : '';
+    ui.msg = b.phase === 'over' ? (b.winner === 0 ? '勝利！' : '落敗…') : b.phase === 'aim' ? (b.turn === 0 ? '你的回合：按住棋子往後拉（殺光才算贏）' : '敵方瞄準中…') : '';
     ui.msgCol = b.turn === 0 ? '#ffe066' : '#f99';
   }
 
@@ -150,7 +152,7 @@
       setTimeout(() => {
         const res = RUN.endBattle(run, b); battle = null; save();
         const drops = res.drops.length ? '<br>掉落：' + res.drops.map(itemText).join('<br>') : '';
-        modal(`<h2>${res.win ? '🎉 勝利' : '💥 落敗'}</h2>${res.win ? '' : `小隊 -${res.dmg} ❤（剩 ${run.hp}）<br>`}` +
+        modal(`<h2>${res.win ? '🎉 全滅敵人' : '💥 沒殺光'}</h2>${res.win ? (res.heal ? `小隊 +${res.heal} ❤<br>` : '') : `小隊 -${res.dmg} ❤（剩 ${run.hp}）<br>`}${res.saved ? '<b style="color:#ffe066">🛡 鎖血免死觸發！剩 1 血</b><br>' : ''}` +
           `收入 ${res.income}＋利息 ${res.interest}＋連${run.streak > 0 ? '勝' : '敗'} ${res.streakBonus}${res.winBonus ? '＋勝利 1' : ''}${drops}`,
           [{ t: '繼續', cls: 'go', f: () => {
             if (run.over) {

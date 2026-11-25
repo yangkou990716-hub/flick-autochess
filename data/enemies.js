@@ -15,10 +15,10 @@
     // 依關卡算難度
     difficulty: function (stage) {
       return {
-        front: Math.min(6, 2 + Math.floor(stage / 2.5)),
+        front: Math.min(6, 2 + Math.floor(stage / 3.5)),
         back: stage >= 4 ? (stage >= 9 ? 2 : 1) : 0,
-        star2: Math.max(0, Math.min(0.75, (stage - 3) * 0.08)),
-        star3: Math.max(0, Math.min(0.4, (stage - 11) * 0.1)),
+        star2: Math.max(0, Math.min(0.7, (stage - 4) * 0.06)),
+        star3: Math.max(0, Math.min(0.3, (stage - 12) * 0.08)),
         itemChance: Math.max(0, Math.min(0.6, (stage - 5) * 0.06)),
         aimNoise: Math.max(0.03, 0.22 - stage * 0.013),
         candidates: 6 + stage * 2
