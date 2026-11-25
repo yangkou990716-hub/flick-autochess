@@ -57,3 +57,61 @@ button.on{background:#6b5a1a;border-color:#ffc531}
 .sub2 button{font-size:12px;padding:6px}
 .box textarea{width:100%;height:90px;background:#14121f;color:#eee;border:1px solid #4a4670;border-radius:8px;font-size:11px;user-select:text;-webkit-user-select:text}
 .box input{font:inherit;width:100%;padding:6px;border-radius:8px;border:1px solid #4a4670;background:#14121f;color:#fff;margin:4px 0}
+
+/* ===== 美化（只加樣式，不改結構/類名） ===== */
+html,body{background:radial-gradient(120% 80% at 50% 0%,#241f3d 0%,#14121f 55%,#0d0b16 100%) fixed}
+#title h1{font-size:42px;letter-spacing:2px;filter:drop-shadow(0 3px 0 #0008) drop-shadow(0 0 18px #ff7a4555);animation:titleFloat 3s ease-in-out infinite}
+@keyframes titleFloat{50%{transform:translateY(-4px)}}
+button{background:linear-gradient(180deg,#3a3660 0%,#2a2747 100%);border:1px solid #57528a;box-shadow:inset 0 1px 0 #ffffff22,0 2px 0 #0007;transition:transform .08s,box-shadow .08s,filter .15s}
+button:active{transform:translateY(1px) scale(.96);box-shadow:inset 0 1px 0 #ffffff11,0 0 0 #0000}
+button:disabled{filter:grayscale(.7);opacity:.45}
+button.go{background:linear-gradient(180deg,#ff6a4d 0%,#d6301f 100%);border-color:#ff9a7a;text-shadow:0 1px 0 #7a1000;box-shadow:inset 0 1px 0 #ffffff55,0 2px 0 #7a1000,0 0 14px #ff4a2a55;animation:goGlow 1.6s ease-in-out infinite}
+@keyframes goGlow{50%{box-shadow:inset 0 1px 0 #ffffff55,0 2px 0 #7a1000,0 0 22px #ff4a2a99}}
+button.on{background:linear-gradient(180deg,#8a7420,#5a4a10);border-color:#ffc531;box-shadow:inset 0 1px 0 #fff3,0 0 10px #ffc53155}
+button.big{border-radius:14px}
+.top span{text-shadow:0 1px 2px #000}
+#tGold{color:#ffd54f}#tHp{color:#ff8a9a}
+.tr{border:1px solid #3a3658;background:linear-gradient(180deg,#2e2a48,#232038);transition:transform .15s}
+.tr.act{border-color:#fff6;box-shadow:inset 0 1px 0 #fff8,inset 0 -2px 0 #0003,0 0 8px #fff2;text-shadow:0 1px 0 #fff6}
+.st-chip{background:linear-gradient(180deg,#2e2a48,#1f1c33);box-shadow:0 0 6px currentColor inset}
+.lbl{letter-spacing:.5px}
+/* 棋盤格子 */
+.slot{border:2px dashed #3d3962;background:radial-gradient(circle at 50% 40%,#ffffff08,#0000 70%);transition:transform .12s,box-shadow .2s}
+.slot.tgt{border-color:#ffc531aa;animation:tgtPulse 1.2s ease-in-out infinite}
+@keyframes tgtPulse{50%{border-color:#ffc531;background-color:#ffc53112}}
+.slot.sel{box-shadow:0 0 0 3px #ffc531,0 0 14px #ffc531aa;animation:selBob .9s ease-in-out infinite}
+@keyframes selBob{50%{transform:translateY(-3px) scale(1.04)}}
+.u{position:relative;border:2px solid #fff4;box-shadow:inset 0 -5px 8px #0005,inset 0 3px 5px #fff5,0 3px 6px #0008;overflow:visible}
+.u::before{content:"";position:absolute;left:18%;top:9%;width:38%;height:22%;border-radius:50%;background:linear-gradient(180deg,#fff9,#fff0);transform:rotate(-20deg);pointer-events:none}
+.u>span:first-child{font-size:12px;z-index:1}
+.u .st{font-size:9px;letter-spacing:-1px;text-shadow:0 0 3px #000,0 1px 0 #000;z-index:1}
+#front .u{border-color:#4fd2ff99}
+.slot:active .u{transform:scale(.92)}
+/* 裝備 */
+.item{background:linear-gradient(180deg,#332f52,#252240);box-shadow:inset 0 1px 0 #fff2,0 2px 0 #0006;transition:transform .12s}
+.item.sel{background:linear-gradient(180deg,#6a5a1f,#3d3312);border-color:#ffc531;box-shadow:0 0 10px #ffc53188;transform:translateY(-2px)}
+.info{background:linear-gradient(180deg,#221e38,#1a172c);border:1px solid #34305a;box-shadow:inset 0 1px 0 #fff1}
+/* 商店卡片：依費用的漸層邊框 */
+.card{--c1:#9a9a9a;--c2:#555;position:relative;border:2px solid transparent!important;background:linear-gradient(180deg,#2a2643,#1c192e) padding-box,linear-gradient(160deg,var(--c1),var(--c2)) border-box;box-shadow:0 3px 0 #0007,0 0 0 #0000;transition:transform .12s,box-shadow .2s;overflow:hidden;min-width:0;word-break:keep-all}
+.card[style*="#3fb950"]{--c1:#7dffa0;--c2:#1f7a32}
+.card[style*="#4ea0ff"]{--c1:#9fd0ff;--c2:#2a5fbf}
+.card[style*="#b072ff"]{--c1:#e0b8ff;--c2:#6a2fc0}
+.card[style*="#ffb000"]{--c1:#fff0a0;--c2:#ff7a00;box-shadow:0 3px 0 #0007,0 0 12px #ffb00066}
+.card[style*="#ffb000"]::after{content:"";position:absolute;inset:-40% auto -40% -60%;width:40%;background:linear-gradient(90deg,#fff0,#fff4,#fff0);transform:rotate(20deg);animation:shine 2.6s ease-in-out infinite;pointer-events:none}
+.card[style*="#b072ff"]{box-shadow:0 3px 0 #0007,0 0 8px #b072ff44}
+@keyframes shine{0%,60%{left:-60%}100%{left:140%}}
+.card::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,var(--c2),var(--c1),var(--c2));opacity:.9}
+.card:active{transform:translateY(2px) scale(.95);box-shadow:0 1px 0 #0007}
+.card .dot{max-width:34px;max-height:34px;box-shadow:inset 0 -4px 6px #0006,inset 0 3px 4px #fff6,0 2px 4px #0008;border:2px solid #fff3;position:relative}
+.card .c{font-weight:bold;color:#ffd54f;text-shadow:0 1px 0 #000}
+.card .t{font-size:9.5px;color:#b9b3d9;line-height:1.25;margin-top:1px;white-space:normal}
+.card.empty{background:repeating-linear-gradient(45deg,#1a1829 0 6px,#1e1c30 6px 12px)!important;border:2px dashed #2e2b48!important;opacity:.5;box-shadow:none}
+/* 彈窗與選項 */
+.modal{background:radial-gradient(circle at 50% 40%,#0008,#000c);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+.box{background:linear-gradient(180deg,#2a2645,#1c192f);border:1px solid #5a548f;box-shadow:0 10px 30px #000a,inset 0 1px 0 #fff2;animation:boxIn .22s cubic-bezier(.2,1.4,.5,1)}
+@keyframes boxIn{from{transform:scale(.85);opacity:0}}
+.choice{background:linear-gradient(180deg,#322e52,#26223f);border:2px solid #4a4670;box-shadow:inset 0 1px 0 #fff1,0 2px 0 #0006;transition:transform .1s,border-color .15s}
+.choice:active{border-color:#ffc531;box-shadow:0 0 12px #ffc53166}
+.bhud{font-weight:600}
+.pausebtn{border-radius:12px}
+@media (max-width:360px),(max-height:700px){.card .t{font-size:9px}.card{min-height:66px}.u>span:first-child{font-size:11px}#title h1{font-size:36px}}
