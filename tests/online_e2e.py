@@ -1,5 +1,5 @@
 # 連線對戰端對端測試（假 Firebase）：python3 tests/online_e2e.py [輸出資料夾]
-# 先在 repo 根目錄開：python3 -m http.server 8851
+# 先在 repo 根目錄開：python3 -m http.server 8851（或設 PORT=其他埠）
 # 兩個同源分頁（同一個 context，共用 localStorage＋BroadcastChannel）：A 建房、B 加入、準備、輪流打完一場，
 # 中途 B 重新整理（模擬切出 App）、再來一場後 B 關閉 → A 顯示離線並由 AI 代打。
 import sys, os, time, json, math
@@ -7,7 +7,7 @@ from playwright.sync_api import sync_playwright
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/nettest'
 os.makedirs(OUT, exist_ok=True)
-BASE = 'http://localhost:8851/index.html?netmock=1&who='
+BASE = 'http://localhost:' + os.environ.get('PORT', '8851') + '/index.html?netmock=1&who='
 errors = []
 
 PAGES = []

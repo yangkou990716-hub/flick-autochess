@@ -13,7 +13,8 @@
   const vib = ms => { if (FA.settings.vibrate) try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { } };
 
   // ---------- 存檔 ----------
-  const save = () => { try { if (run) localStorage.setItem(KEY, JSON.stringify(hs ? { hs, battle, mode, bst } : { run, battle, mode, bst })); } catch (e) { } };
+  let lgHost = null; // ---- 連線自走棋 ----：商店借給 src/league.js 用時的回呼（存檔、準備、離開）
+  const save = () => { if (lgHost) { try { lgHost.save(run); } catch (e) { } return; } try { if (run) localStorage.setItem(KEY, JSON.stringify(hs ? { hs, battle, mode, bst } : { run, battle, mode, bst })); } catch (e) { } };
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } };
   const clearSave = () => { try { localStorage.removeItem(KEY); } catch (e) { } };
 
@@ -363,6 +364,7 @@
   $('bLock').onclick = () => { run.locked = !run.locked; renderShop(); save(); };
   $('bXp').onclick = () => { RUN.buyXp(run); renderShop(); save(); };
   $('bFight').onclick = () => {
+    if (lgHost) { sel = null; return lgHost.ready(); } // ---- 連線自走棋 ----
     if (!run.front.slice(0, RUN.lv(run).front).some(Boolean)) return flash('前台至少要放 1 隻');
     sel = null; RUN.advance(run); save(); flow();
   };
@@ -381,7 +383,7 @@
         V.banner = { txt: '對戰 ' + team.name, life: 1.4 };
       } }, { t: '取消' }]);
   };
-  $('bQuit').onclick = () => { save(); toTitle(); };
+  $('bQuit').onclick = () => { save(); if (lgHost) return lgHost.quit(); toTitle(); };
   $('bUlt').onclick = () => { ui.ultArmed = !ui.ultArmed; vib(ui.ultArmed ? 25 : 8); if (ui.ultArmed) V.banner = { txt: '⚡ 彈發光的棋子放大招', life: 1, max: 1, col: '#ffd54f' }; };
   function startFight() {
     mode = 'run';
@@ -704,6 +706,10 @@
       if (X) bits.push(`<button data-econ="cons" ${run.gold < sc.price ? 'disabled' : ''}>${X.icon}${X.name} ${sc.price}💰</button>`);
       if (bits.length) $('enemyInfo').innerHTML += `<div class="lbl econ-bar">${bits.join('　')}</div>`;
       const notes = RUN.takeNotes(run); if (notes.length) $('info').innerHTML = `<b style="color:#ffc531">${notes.join('<br>')}</b>`;
+      // ---- 連線自走棋 ----：標題、準備鍵；不提供匯出／代碼對戰
+      $('bExport').classList.toggle('hidden', !!lgHost); $('bDuel').classList.toggle('hidden', !!lgHost);
+      $('bFight').textContent = lgHost ? lgHost.fightText() : '前進 ▶';
+      if (lgHost) { $('tStage').textContent = lgHost.title(); $('bFight').disabled = lgHost.locked(); if (lgHost.decorate) lgHost.decorate(); }
     };
     $('shop').addEventListener('click', ev => {
       const t = ev.target.closest('[data-econ]'); if (!t || !run) return;
@@ -739,6 +745,13 @@
   toTitle();
   setTimeout(() => tutor('intro', TUT.intro), 300);
   FA.debug = () => ({ run, battle, bst }); // 測試／除錯用
+  // ---- 連線自走棋 ----：src/league.js 借用商店畫面。host = { save(run), ready(), quit(), title(), fightText(), locked(), decorate() }
+  FA.shopHost = {
+    open(r, host) { lgHost = host; hs = null; mode = 'league'; run = r; battle = null; sel = null; $('modal').classList.add('hidden'); show('shop'); renderShop(); flow(); },
+    close() { if (!lgHost) return; lgHost = null; run = null; mode = 'run'; sel = null; endDrag(); $('modal').classList.add('hidden'); $('uxTut').classList.add('hidden'); tutOn = false; ['shop', 'battle'].forEach(s => $(s).classList.add('hidden')); screen = 'league'; },
+    render() { if (lgHost && screen === 'shop') renderShop(); },
+    active: () => !!lgHost, run: () => (lgHost ? run : null)
+  };
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 })();

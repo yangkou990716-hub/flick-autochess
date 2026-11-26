@@ -674,5 +674,6 @@
     cons, giveCons, useCons, consNeeds, carrierPending, rerollCarrier, carrierRerollCost }; // ---- 道具 ---- / ---- 補給 ----
   Object.assign(FA.run, { rollAffixes, rerollAffixes, affixExt, affixEnemy }); // ---- 敵人詞綴 ----
   Object.assign(FA.run, { factionFx, rerollCost, teamUnits }); // ---- 陣營 ----
+  Object.assign(FA.run, { askStrategy }); // ---- 連線自走棋（src/core/league.js）----
   Object.assign(FA.run, { buyShopCons, shopOdds, takeNotes, econExt, econAtk, hasFx, envOptions, activeTraitN }); // ---- 經濟擴充 ----
 })(globalThis);
