@@ -22,11 +22,13 @@
 
   // ---- 策略／環境效果彙總（戰鬥與經濟用）----
   function sfx(r) {
-    const o = { mods: {}, income: 0, shots: 0, chainAll: false, echo: null, blastGold: 0, streakAdd: 0, interestAdd: 0, frontAdd: 0, openFreeze: 0, revive: 0, stormZap: 0, interestCap: 0, streakMul: 1, onBossGold: 0 };
+    const o = { mods: {}, flawlessGold: 0, income: 0, shots: 0, chainAll: false, echo: null, blastGold: 0, streakAdd: 0, interestAdd: 0, frontAdd: 0, openFreeze: 0, revive: 0, stormZap: 0, interestCap: 0, streakMul: 1, onBossGold: 0 };
     r.strats.forEach(id => {
       const f = RD().strategies[id].fx;
       if (f.mods) FA.battle.addMods(o.mods, f.mods);
-      ['income', 'shots', 'frontAdd', 'revive'].forEach(k => { if (f[k]) o[k] += f[k]; });
+      ['income', 'shots', 'frontAdd', 'revive', 'interestAdd', 'streakAdd', 'openFreeze', 'stormZap', 'flawlessGold'].forEach(k => { if (f[k]) o[k] += f[k]; });
+      if (f.blastGold) o.blastGold += f.blastGold;
+      if (f.echo) o.echo = o.echo ? { r: Math.max(o.echo.r, f.echo.r), mult: o.echo.mult + f.echo.mult } : Object.assign({}, f.echo);
       if (f.chainAll) o.chainAll = true;
       if (f.interestCap) o.interestCap = Math.max(o.interestCap, f.interestCap);
       if (f.streakMul) o.streakMul *= f.streakMul;
@@ -35,11 +37,14 @@
     return o;
   }
   const efx = r => (r.env && RD().envs[r.env].fx) || {};
+  // 策略效果 → battle.create 的 pExt／eExt
+  const battleExt = s => ({ mods: s.mods, shots: s.shots, chainAll: s.chainAll, revive: s.revive, echo: s.echo, blastGold: s.blastGold, openFreeze: s.openFreeze, stormZap: s.stormZap });
 
   const lv = r => { const L = C().levels[r.level - 1]; return { front: Math.min(C().maxFront, L.front + sfx(r).frontAdd), back: L.back }; };
   const unitAt = (r, l) => r[l.zone][l.i];
-  const sellPrice = u => D().units[u.id].cost * Math.pow(3, u.star - 1) - (u.star > 1 ? 1 : 0);
-  const unitCost = (r, id) => D().units[id].cost + (efx(r).costAdd || 0);
+  const unitCost = (r, id) => Math.max(1, D().units[id].cost + (efx(r).costAdd || 0));
+  // 傳入 r 時，降價環境（拍賣行）照降價後價格回收，避免低買高賣
+  const sellPrice = (u, r) => (r ? Math.min(D().units[u.id].cost, unitCost(r, u.id)) : D().units[u.id].cost) * Math.pow(3, u.star - 1) - (u.star > 1 ? 1 : 0);
   const steps = r => RD().planes[r.plane - 1].steps;
   const isBoss = r => steps(r)[r.step] === 'boss';
 
@@ -111,7 +116,7 @@
 
   function sell(r, l) {
     const u = unitAt(r, l); if (!u) return false;
-    r.gold += sellPrice(u); r.items.push(...u.items); if (u.weapon) r.weapons.push(u.weapon); r[l.zone][l.i] = null; return true;
+    r.gold += sellPrice(u, r); r.items.push(...u.items); if (u.weapon) r.weapons.push(u.weapon); r[l.zone][l.i] = null; return true;
   }
 
   function slotOk(r, l) {
@@ -163,6 +168,7 @@
     if (f.heal) r.hp = Math.min(r.maxHp || C().squadHp, r.hp + f.heal);
     if (f.freeReroll) { r.freeReroll += f.freeReroll; r.freeLeft += f.freeReroll; }
     if (f.freeRerolls) r.freeLeft += f.freeRerolls;
+    if (f.swapHpGold) { const mx = r.maxHp || C().squadHp, hp = r.hp, gold = r.gold; r.hp = Math.max(1, Math.min(mx, gold)); r.gold = hp + Math.max(0, gold - mx); }
     for (let k = 0; k < (f.weapon || 0) + (f.weapons || 0); k++) r.weapons.push(randomWeapon(r));
     for (let k = 0; k < (f.item || 0) + (f.items || 0); k++) r.items.push(makeItem(r, randomBase(r)));
     for (let k = 0; k < (f.unit2 || 0); k++) addUnit(r, R().pick(r.rng, shopIds().filter(i => D().units[i].cost <= 2)), 2);
@@ -176,7 +182,9 @@
     const chance = { silver: T.silver.chance, gold: T.gold.chance, prism: T.prism.chance };
     if (bias === 'gold') { chance.silver = 30; chance.gold = 62; chance.prism = 8; }
     if (bias === 'prism') { chance.silver = 30; chance.gold = 35; chance.prism = 35; }
-    for (let k = 0; k < 3; k++) {
+    const nOpt = efx(r).stratOptions || 3;
+    if (bias === 'silver') { chance.silver = 100; chance.gold = 0; chance.prism = 0; }
+    for (let k = 0; k < nOpt; k++) {
       let tier = forceTier;
       if (!tier) { let x = R().next(r.rng) * 100; tier = 'silver'; for (const t of ['silver', 'gold', 'prism']) { if (x < chance[t]) { tier = t; break; } x -= chance[t]; } }
       let pool = Object.keys(S).filter(id => S[id].tier === tier && !r.strats.includes(id) && !out.includes(id));
@@ -188,11 +196,12 @@
   const askStrategy = (r, tier) => { r.pending = { type: 'strategy', options: strategyOptions(r, tier), tier: tier || null }; };
 
   function nodeOptions(r) {
-    const fixed = steps(r)[r.step];
-    if (fixed) return [fixed];
+    const fixed = steps(r)[r.step], sw = efx(r).planeSwap;
+    const swap = k => (sw && r.plane === sw.plane && k === sw.from ? sw.to : k);
+    if (fixed) return [swap(fixed)];
     const w = RD().nodeWeights, keys = Object.keys(w), tot = keys.reduce((s, k) => s + w[k], 0);
     const roll = () => { let x = R().next(r.rng) * tot; for (const k of keys) { if (x < w[k]) return k; x -= w[k]; } return 'battle'; };
-    const a = roll(); let b = roll(), guard = 0; while (b === a && guard++ < 8) b = roll();
+    const a = swap(roll()); let b = swap(roll()), guard = 0; while (b === a && guard++ < 8) b = swap(roll());
     return a === b ? [a] : [a, b];
   }
 
@@ -203,7 +212,7 @@
     const p = r.pending; if (!p) return null;
     const id = p.options[i];
     r.pending = null;
-    if (p.type === 'opener') { r.opener = id; applyFx(r, RD().openers[id].fx); r.pending = { type: 'env', options: pickN(r, Object.keys(RD().envs), 3) }; }
+    if (p.type === 'opener') { r.opener = id; applyFx(r, RD().openers[id].fx); if (RD().openers[id].fx.bonusPick) r.futures.push({ at: 0, tier: RD().openers[id].fx.bonusPick }); r.pending = { type: 'env', options: pickN(r, Object.keys(RD().envs), 3) }; }
     else if (p.type === 'env') { r.env = id; askStrategy(r); }
     else if (p.type === 'path') {
       if (id === 'supply') r.pending = { type: 'supply', options: pickN(r, Object.keys(RD().supplies), 3) };
@@ -265,7 +274,7 @@
     if (!front.length) return null;
     const eExt = en.reward ? { mods: { hpPct: (RD().piggy.hpBase + RD().piggy.hpPerStage * r.stage) / D().units.piggy.hp - 1 } } : { threat: r.threat };
     return FA.battle.create({ pFront: front, pBack: r.back.slice(0, lv(r).back), eFront: en.front, eBack: en.back, rules: en.rules, env: efx(r),
-      pExt: { mods: s.mods, shots: s.shots, chainAll: s.chainAll, revive: s.revive }, eExt, eNoShots: !!en.reward,
+      pExt: battleExt(s), eExt, eNoShots: !!en.reward,
       seed: Math.floor(R().next(r.rng) * 2 ** 31) });
   }
 
@@ -295,7 +304,7 @@
   }
 
   function endBattle(r, b) {
-    const c = C(), win = b.winner === 0, e = efx(r), node = r.node;
+    const c = C(), win = b.winner === 0, e = efx(r), s = sfx(r), node = r.node;
     const res = { win, node, dmg: 0, drops: [], weapons: [], gold: 0 };
     if (node === 'reward') {
       const P = RD().piggy, killed = b.bodies.filter(o => o.team === 1 && !o.alive).length;
@@ -312,6 +321,7 @@
     } else {
       res.heal = Math.min(c.winHeal, (r.maxHp || c.squadHp) - r.hp); r.hp += res.heal;
       res.gold = 1 + (e.winGold || 0);
+      if (s.flawlessGold && b.bodies.every(o => o.team !== 0 || o.temp || o.alive)) { res.gold += s.flawlessGold; res.flawless = true; }
       let rw = null;
       if (node === 'encounter') rw = RD().encounter[r.encLv].reward;
       if (node === 'boss') rw = { weapon: 1, item: 2 };
@@ -353,7 +363,7 @@
     if (!mine.length || !team.front.length) return null;
     const s2 = sfx({ strats: team.strats });
     return FA.battle.create({ pFront: mine, pBack: r.back.slice(0, lv(r).back), eFront: team.front, eBack: team.back, rules: [], env: {},
-      pExt: { mods: s.mods, shots: s.shots, chainAll: s.chainAll, revive: s.revive }, eExt: { mods: s2.mods, shots: s2.shots, chainAll: s2.chainAll, revive: s2.revive },
+      pExt: battleExt(s), eExt: battleExt(s2),
       seed: Math.floor(R().next(r.rng) * 2 ** 31) });
   }
 

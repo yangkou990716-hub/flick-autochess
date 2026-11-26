@@ -8,6 +8,7 @@
       { id: 'wallAI', name: '鐵壁流', front: ['shield', 'ironball', 'captain', 'shield', 'spring', 'ironball'], back: ['medic', 'captain', 'tesla'] },
       { id: 'swiftAI', name: '疾風流', front: ['feather', 'boomer', 'spark', 'berserker', 'feather', 'bullet'], back: ['medic', 'tesla', 'barrel'] },
       { id: 'toxicAI', name: '毒素流', front: ['shroom', 'mine', 'vampire', 'shroom', 'thunder', 'vampire'], back: ['medic', 'turret', 'tesla'] },
+      { id: 'mechAI', name: '機械流', front: ['drill', 'curler', 'quake', 'comet', 'drill', 'ironball'], back: ['tesla', 'drill', 'turret'] },
       { id: 'bounceAI', name: '彈跳流', front: ['boomer', 'feather', 'splitter', 'spring', 'boomer', 'splitter'], back: ['medic', 'captain', 'tesla'] }
     ],
     // 每個位面一個首領；終局首領會分裂

@@ -42,7 +42,8 @@
       insured: { name: '保險', desc: '鎖血免死 +1 次', fx: { lastStand: 1 } },
       scholar: { name: '學霸', desc: '開局直接 2 級', fx: { xp: 4 } },
       gambler: { name: '賭徒', desc: '每節點 1 次免費刷新', fx: { freeReroll: 1 } },
-      dualwield: { name: '雙槍俠', desc: '開局送 2 把武器，但少 4 金', fx: { weapon: 2, gold: -4 } }
+      dualwield: { name: '雙槍俠', desc: '開局送 2 把武器，但少 4 金', fx: { weapon: 2, gold: -4 } },
+      angelinv: { name: '天使投資人', desc: '選完首個投資策略後，再選 1 張黃金策略', fx: { bonusPick: 'gold' } }
     },
     // 投資環境：開局 3 選 1，持續整局
     envs: {
@@ -57,7 +58,9 @@
       toxicfog: { name: '毒霧', desc: '雙方每回合開始全員受 3% 生命毒傷', fx: { fog: 0.03 } },
       golden: { name: '黃金時代', desc: '投資策略出現黃金的機率大增', fx: { tierBias: 'gold' } },
       rainbow: { name: '彩虹時代', desc: '投資策略出現稜彩的機率大增（敵人也會更強）', fx: { tierBias: 'prism' } },
-      longrun: { name: '長線作戰', desc: '每場戰鬥後小隊回 2 血', fx: { battleHeal: 2 } }
+      longrun: { name: '長線作戰', desc: '每場戰鬥後小隊回 2 血', fx: { battleHeal: 2 } },
+      silverage: { name: '白銀時代', desc: '投資策略都是白銀，但每次多 1 個選項（4 選 1）', fx: { tierBias: 'silver', stratOptions: 4 } },
+      warfront: { name: '戰爭邊疆', desc: '第三位面的戰鬥節點全部換成遭遇節點', fx: { planeSwap: { plane: 3, from: 'battle', to: 'encounter' } } }
     },
     // 投資策略：越高階越強，也讓之後的敵人越強（threat 加到敵人生命與攻擊；extraEnemy 多派敵人）
     tiers: {
@@ -67,7 +70,8 @@
     },
     // 投資策略取得：開局 1 次、位面 1、2 首領後各 1 次；部分策略會再觸發（期貨）
     // fx：gold xp freeRerolls lastStand heal | units:{cost,n,star} items weapons | perNode:{gold,xp,rerolls,n} | onBoss:{gold}
-    //     atLevel:{lv,gold} | interestCap | streakMul | income | mods(戰鬥數值) | shots | future:{after,tier} | pickNow:tier
+    //     atLevel:{lv,gold} | interestCap | interestAdd 利息上限加值 | streakMul | income 每節點收入 | flawlessGold 完勝金幣 | swapHpGold 生命金幣互換 | echo:{r,mult} | blastGold 爆炸給金上限 | streakAdd | openFreeze | stormZap
+    //     mods(戰鬥數值) | shots | future:{after,tier} | pickNow:tier
     strategies: {
       // 白銀：經濟、資源
       s_bossfund: { tier: 'silver', name: '特戰資金', desc: '每次進入首領節點時 +8 金', fx: { onBoss: { gold: 8 } } },
@@ -78,6 +82,8 @@
       s_team: { tier: 'silver', name: '擴充團隊', desc: '立刻獲得 2 隻 1 費、1 隻 3 費角色', fx: { units2: [[1, 2], [3, 1]] } },
       s_arms: { tier: 'silver', name: '軍火貿易', desc: '立刻獲得 1 把武器與 6 金', fx: { weapons: 1, gold: 6 } },
       s_atk: { tier: 'silver', name: '磨刀', desc: '全隊攻擊 +8%', fx: { mods: { atkPct: 0.08 } } },
+      s_piggybank: { tier: 'silver', name: '招財豬', desc: '每場完勝（我方沒有陣亡）+1 金', fx: { flawlessGold: 1 } },
+      s_echo: { tier: 'silver', name: '回音彈', desc: '每發第一次撞到敵人時，追加一次小爆炸', fx: { echo: { r: 70, mult: 0.35 } } },
       // 黃金：持續收益、期貨
       g_station: { tier: 'gold', name: '加油站', desc: '立刻 +8 金與 1 次免費刷新，之後每節點 +1 次免費刷新', fx: { gold: 8, freeRerolls: 1, perNode: { rerolls: 1, n: 99 } } },
       g_gun: { tier: 'gold', name: '槍在手', desc: '立刻獲得 1 件裝備＋1 把武器', fx: { items: 1, weapons: 1 } },
@@ -86,6 +92,8 @@
       g_silverinv: { tier: 'gold', name: '白銀投資', desc: '立刻選 1 張白銀策略，3 個節點後再選 1 張', fx: { pickNow: 'silver', future: { after: 3, tier: 'silver' } } },
       g_futures: { tier: 'gold', name: '彩虹期貨', desc: '5 個節點後選 1 張稜彩策略', fx: { future: { after: 5, tier: 'prism' } } },
       g_shot: { tier: 'gold', name: '多一發', desc: '每場我方多 1 次彈射', fx: { shots: 1 } },
+      g_blastfund: { tier: 'gold', name: '爆破分紅', desc: '我方每次爆炸 +1 金，每場最多 3 金', fx: { blastGold: 3 } },
+      g_streak: { tier: 'gold', name: '連勝紅利', desc: '連勝／連敗獎勵每次 +1；開場凍住 1 隻敵人', fx: { streakAdd: 1, openFreeze: 1 } },
       g_angel: { tier: 'gold', name: '守護', desc: '每場第一隻陣亡的隊友以 40% 生命復活', fx: { revive: 1 } },
       // 稜彩：改變玩法（敵人難度大增）
       p_open: { tier: 'prism', name: '開源節流', desc: '立刻 +10 金，利息上限變 9', fx: { gold: 10, interestCap: 9 } },
@@ -94,6 +102,7 @@
       p_conquest: { tier: 'prism', name: '偉大征服', desc: '連勝獎勵變 3 倍，立刻 +12 經驗', fx: { streakMul: 3, xp: 12 } },
       p_front: { tier: 'prism', name: '擴編', desc: '前台上限 +1（最多 7）', fx: { frontAdd: 1 } },
       p_chain: { tier: 'prism', name: '連環爆', desc: '我方所有爆炸都會連鎖', fx: { chainAll: true } },
+      p_swap: { tier: 'prism', name: '不等價交換', desc: '小隊生命和金幣數值互換（生命最多到上限，多的變金幣）', fx: { swapHpGold: true } },
       p_double: { tier: 'prism', name: '雙響', desc: '每場我方多 2 次彈射', fx: { shots: 2 } }
     },
     // 補給節點：3 選 1
