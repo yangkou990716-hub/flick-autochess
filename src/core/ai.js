@@ -7,11 +7,11 @@
   const clone = b => { const c = JSON.parse(JSON.stringify(b)); c.events = []; return c; };
   const EVAL_STEPS = 1000; // 預演最多約 8 秒（固定步長 1/120），大部分傷害都在前段，換取效能
   // 總動數制：擊倒對手＝對方動數 -deathCost，自己被打倒同理，所以擊殺／陣亡以「動數價值」move 計分
-  const W = { own: 0.9, move: 60, killHp: 0.15, dieHp: 0.15, combo: 35, freeze: 45, poison: 0.7, spike: 1.6, zone: 0.4, expose: 20, ring: 12, win: 2000, lose: 2000, ultHold: 15, fear: 30 };
+  const W = { own: 0.9, move: 60, killHp: 0.15, dieHp: 0.15, combo: 35, freeze: 45, poison: 0.7, spike: 1.6, zone: 0.4, expose: 20, ring: 12, win: 2000, lose: 2000, ultHold: 15, fear: 30, rhythm: 35, beat: 30 };
 
-  function evalShot(b, team, idx, ang, pw, ult) {
+  function evalShot(b, team, idx, ang, pw, ult, tap, expert) {
     const c = clone(b);
-    if (!FA.battle.launch(c, idx, ang, pw, ult)) return -1e9;
+    if (!FA.battle.launch(c, idx, ang, pw, ult, tap)) return -1e9;
     // 全場都慢於最低傷害速度時，直接歸零（仍會觸發「停下時」能力），省下尾段滑行的計算
     const slow = FA.DATA.config.minHitSpeed;
     for (let k = 0; !FA.battle.step(c) && k < EVAL_STEPS; k++) {
@@ -50,6 +50,11 @@
       else if (e.t === 'ring' && !ring) ring = 1;
     });
     if (ring && c.hits) s += W.ring; // 泳圈柱加速加攻後真的撞到人
+    if (expert) { // 高手：會顧節奏層數
+      b.bodies.forEach((o0, i) => { if (o0.team !== team || o0.temp || !o0.alive || !o0.ab || o0.ab.type !== 'rhythm') return; const o = c.bodies[i];
+        s += c.teamHit && o && o.alive ? W.rhythm * (o0.stacks + 1) : -W.rhythm * 1.5 * o0.stacks;
+        if (i === idx && b.moves[team] > 3) s += W.beat * (o0.stacks - 2); }); // 層數低時先讓隊友打、疊高了才讓鼓手出手
+    }
     const z0 = b.zones.length;
     for (let i = z0; i < c.zones.length; i++) if (c.zones[i].team === team) s += (c.zones[i].dmg || 0) * W.zone;
     return s;
@@ -103,6 +108,44 @@
     });
   }
 
+  // ---- 神技 ----
+  // 多次反彈（長方形鏡像法）：目標對牆鏡射 i、j 次的像點，撞牆 |i|+|j| 次；回傳 [{a, d, n}]
+  function multiBank(b, m, f, nMin, nMax) {
+    const lx = b.hw - m.r, ly = b.hh - m.r, out = [], img = (k, L, v) => k * 2 * L + (k & 1 ? -v : v);
+    for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) {
+      const n = Math.abs(i) + Math.abs(j); if (n < nMin || n > nMax) continue;
+      const x = img(i, lx, f.x), y = img(j, ly, f.y); out.push({ a: Math.atan2(y - m.y, x - m.x), d: Math.hypot(x - m.x, y - m.y), n });
+    }
+    return out.sort((p, q) => p.d - q.d);
+  }
+  // 普通玩家的二次操作：固定在飛出 0.4 秒時點最近的敵人（不看時機）
+  function simpleTap(b, m) {
+    if (!FA.battle.tapAbility(m)) return null;
+    let best = null, bd = 1e9; b.bodies.forEach(o => { if (o.alive && !o.temp && o.team !== m.team) { const d = Math.hypot(o.x - m.x, o.y - m.y); if (d < bd) { bd = d; best = o; } } });
+    return best ? { t: 48, x: best.x, y: best.y } : null;
+  }
+  // 高手的二次操作：先不點跑一次，記錄每個時間點的位置，挑「炸最多人」或「分身最近的敵人」的幾個時機，再逐一預演
+  function tapPlans(b, team, c) {
+    const x0 = clone(b), m = x0.bodies[c[0]], kind = FA.battle.tapAbility(m); if (!kind) return [];
+    if (!FA.battle.launch(x0, c[0], c[1], c[2], false)) return [];
+    const R = m.ab.r || 130, snaps = [];
+    for (let k = 1; k <= 360; k++) {
+      const done = FA.battle.step(x0), mv = x0.bodies[c[0]];
+      if (!mv.alive || (k > 6 && Math.hypot(mv.vx, mv.vy) < 40)) break;
+      if (k % 4 === 0) {
+        const foes = x0.bodies.filter(o => o.alive && !o.temp && o.team !== team);
+        if (kind === 'boom') { const n = foes.reduce((s, o) => s + (Math.hypot(o.x - mv.x, o.y - mv.y) < R + o.r ? 1 + (1 - o.hp / o.maxHp) : 0), 0); if (n) snaps.push({ v: n, t: k + 1, x: 0, y: 0 }); }
+        else foes.forEach(o => { const d = Math.hypot(o.x - mv.x, o.y - mv.y); if (d > mv.r + o.r + 20) snaps.push({ v: -d / 300 - o.hp / o.maxHp, t: k + 1, x: o.x + o.vx * 0.05, y: o.y + o.vy * 0.05 }); });
+      }
+      if (done) break;
+    }
+    snaps.sort((p, q) => q.v - p.v);
+    const out = [], seen = new Set();
+    for (const s of snaps) { const key = kind === 'boom' ? s.t >> 3 : (s.t >> 4) + ':' + Math.round(s.x / 60) + ':' + Math.round(s.y / 60); if (seen.has(key)) continue; seen.add(key); out.push({ t: s.t, x: s.x, y: s.y }); if (out.length >= 6) break; }
+    return out;
+  }
+  const isSkill = m => m.ab && ['sweetSpot', 'trickShot', 'cueBall', 'remoteBomb', 'phantom', 'rhythm'].includes(m.ab.type);
+
   function choose(b, team, diff, r) {
     const mine = FA.battle.avail(b, team);
     const allies = b.bodies.filter(o => o.alive && !o.temp && o.team === team);
@@ -144,21 +187,44 @@
     // 沒用完的名額依序回填，再補隨機角度
     ['direct', 'ring', 'bank', 'push', 'combo'].forEach(k => cat[k].forEach(e => { if (list.length < N - 1 && !list.includes(e.c)) list.push(e.c); }));
     while (list.length < N) list.push([FA.rng.pick(r, mine).i, FA.rng.range(r, -Math.PI, Math.PI), FA.rng.range(r, 0.6, 1)]);
-    const sc = list.map(c => evalShot(b, team, c[0], c[1], c[2], false));
+    const EX = !!diff.expert;
+    if (EX) mine.forEach(m => { // 高手：替神技角色加專屬候選（甜蜜點力道、3～4 次反彈、撞球連撞線）
+      const t = m.ab && m.ab.type; if (!t) return;
+      const near = foes.slice().sort((p, q) => Math.hypot(p.x - m.x, p.y - m.y) - Math.hypot(q.x - m.x, q.y - m.y)).slice(0, 3);
+      if (t === 'sweetSpot') { const mid = (m.ab.lo + m.ab.hi) / 2; near.forEach(f => { list.push([m.i, Math.atan2(f.y - m.y, f.x - m.x), mid, 1]); bankAngles(b, m, f).forEach(a => list.push([m.i, a, mid, 1])); }); }
+      if (t === 'trickShot') foes.forEach(f => multiBank(b, m, f, m.ab.n, m.ab.n + 1).slice(0, 3).forEach(o => list.push([m.i, o.a, 1, 1])));
+      if (t === 'cueBall') near.forEach(f => foes.forEach(e => { if (e === f) return; const d = Math.hypot(e.x - f.x, e.y - f.y) || 1; if (d > 420) return; const ux = (e.x - f.x) / d, uy = (e.y - f.y) / d, px = f.x - ux * (m.r + f.r), py = f.y - uy * (m.r + f.r);
+        const a = Math.atan2(py - m.y, px - m.x); if (Math.cos(a) * ux + Math.sin(a) * uy > 0.9) list.push([m.i, a, 1, 1]); }));
+      if (t === 'remoteBomb' || t === 'phantom') near.forEach(f => { const a = Math.atan2(f.y - m.y, f.x - m.x); list.push([m.i, a, 1, 1], [m.i, a + 0.18, 1, 1], [m.i, a - 0.18, 1, 1]); });
+    });
+    // 二次操作：普通 AI 一律用固定時機（simpleTap）；高手之後再搜尋最佳時機
+    const tapOf = c => simpleTap(b, b.bodies[c[0]]);
+    const taps = list.map(c => tapOf(c));
+    const sc = list.map((c, k) => evalShot(b, team, c[0], c[1], c[2], false, taps[k], EX));
+    if (EX) { // 高手：每個二次操作角色取分數前 3 的候選，搜尋點擊時機
+      const byU = {};
+      list.forEach((c, k) => { if (FA.battle.tapAbility(b.bodies[c[0]])) (byU[c[0]] = byU[c[0]] || []).push(k); });
+      for (const u in byU) byU[u].sort((x, y) => sc[y] - sc[x]).slice(0, 3).forEach(k => {
+        tapPlans(b, team, list[k]).forEach(tp => { const v = evalShot(b, team, list[k][0], list[k][1], list[k][2], false, tp, EX); if (v > sc[k]) { sc[k] = v; taps[k] = tp; } });
+      });
+    }
     let bi = -1, bs = -1e9;
     sc.forEach((v, k) => { if (v > bs) { bs = v; bi = k; } });
     if (bi < 0) return null;
-    let best = list[bi], useUlt = false;
+    let best = list[bi], useUlt = false, bestTap = taps[bi];
     // 大招：能量滿的棋子取前幾名候選，再各預演一次「放大招」；放大招要比不放多出 ultHold 分才放（快沒動數時不留）
     const UM = FA.DATA.config.ult.max, full = new Set(mine.filter(m => m.energy >= UM).map(m => m.i));
     if (full.size) {
       const hold = b.moves[team] <= 3 ? 0 : W.ultHold;
       const top = list.map((c, k) => k).filter(k => full.has(list[k][0])).sort((x, y) => sc[y] - sc[x]).slice(0, Math.max(2, Math.min(4, N >> 3)));
-      top.forEach(k => { const c = list[k], v = evalShot(b, team, c[0], c[1], c[2], true) - hold; if (v > bs) { bs = v; best = c; useUlt = true; } });
+      top.forEach(k => { const c = list[k], v = evalShot(b, team, c[0], c[1], c[2], true, taps[k], EX) - hold; if (v > bs) { bs = v; best = c; useUlt = true; bestTap = taps[k]; } });
     }
-    const noise = (FA.rng.next(r) + FA.rng.next(r) - 1) * diff.aimNoise;
-    return { idx: best[0], angle: best[1] + noise, power: best[2], score: bs, ult: useUlt };
+    const bm = b.bodies[best[0]], an = EX && isSkill(bm) ? diff.aimNoise * 0.35 : diff.aimNoise; // 高手玩神技角色瞄得更準
+    const noise = (FA.rng.next(r) + FA.rng.next(r) - 1) * an;
+    const res = { idx: best[0], angle: best[1] + noise, power: best[2], score: bs, ult: useUlt };
+    if (bestTap) res.tap = bestTap;
+    return res;
   }
 
-  FA.ai = { choose, evalShot, bankAngles, pillarAngle };
+  FA.ai = { choose, evalShot, bankAngles, pillarAngle, multiBank, simpleTap };
 })(globalThis);

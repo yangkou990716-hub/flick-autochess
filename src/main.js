@@ -56,12 +56,14 @@
     const X = (D.ults || {})[key] || { name: '大招', desc: '' }, bar = energy == null ? '' : `　<span style="color:${energy >= UC.max ? '#ffd54f' : '#9df'}">能量 ${Math.floor(Math.min(UC.max, energy))}/${UC.max}${energy >= UC.max ? '（已滿，發光中）' : ''}</span>`;
     return `<span class="k">⚡大招「${X.name}」：</span>${X.desc}${bar}<br>`;
   }
+  const starTip = U => U.ability && ['sweetSpot', 'cueBall', 'trickShot', 'rhythm', 'remoteBomb', 'phantom'].includes(U.ability.type) ? '<span class="lbl">（技巧加成部分 2 星 +12%、3 星 +24%）</span>' : '';
   function unitInfo(u) {
     const U = D.units[u.id], m = C.starMult[u.star - 1];
     const role = { front: '前台', back: '後台', both: '兩用（站位賦能）' }[U.role];
     let s = `<b>${U.name} ${'★'.repeat(u.star)}</b>　<span class="k">${U.cost}費</span>　${U.traits.map(t => D.traits[t].name).join('・')}${U.faction ? '　' + facName(u.id) : ''}　${role}<br>`;
     s += `生命 ${Math.round(U.hp * m)}｜攻擊 ${Math.round(U.atk * m)}｜速度 ${U.speed}｜重量 ${U.mass}｜大小 ${U.r}<br>`;
     if (U.ability && U.role !== 'back') s += `<span class="k">${U.role === 'both' ? '前台' : '能力'}：</span>${U.ability.desc}<br>`;
+    if (U.tip) s += `<span class="k" style="color:#ffd740">🎯 怎麼玩好：</span>${U.tip}${starTip(U)}<br>`; // ---- 神技 ----
     if (U.back && U.role !== 'front') s += `<span class="k">後台：</span>${backText(U)}<br>`;
     if (U.role !== 'back') s += ultLine(ultKey(u.id), u.energy);
     if (U.link) s += `<span class="k">聯動：</span>撞到${D.units[U.link.with].name} →「${U.link.combo.name}」<br>`;
@@ -420,6 +422,7 @@
   cv.addEventListener('pointerdown', e => {
     if (paused || !battle || tutOn) return;
     const w = ptr(e);
+    if (battle.phase === 'moving' && battle.turn === 0 && FA.battle.canTap(battle)) { if (FA.battle.tap(battle, w.x, w.y)) { vib(18); return; } } // ---- 二次操作 ----：飛行中點畫面
     tap = { x: e.clientX, y: e.clientY, t: performance.now(), body: bodyAt(w) };
     if (!tap.body) hideBInfo();
     if (battle.phase === 'aim' && battle.turn === 1 && !tap.body) { if (!ai) ai = { t: 0, c: null }; ai.ff = true; } // 敵方瞄準：點空白快轉
@@ -479,6 +482,7 @@
     const ready = b.phase === 'aim' && b.turn === 0 && FA.battle.avail(b, 0).some(o => o.energy >= UC.max);
     if (!ready) ui.ultArmed = false;
     ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！剩 ${Math.max(0, b.moves[0])} 動` : b.phase === 'over' ? (b.winner === 0 ? '勝利！' : '落敗…')
+      : b.phase === 'moving' && b.turn === 0 && FA.battle.canTap(b) ? FA.view.tapHint(b)
       : b.phase === 'aim' ? (b.turn === 0 ? (ui.ultArmed ? '⚡ 拉射發光的棋子放大招（再按大招取消）' : '你的回合：按住棋子往後拉') : '敵方瞄準中…（點空白快轉）') : '';
     const bu = $('bUlt'); bu.classList.toggle('hidden', !ready); bu.classList.toggle('on', !!ui.ultArmed);
     const uh = ui.ultArmed ? '⚡ 大招待命<small>彈發光的棋子・再按取消</small>' : '⚡ 大招<small>能量滿的棋子會發光</small>';
@@ -506,10 +510,10 @@
       const st = mode === 'duel' ? 15 : run.stage + 1 + (run.node === 'encounter' ? RD.encounter[run.encLv].add : 0);
       ai.c = FA.ai.choose(battle, 1, D.enemies.difficulty(st), battle.rng);
       if (!ai.c) { ai = null; return; }
-      if (ai.ff) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power, ai.c.ult); ui.aim = null; ai = null; return; }
+      if (ai.ff) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power, ai.c.ult, ai.c.tap); ui.aim = null; ai = null; return; }
       ui.aim = { idx: ai.c.idx, angle: ai.c.angle, power: ai.c.power, enemy: true };
     }
-    if (ai.c && (ai.t > 1.25 || ai.ff)) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power, ai.c.ult); ui.aim = null; ai = null; }
+    if (ai.c && (ai.t > 1.25 || ai.ff)) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power, ai.c.ult, ai.c.tap); ui.aim = null; ai = null; }
   }
 
   function afterShot() {

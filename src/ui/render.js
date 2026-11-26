@@ -30,6 +30,8 @@
     cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); pillarCache = {}; causA = null;
     const A = FA.DATA.config.arena; S = Math.min((W - 28) / (A.w + 10), (H - 190) / (A.h + 10)); CX = W / 2; CY = H / 2 + 18; bgCache = null;
   };
+  // ---- 二次操作 ----：飛行中提示文字
+  V.tapHint = b => { const mv = b.bodies[b.mover], k = FA.battle.tapAbility(mv); return k === 'boom' ? '👆 點畫面任一處：引爆！' : k === 'split' ? '👆 點想讓幻影衝去的位置！' : ''; };
   V.toWorld = (x, y) => ({ x: (x - CX) / S, y: (y - CY) / S });
   V.reset = () => {
     V.trails = {}; V.bolts = []; V.parts = []; V.texts = []; V.rings = []; V.flashes = []; V.decals = []; V.walls = []; V.fx = []; V.ripples = [];
@@ -249,6 +251,12 @@
       else if (e.t === 'piggold') { SND('coin'); V.texts.push({ x: e.x, y: e.y - 26, txt: `+${e.n}💰`, life: 1.1, max: 1.1, col: '#ffd54f', size: 16, tier: 1, vy: 40 }); burst(e.x, e.y, '#ffd54f', 10, 220, { k: 'ember', life: 0.8, max: 0.8, add: true }); }
       else if (e.t === 'pighop') { V.texts.push({ x: e.x, y: e.y - 24, txt: '蹦！', life: 0.6, max: 0.6, col: '#f8a5c2', size: 12, tier: 1, vy: 30 }); ring(e.x, e.y, 30, '#f8a5c2', 0.25, { w: 2, nofill: true }); }
       else if (e.t === 'pigflee') { burst(e.x, e.y, '#ffe0ec', 6, 160); }
+      // ---- 神技 ----
+      else if (e.t === 'sweet') { SND('full'); V.texts.push({ x: e.x, y: e.y - 42, txt: '🎯 甜蜜點！', life: 1, max: 1, col: '#69f0ae', size: 22, tier: 2, vy: 30 }); ring(e.x, e.y, 60, '#69f0ae', 0.35, { w: 4 }); sparks(e.x, e.y, '#b9f6ca', 12, 360); }
+      else if (e.t === 'skill') { const bad = e.bad, sm = e.small; V.texts.push({ x: e.x, y: e.y - 34, txt: e.txt, life: sm ? 0.8 : 1.2, max: sm ? 0.8 : 1.2, col: bad ? '#9a97b0' : '#ffd740', size: sm ? 13 : 20, tier: sm ? 1 : 2, vy: 30 });
+        if (!sm) { SND('combo'); ring(e.x, e.y, 64, '#ffd740', 0.4, { w: 4 }); sparks(e.x, e.y, '#fff59d', 14, 380); V.shake = Math.max(V.shake, 7); } }
+      else if (e.t === 'tap') { vib(20); ring(e.x, e.y, 46, '#ffffff', 0.3, { w: 3, nofill: true }); if (e.kind === 'split') { sparks(e.x, e.y, '#c5cae9', 16, 420); V.bolts.push({ x1: e.x, y1: e.y, x2: e.x2, y2: e.y2, life: 0.18, seed: Math.random() * 1000 }); } }
+      else if (e.t === 'carom') { SND('hit'); V.texts.push({ x: e.x, y: e.y - 26, txt: '連撞！', life: 0.9, max: 0.9, col: '#fff', size: 16, tier: 2, vy: 30 }); ring(e.x, e.y, 40, '#ffffff', 0.25, { w: 3 }); }
       else if (e.t === 'over') SND(e.winner === 0 ? 'win' : 'lose');
       else if (e.t === 'fullpower') { SND('full'); V.texts.push({ x: e.x, y: e.y - 42, txt: '全力！', life: 1, max: 1, col: '#ff5', size: 24, tier: 2, vy: 30 }); ring(e.x, e.y, 70, '#ffe066', 0.35, { w: 5 }); sparks(e.x, e.y, '#ffe066', 14, 380); V.shake = Math.max(V.shake, 6); }
       else if (e.t === 'shrink') { V.banner = { txt: '⚠ 場地縮小！', life: 1.2, max: 1.2, col: '#ff8a8a' }; V.shrinkT = 1.4; V.shake = Math.max(V.shake, 6); }
@@ -659,6 +667,12 @@
         if (full && Math.random() < 0.7) { const a = Math.random() * TAU, d = o.r * 2.6; add({ x: o.x + Math.cos(a) * d, y: o.y + Math.sin(a) * d, vx: -Math.cos(a) * d * 3.2, vy: -Math.sin(a) * d * 3.2, life: 0.3, max: 0.3, col: '#ffd27a', k: 'streak', drag: 1, add: true }); }
         ctx.strokeStyle = `rgba(${col},0.9)`; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, r + 5, -Math.PI / 2, -Math.PI / 2 + TAU * pw); ctx.stroke();
       }
+      if (o.ab && !o.temp) { // ---- 神技 ----：可二次操作👆、節奏層數♪
+        if (o.ab.tap && (sel || (b.phase === 'moving' && b.mover === o.i && !o.tapUsed))) { const mv = b.phase === 'moving'; ctx.globalAlpha = mv ? 0.6 + 0.4 * Math.sin(t * 12) : 0.85; outText('👆', x + r * 0.9, y - r * 0.9, mv ? 18 : 13, '#fff', 3); ctx.globalAlpha = 1;
+          if (mv) { ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(x, y, r + 8 + Math.sin(t * 12) * 2, 0, TAU); ctx.stroke(); ctx.setLineDash([]); } }
+        if (o.ab.type === 'rhythm' && o.stacks) outText('♪' + o.stacks, x - r * 0.9, y - r * 0.9, 13, o.stacks >= o.ab.boomAt ? '#ffd740' : '#fff', 3);
+        if (o.ab.type === 'sweetSpot' && sel && aimO !== o) outText('🎯', x + r * 0.9, y - r * 0.9, 12, '#fff', 3);
+      }
       const UM = FA.DATA.config.ult.max, en = Math.min(1, (o.energy || 0) / UM), full = en >= 1 && !o.temp && !o.ultOn, foe = o.team !== 0, pul = 0.5 + 0.5 * Math.sin(t * 7 + o.i);
       const ecol = foe ? '255,70,90' : '255,215,80';
       if (full) { const g = ctx.createRadialGradient(x, y, r * 0.8, x, y, r * (1.8 + pul * 0.3)); g.addColorStop(0, `rgba(${ecol},${0.3 + pul * 0.3})`); g.addColorStop(1, `rgba(${ecol},0)`); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * (1.8 + pul * 0.3), 0, TAU); ctx.fill(); }
@@ -768,7 +782,10 @@
       ctx.save(); rrect(bx, by, bw, 8, 4); ctx.clip(); ctx.fillStyle = gr; ctx.fillRect(bx, by, bw * pw, 8); ctx.fillStyle = '#ffffff55'; ctx.fillRect(bx, by, bw * pw, 3);
       if (full) { ctx.fillStyle = `rgba(255,255,255,${0.3 + Math.sin(t * 25) * 0.3})`; ctx.fillRect(bx, by, bw, 8); } ctx.restore();
       ctx.fillStyle = '#fff'; ctx.fillRect(bx + bw * fp, by - 3, 2, 14);
-      outText(full ? '全力！' : '力道 ' + Math.round(pw * 100) + '%', bx + bw / 2, by - 7, full ? 15 : 12, full ? '#ffe066' : '#fff', 3);
+      const ab = o.ab, sw = ab && ab.type === 'sweetSpot' && pw >= ab.lo && pw <= ab.hi;
+      if (ab && ab.type === 'sweetSpot') { ctx.fillStyle = sw ? '#69f0ae' : '#69f0ae88'; ctx.fillRect(bx + bw * ab.lo, by - 4, bw * (ab.hi - ab.lo), 16); ctx.strokeStyle = '#0a3'; ctx.lineWidth = 1; ctx.strokeRect(bx + bw * ab.lo, by - 4, bw * (ab.hi - ab.lo), 16); } // 甜蜜點區間
+      outText(sw ? '🎯 甜蜜點！' : full ? '全力！' : '力道 ' + Math.round(pw * 100) + '%', bx + bw / 2, by - 7, full || sw ? 15 : 12, sw ? '#69f0ae' : full ? '#ffe066' : '#fff', 3);
+      const tk = FA.battle.tapAbility(o); if (tk) outText(tk === 'boom' ? '👆 飛行中點畫面引爆' : '👆 飛行中點畫面分身', bx + bw / 2, by + 26, 11, '#fff', 3);
     }
     ctx.restore();
 

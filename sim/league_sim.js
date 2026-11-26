@@ -11,7 +11,7 @@ function fight(c0, c1, seed) {
   const t = [c0, c1].map(c => RUN.importTeam(c));
   const b = BT.create({ pFront: t[0].front, pBack: t[0].back, eFront: t[1].front, eBack: t[1].back, rules: [], env: {}, pExt: ext(t[0].strats), eExt: ext(t[1].strats), seed });
   const ar = { s: seed ^ 0x1234 }; let n = 0;
-  while (b.phase !== 'over' && n++ < 400) { const c = FA.ai.choose(b, b.turn, D.enemies.difficulty(15), ar); if (!c || !BT.launch(b, c.idx, c.angle, c.power, !!c.ult)) break; BT.runShot(b); BT.endShot(b); b.events = []; }
+  while (b.phase !== 'over' && n++ < 400) { const c = FA.ai.choose(b, b.turn, D.enemies.difficulty(15), ar); if (!c || !BT.launch(b, c.idx, c.angle, c.power, !!c.ult, c.tap)) break; BT.runShot(b); BT.endShot(b); b.events = []; }
   if (b.phase !== 'over') throw new Error('戰鬥沒結束');
   return { winner: b.winner, left: Math.max(0, b.moves[b.winner]) };
 }

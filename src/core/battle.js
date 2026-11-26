@@ -32,7 +32,8 @@
       lifesteal: 0, blastR: 0, blastMult: 0, blastMul: 0, pullMul: 0, poisonMul: 0, zapMult: 0, link: null, weapon: null, ab: null, split: null, poison: null,
       pierceLeft: 0, boomUsed: false, burnUsed: false, splitDone: false, healed: false, relaunched: false, fricMul: 1, exposed: 0, exposeAmp: 0, fx: {},
       down: false, sx: 0, sy: 0, ringBuff: 0, energy: 0, ultType: '', ultOn: '', ultUsed: 0, ultStop: 0, ultMassMul: 1,
-      farDmg: 0, dodge: 0, trav: 0, ox: 0, oy: 0, homed: false, tether: -1, fear: 0, veil: 0, decoyUsed: false };
+      farDmg: 0, dodge: 0, trav: 0, ox: 0, oy: 0, homed: false, tether: -1, fear: 0, veil: 0, decoyUsed: false,
+      hitCos: 1, preSp: 0, hitShot: false, sweet: 0, cueNext: 0, caromBy: -1, caromDmg: 0, stacks: 0, tapUsed: false, skillDmg: 0, skillEn: 0 }; // ---- 神技 ----
   }
 
   function makeBody(inst, team, sideMods, traitsActive, env) {
@@ -53,7 +54,7 @@
     const b = Object.assign(base, { id: inst.id, name: U.name, star: inst.star, traits: unitTraits(inst), color: U.color,
       r: (U.r + (inst.star - 1) * 2) * rm, m: Math.max(0.3, U.mass * (1 + (mods.massPct || 0))), hp, maxHp: hp, atk, baseAtk: atk,
       speed: U.speed * (1 + (mods.speedPct || 0)), bounces: cfg.baseBounces + (mods.bounces || 0), wallAdd: mods.wallAdd || 0,
-      farDmg: mods.farDmg || 0, dodge: Math.min(cfg.dodgeCap || 0.5, mods.dodge || 0),
+      farDmg: mods.farDmg || 0, skillDmg: mods.skillDmg || 0, skillEn: mods.skillEn || 0, dodge: Math.min(cfg.dodgeCap || 0.5, mods.dodge || 0),
       lifesteal: mods.lifesteal || 0, blastR: mods.blastR || 0, blastMult: mods.blastMult || 0, blastMul: mods.blastMul || 0, pullMul: mods.pullMul || 0, poisonMul: mods.poisonMul || 0,
       link: U.link ? U.link.with : null, weapon: inst.weapon || null, ultType: U.ult || (D().traitUlt || {})[U.traits[0]] || 'nova' });
     b.shield = hp * (mods.shieldPct || 0);
@@ -65,6 +66,7 @@
       if (b.ab.type === 'pierce') b.pierceLeft = b.ab.n;
       if (b.ab.type === 'vamp') b.lifesteal += b.ab.val;
       if (b.ab.type === 'glide') b.fricMul *= b.ab.mul;
+      if (b.ab.type === 'trickShot') b.bounces += b.ab.extra || 0;
     }
     return b;
   }
@@ -129,7 +131,7 @@
     const bt = { R, R0: R, hw, hh, hw0: hw, hh0: hh, pillars, rules: o.rules || [], env, bodies, sides: [p.side, e.side], first: o.first != null ? o.first : (e.side.noAct ? 0 : rng.int({ s: (o.seed | 0) ^ 0x2545f491 }, 2)), turn: 0, shots: [0, 0], round: 1, maxRounds: 999, bonus: [0, 0],
       moves: [M + p.side.shotsAdd * 2, e.side.noAct ? 0 : M + e.side.shotsAdd * 2], movesMax: [0, 0], deaths: [0, 0],
       phase: 'aim', winner: null, rng: { s: o.seed | 0 }, events: [], simT: 0, mover: -1, chain: 0, hits: 0, pending: [], comboUsed: {},
-      shotCount: 0, zones: [], ghost: {}, echoUsed: false, gold: 0, stopDone: false };
+      shotCount: 0, zones: [], ghost: {}, echoUsed: false, gold: 0, stopDone: false, stepN: 0, tapQ: null, tapLog: null, teamHit: false };
     bt.movesMax = bt.moves.slice();
     if (o.eExt && o.eExt.affix) affixSetup(bt, o); // ---- 敵人詞綴 ----
     relax(bt);
@@ -221,10 +223,11 @@
   }
   function canMove(b, team) { return avail(b, team).length > 0; }
 
-  function launch(b, idx, angle, power, ult) {
+  function launch(b, idx, angle, power, ult, tap) {
     const x = b.bodies[idx], cfg = C();
     if (!x || !x.alive || x.temp || x.team !== b.turn || b.phase !== 'aim' || !avail(b, b.turn).includes(x)) return false;
     power = Math.max(0, Math.min(1, power));
+    const raw = power, sweet = x.ab && x.ab.type === 'sweetSpot' && raw >= x.ab.lo - 1e-9 && raw <= x.ab.hi + 1e-9; // 甜蜜點看玩家拉的力道（恐懼前）
     if (b.affix) power = affixLaunch(b, x, power); // ---- 敵人詞綴 ----
     if (x.fear) { power *= 1 - x.fear; x.fear = 0; b.events.push({ t: 'fear', x: x.x, y: x.y, used: true }); } // 恐懼：這一發力道打折
     const full = power >= cfg.fullPowerAt;
@@ -235,8 +238,11 @@
     let spd = sp;
     if (ult && x.energy >= U.max) { x.energy = 0; x.ultOn = x.ultType; b.events.push({ t: 'ult', x: x.x, y: x.y, name: ((D().ults || {})[x.ultType] || {}).name || '大招', team: x.team }); spd *= ultLaunch(b, x); }
     else x.energy = Math.min(U.max, x.energy + U.gainLaunch);
+    if (sweet) { spd *= x.ab.speed; b.events.push({ t: 'sweet', x: x.x, y: x.y }); }
     x.vx = Math.cos(angle) * spd; x.vy = Math.sin(angle) * spd;
-    b.bodies.forEach(y => { y.ringBuff = 0; y.wallHits = 0; y.boomUsed = false; y.burnUsed = false; y.splitDone = false; y.healed = false; y.relaunched = false; y.trav = 0; y.homed = false; y.tether = -1; if (y.ab && y.ab.type === 'pierce') y.pierceLeft = y.ab.n; });
+    b.bodies.forEach(y => { y.ringBuff = 0; y.wallHits = 0; y.boomUsed = false; y.burnUsed = false; y.splitDone = false; y.healed = false; y.relaunched = false; y.trav = 0; y.homed = false; y.tether = -1; y.hitShot = false; y.caromBy = -1; y.cueNext = 0; y.tapUsed = false; y.sweet = 0; if (y.ab && y.ab.type === 'pierce') y.pierceLeft = y.ab.n; });
+    x.sweet = sweet ? 1 : 0;
+    b.stepN = 0; b.tapLog = null; b.teamHit = false; b.tapQ = tapAbility(x) ? cleanTap(tap) : null; // 二次操作：預先排好的點擊（重播／連線／AI）
     x.ox = x.x; x.oy = x.y;
     b.zones.forEach(z => z.hit = {});
     b.phase = 'moving'; b.mover = idx; b.simT = 0; b.chain = 0; b.hits = 0; b.pending = []; b.ghost = {}; b.echoUsed = false; b.stopDone = false;
@@ -341,7 +347,23 @@
     // 幽影：閃避（隱身必閃）——閃掉碰撞傷害與所有附加效果
     if (!tgt.temp && (tgt.veil || tgt.dodge) && (tgt.veil || rng.next(b.rng) < tgt.dodge)) { tgt.veil = 0; b.events.push({ t: 'dodge', x: tgt.x, y: tgt.y }); return; }
     const far = src.farDmg ? 1 + src.farDmg * Math.min(cfg.farCap || 5, src.trav / 100) : 1, pinK = ab && ab.type === 'pin' ? 1 + ab.bonus : 1; // 狙擊：助跑距離加成
-    dealDamage(b, tgt, atk * speed / cfg.dmgSpeedRef * mult * far * pinK, src, 'hit');
+    // ---- 神技 ----：甜蜜點／花式／正中／擦邊／節奏 的本次撞擊倍率
+    let sk = 1, post = null; const K = 1 + 0.12 * ((src.star || 1) - 1); // 星級：技巧加成部分 +12%/星
+    if (ab && !src.temp) {
+      if (ab.type === 'sweetSpot' && src.sweet === 1) { src.sweet = 2; sk *= (1 + (ab.mult - 1) * K) * skillMul(b, src, tgt, '甜蜜點！'); post = 'sweet'; }
+      if (ab.type === 'trickShot' && !src.hitShot && src.wallHits >= ab.n) { sk *= (1 + (ab.mult - 1) * K) * skillMul(b, src, tgt, '花式 ×' + src.wallHits + '！'); post = 'trick'; }
+      if (ab.type === 'cueBall') {
+        if (src.cueNext) { sk *= 1 + src.cueNext; src.cueNext = 0; }
+        if (src.hitCos >= ab.perfect) { sk *= (1 + (ab.mult - 1) * K) * skillMul(b, src, tgt, '正中！'); post = 'perfect'; }
+        else if (src.hitCos <= ab.graze) post = 'graze';
+        else if (src.hitCos >= ab.caromCos && !tgt.boss && !tgt.temp) { tgt.caromBy = src.i; tgt.caromDmg = atk * ab.carom * K * 0.7; } // 偏一點：不定桿，但被撞飛的敵人撞到隊友仍有 7 成連撞傷害
+      }
+      if (ab.type === 'rhythm' && src.stacks) { sk *= 1 + ab.per * src.stacks * K; if (src.stacks >= ab.boomAt) { sk *= skillMul(b, src, tgt, '節奏 ×' + src.stacks); post = 'beat'; } }
+    }
+    dealDamage(b, tgt, atk * speed / cfg.dmgSpeedRef * mult * far * pinK * sk, src, 'hit');
+    if (!src.temp) src.hitShot = true;
+    if (src.team === b.turn) b.teamHit = true; // 節奏：本隊這一發有撞到敵人
+    if (post) skillPost(b, src, tgt, post, atk, K);
     if (pinK > 1 && tgt.alive && !tgt.boss) { tgt.vx = tgt.vy = 0; b.events.push({ t: 'pin', x: tgt.x, y: tgt.y }); }
     if (ab && ab.type === 'fear' && tgt.alive && !tgt.boss) { tgt.fear = Math.max(tgt.fear, ab.val); b.events.push({ t: 'fear', x: tgt.x, y: tgt.y }); }
     if (ab && ab.type === 'tether' && src.tether < 0 && tgt.alive && !tgt.temp) { src.tether = tgt.i; b.events.push({ t: 'tether', x: tgt.x, y: tgt.y }); }
@@ -421,7 +443,8 @@
   // ---- 物理一步；回傳 true 代表全部停止 ----
   function step(b) {
     const cfg = C(), dt = cfg.dt, bs = b.bodies;
-    b.simT += dt;
+    b.simT += dt; b.stepN = (b.stepN || 0) + 1;
+    if (b.tapQ && b.tapQ.t === b.stepN) doTap(b, b.tapQ);
     const fr = Math.exp(-cfg.friction * (b.env.frictionMul || 1) * dt), ld = cfg.linDecel * (b.env.frictionMul || 1) * dt;
     for (let i = 0; i < bs.length; i++) {
       const o = bs[i]; if (!o.alive) continue;
@@ -472,12 +495,13 @@
         // 穿透
         if (!same && rv < 0) {
           const pa = a.pierceLeft > 0 && sa > 200 ? a : c.pierceLeft > 0 && sc > 200 ? c : null;
-          if (pa) { pa.pierceLeft--; b.ghost[key] = 1; const t = pa === a ? c : a; onHit(b, pa, t, pa === a ? sa : sc); b.events.push({ t: 'pierce', x: t.x, y: t.y }); continue; }
+          if (pa) { const pv = hyp(pa.vx, pa.vy); pa.preSp = pv; pa.hitCos = pv > 1 ? (pa === a ? sa : sc) / pv : 0; pa.pierceLeft--; b.ghost[key] = 1; const t = pa === a ? c : a; onHit(b, pa, t, pa === a ? sa : sc); b.events.push({ t: 'pierce', x: t.x, y: t.y }); continue; }
         }
         const ia = 1 / a.m, ic = 1 / c.m, ov = rr - d;
         a.x -= nx * ov * ia / (ia + ic); a.y -= ny * ov * ia / (ia + ic);
         c.x += nx * ov * ic / (ia + ic); c.y += ny * ov * ic / (ia + ic);
         if (rv >= 0) continue;
+        if (!same) { const va = hyp(a.vx, a.vy), vc = hyp(c.vx, c.vy); a.preSp = va; c.preSp = vc; a.hitCos = va > 1 ? sa / va : 0; c.hitCos = vc > 1 ? sc / vc : 0; } // 撞擊角度（1＝正面）
         const jm = -(1 + cfg.restitution) * rv / (ia + ic);
         a.vx -= jm * ia * nx; a.vy -= jm * ia * ny; c.vx += jm * ic * nx; c.vy += jm * ic * ny;
         const px = a.x + nx * a.r, py = a.y + ny * a.r;
@@ -497,6 +521,10 @@
           if (c.ab && c.ab.type === 'allyBoost' && sa > 100) { c.vx *= c.ab.mult; c.vy *= c.ab.mult; b.events.push({ t: 'boost', x: c.x, y: c.y }); }
           [[a, c, sa], [c, a, sc]].forEach(([h, t, s]) => { const hp = h.ultOn === 'heal' ? 0.4 : (h.ab && h.ab.type === 'healTouch' ? h.ab.pct : 0); if (hp && s > 80 && !t.healed && !t.temp) { t.healed = true; t.hp = Math.min(t.maxHp, t.hp + t.maxHp * hp); b.events.push({ t: 'heal', x: t.x, y: t.y }); } });
           if (a.ab && a.ab.type === 'allyBoost' && sc > 100) { a.vx *= a.ab.mult; a.vy *= a.ab.mult; b.events.push({ t: 'boost', x: a.x, y: a.y }); }
+          if ((a.caromBy >= 0 || c.caromBy >= 0) && Math.max(Math.abs(sa), Math.abs(sc)) > 100) { // 撞球手：被正中打飛的敵人撞到隊友，雙方都受傷
+            const k = a.caromBy >= 0 ? a : c, src = bs[k.caromBy], dmg = k.caromDmg; k.caromBy = -1;
+            b.events.push({ t: 'carom', x: px, y: py }); dealDamage(b, a, dmg, src, 'carom'); dealDamage(b, c, dmg, src, 'carom');
+          }
           if (((a.link && a.link === c.id) || (c.link && c.link === a.id)) && !a.temp && !c.temp && Math.max(Math.abs(sa), Math.abs(sc)) > 150) combo(b, a, c, px, py);
         }
       }
@@ -510,6 +538,9 @@
     if (!moving) {
       const mv = bs[b.mover];
       if (mv && mv.alive && mv.ultOn && !mv.ultStop && ultStop(b, mv)) return false;
+      if (!b.stopDone && mv && mv.alive && mv.ab && mv.ab.type === 'remoteBomb' && !mv.tapUsed) { // 遙控炸彈：沒點就停下小爆
+        b.stopDone = true; explode(b, mv.x, mv.y, mv.ab.autoR, atkOf(mv) * mv.ab.auto, mv.team, mv, false); return false;
+      }
       if (!b.stopDone && mv && mv.alive && mv.ab && mv.ab.type === 'mineDrop') {
         b.stopDone = true; b.zones.push({ kind: 'mine', x: mv.x, y: mv.y, r: 18, br: mv.ab.r, dmg: atkOf(mv) * mv.ab.mult * (1 + (mv.blastMul || 0)), team: mv.team, left: 6, hit: {} });
       }
@@ -619,7 +650,7 @@
       b.moves[o.team] -= cfg.deathCost;
       b.events.push({ t: 'movecost', team: o.team, n: cfg.deathCost, x: o.x, y: o.y });
       if (b.moves[o.team] <= 0) return;
-      o.alive = true; o.hp = o.maxHp; o.shield = 0; o.poison = null; o.stunned = false; o.exposed = 0; o.fear = 0; o.vx = o.vy = 0; o.x = o.sx; o.y = o.sy;
+      o.alive = true; o.hp = o.maxHp; o.shield = 0; o.poison = null; o.stunned = false; o.exposed = 0; o.fear = 0; o.stacks = 0; o.vx = o.vy = 0; o.x = o.sx; o.y = o.sy;
       b.events.push({ t: 'respawn', x: o.x, y: o.y, team: o.team });
     });
     relax(b);
@@ -629,7 +660,8 @@
     const t = b.turn;
     b.shotCount++;
     const mv = b.bodies[b.mover];
-    if (mv) { mv.acted = true; b.moves[t]--; ultEnd(mv); }
+    if (mv) { mv.acted = true; b.moves[t]--; ultEnd(mv); rhythmEnd(b, t); }
+    b.tapQ = null;
     if (b.bodies.some(o => o.temp)) { b.bodies = b.bodies.filter(o => !o.temp); b.bodies.forEach((o, i) => o.i = i); }
     b.zones.forEach(z => z.left--); b.zones = b.zones.filter(z => z.left > 0);
     b.bodies.forEach(o => { if (o.team === t && b.round > b.maxRounds) o.stunned = false; o.wallHits = 0; });
@@ -809,8 +841,62 @@
     if (g) b.events.push({ t: 'piggold', x: tgt.x, y: tgt.y, n: g });
   }
 
+  // ---- 神技 ----：技巧觸發（神技羈絆加傷＋回能量、跳字）
+  function skillMul(b, src, tgt, txt) {
+    if (src.skillEn) src.energy = Math.min(C().ult.max, src.energy + src.skillEn);
+    b.events.push({ t: 'skill', x: tgt ? tgt.x : src.x, y: tgt ? tgt.y : src.y, txt, team: src.team });
+    return 1 + (src.skillDmg || 0);
+  }
+  function skillPost(b, src, tgt, kind, atk, K) {
+    const ab = src.ab;
+    if (kind === 'sweet' && tgt.alive) expose(b, tgt, ab.turns, ab.amp);
+    if (kind === 'trick') explode(b, tgt.x, tgt.y, ab.r, atk * ab.boom * K, src.team, src, false);
+    if (kind === 'beat') explode(b, tgt.x, tgt.y, ab.r, atk * ab.boom, src.team, src, false);
+    if (kind === 'perfect' && tgt.alive && !tgt.boss && !tgt.temp) { // 定桿：自己停住，敵人整顆飛出
+      const dx = tgt.x - src.x, dy = tgt.y - src.y, d = hyp(dx, dy) || 1, v = src.preSp * ab.push * Math.min(1.3, Math.sqrt(src.m / tgt.m));
+      tgt.vx = dx / d * v; tgt.vy = dy / d * v; src.vx = src.vy = 0; tgt.caromBy = src.i; tgt.caromDmg = atk * ab.carom * K;
+    }
+    if (kind === 'graze') { // 擦邊：幾乎不減速，下一撞加成
+      const v = hyp(src.vx, src.vy) || 1, w = Math.max(v, src.preSp * 0.92); src.vx *= w / v; src.vy *= w / v; src.cueNext = ab.grazeBonus * K;
+      b.events.push({ t: 'skill', x: src.x, y: src.y, txt: '擦邊', team: src.team, small: 1 });
+    }
+  }
+  function rhythmEnd(b, t) { // 鼓手：本隊每一發（誰彈都算）有撞到敵人 +1 層，沒撞到就歸零
+    b.bodies.forEach(o => {
+      if (o.team !== t || o.temp || !o.alive || !o.ab || o.ab.type !== 'rhythm') return;
+      if (b.teamHit) { o.stacks = Math.min(o.ab.max, o.stacks + 1); b.events.push({ t: 'skill', x: o.x, y: o.y, txt: '節奏 ' + o.stacks + ' 層', team: o.team, small: 1 }); }
+      else if (o.stacks) { o.stacks = 0; b.events.push({ t: 'skill', x: o.x, y: o.y, txt: '斷拍…', team: o.team, small: 1, bad: 1 }); }
+    });
+  }
+  // ---- 二次操作 ----：飛行中點一下（輸入＝{t 物理步數, x, y 世界座標}，固定步長下可重現）
+  const tapAbility = o => (o && o.ab && o.ab.tap) || null;
+  function cleanTap(q) {
+    if (!q || !isFinite(q.t) || !isFinite(q.x) || !isFinite(q.y)) return null;
+    const t = q.t | 0; if (t < 1 || t > 3000) return null;
+    return { t, x: Math.round(q.x * 100) / 100, y: Math.round(q.y * 100) / 100 };
+  }
+  function canTap(b) { const mv = b.bodies[b.mover]; return b.phase === 'moving' && !!mv && mv.alive && !!tapAbility(mv) && !mv.tapUsed && !b.tapQ; }
+  function tap(b, x, y) { if (!canTap(b)) return null; b.tapQ = cleanTap({ t: b.stepN + 1, x, y }); return b.tapQ && Object.assign({}, b.tapQ); } // 即時點擊：下一步生效，回傳要同步的紀錄
+  function doTap(b, q) {
+    const mv = b.bodies[b.mover], k = tapAbility(mv); if (!k || !mv.alive || mv.tapUsed) return;
+    mv.tapUsed = true; b.tapLog = { t: q.t, x: q.x, y: q.y };
+    const ab = mv.ab, K = 1 + 0.12 * ((mv.star || 1) - 1);
+    if (k === 'boom') { // 遙控炸彈：當場引爆並急停
+      b.events.push({ t: 'tap', x: mv.x, y: mv.y, kind: k });
+      const m = skillMul(b, mv, null, '引爆！'); mv.vx = mv.vy = 0;
+      explode(b, mv.x, mv.y, ab.r, atkOf(mv) * ab.mult * K * m, mv.team, mv, false);
+    }
+    if (k === 'split') { // 幻影劍士：朝點的方向分出幻影
+      const dx = q.x - mv.x, dy = q.y - mv.y, d = hyp(dx, dy) || 1, sp = Math.max(hyp(mv.vx, mv.vy), ab.minSp * mv.speed), m = skillMul(b, mv, null, '分身！');
+      b.events.push({ t: 'tap', x: mv.x, y: mv.y, kind: k, x2: q.x, y2: q.y });
+      const c = Object.assign(blankBody(mv.team), { id: mv.id, name: '', temp: true, acted: true, alive: true, star: mv.star, traits: mv.traits, color: mv.color, r: mv.r * 0.8, m: mv.m * 0.7,
+        hp: 1, maxHp: 1, atk: mv.atk * ab.mult * K * m, baseAtk: mv.atk * ab.mult * K * m, bounces: mv.bounces, wallAdd: mv.wallAdd, speed: 1, fx: {}, x: mv.x, y: mv.y, vx: dx / d * sp, vy: dy / d * sp, i: b.bodies.length });
+      b.bodies.push(c); b.ghost[Math.min(mv.i, c.i) + '-' + Math.max(mv.i, c.i)] = 1;
+    }
+  }
+
   function runShot(b) { let k = 0; while (!step(b) && k++ < 2500); }
 
   FA.battle = { avail, create, launch, step, endShot, runShot, predict, startTurn, alive, hpSum, traitTiers, dealDamage, canMove, addMods, atkOf, expose,
-    factionTiers, emblemMap, unitTraits };
+    factionTiers, emblemMap, unitTraits, tap, canTap, tapAbility };
 })(globalThis);

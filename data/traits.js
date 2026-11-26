@@ -28,7 +28,10 @@
     snipe: { name: '狙擊', color: '#ff5370', beats: ['wall'], weakTo: ['magnet', 'shade'], why: '長距離助跑的高額單發能壓過護盾與減傷；被吸到身邊就沒助跑距離，單發大傷害也怕被閃避',
       tiers: [{ n: 2, mods: { farDmg: 0.02 } }, { n: 4, mods: { farDmg: 0.05, atkPct: 0.05 } }] },
     shade: { name: '幽影', color: '#9575cd', beats: ['snipe', 'heavy'], weakTo: ['blast', 'toxic'], why: '閃避只對碰撞有效，專克靠單發撞擊的流派；爆炸、中毒、電擊等範圍與持續傷害閃不掉',
-      tiers: [{ n: 2, mods: { dodge: 0.07 } }, { n: 4, mods: { dodge: 0.14, hpPct: 0.06 } }] }
+      tiers: [{ n: 2, mods: { dodge: 0.07 } }, { n: 4, mods: { dodge: 0.14, hpPct: 0.06 } }] },
+    // ---- 第八輪擴充 ----：神技（高操作上限）：只有「技巧觸發」（甜蜜點、正中、花式、節奏 4 層、引爆、分身）時才有加成
+    finesse: { name: '神技', color: '#ffd740', beats: ['heavy'], weakTo: ['shade', 'magnet'], why: '精準一擊能把重裝的大塊頭當母球打飛、連撞；但閃避會讓瞄好的那一下落空，被吸附也會打亂算好的路線',
+      tiers: [{ n: 2, mods: { skillDmg: 0.15 } }, { n: 4, mods: { skillDmg: 0.3, skillEn: 20 } }] }
   };
   // 大招：角色依第一個羈絆決定（units 可用 ult 欄位覆蓋）
   FA.DATA.traitUlt = { blast: 'nova', magnet: 'vortex', wall: 'bulwark', swift: 'phase', heavy: 'quake', toxic: 'plague', bounce: 'ricochet', mech: 'overdrive', snipe: 'deadeye', shade: 'eclipse' };
@@ -49,19 +52,19 @@
   // fx：drop 戰後掉基礎裝備機率 / gold 戰後金幣 / shots 每場多幾發（1 發＝2 動） / firstMul 每場第一發沒先撞牆時的碰撞傷害倍率
   //     rerollOff 商店刷新費 -值 / nodeReroll 每節點免費刷新 / lossRed 戰敗扣血 -值 / winHeal 勝利多回血
   FA.DATA.factions = {
-    workshop: { name: '工坊', icon: '🔧', color: '#ffb74d', members: ['spark', 'barrel', 'ironball', 'turret', 'mine', 'detonator', 'drill', 'sniper', 'javelin'],
+    workshop: { name: '工坊', icon: '🔧', color: '#ffb74d', members: ['spark', 'barrel', 'ironball', 'turret', 'mine', 'detonator', 'drill', 'sniper', 'javelin', 'rbomb'],
       tiers: [{ n: 3, fx: { drop: 0.25 }, desc: '每場戰鬥後 25% 機率得 1 件基礎裝備' }, { n: 5, fx: { drop: 0.5, gold: 1 }, desc: '每場戰鬥後 50% 機率得 1 件基礎裝備，並 +1 金' }] },
-    circus: { name: '馬戲團', icon: '🎪', color: '#f06292', members: ['feather', 'boomer', 'spring', 'splitter', 'thunder', 'curler', 'illusion', 'hawk'],
+    circus: { name: '馬戲團', icon: '🎪', color: '#f06292', members: ['feather', 'boomer', 'spring', 'splitter', 'thunder', 'curler', 'illusion', 'hawk', 'cue', 'trick'],
       tiers: [{ n: 3, fx: { shots: 0.5, firstMul: 0.8 }, desc: '每場多 1 動；但第一發要先撞牆，否則碰撞傷害 -20%' }, { n: 5, fx: { shots: 1, firstMul: 0.8 }, desc: '每場多 2 動；但第一發要先撞牆，否則碰撞傷害 -20%' }] },
-    lab: { name: '研究所', icon: '🧪', color: '#4dd0e1', members: ['magnet', 'jelly', 'tesla', 'icy', 'blackhole', 'shroom', 'comet', 'spider', 'eel'],
+    lab: { name: '研究所', icon: '🧪', color: '#4dd0e1', members: ['magnet', 'jelly', 'tesla', 'icy', 'blackhole', 'shroom', 'comet', 'spider', 'eel', 'archer'],
       tiers: [{ n: 3, fx: { rerollOff: 1 }, desc: '商店刷新費 -1' }, { n: 5, fx: { rerollOff: 1, nodeReroll: 1 }, desc: '商店刷新費 -1，每個節點 +1 次免費刷新' }] },
-    guard: { name: '衛隊', icon: '🛡', color: '#aed581', members: ['shield', 'medic', 'captain', 'berserker', 'vampire', 'angel', 'bullet', 'quake', 'shadow', 'nightmare'],
+    guard: { name: '衛隊', icon: '🛡', color: '#aed581', members: ['shield', 'medic', 'captain', 'berserker', 'vampire', 'angel', 'bullet', 'quake', 'shadow', 'nightmare', 'drummer', 'phantom'],
       tiers: [{ n: 3, fx: { lossRed: 2 }, desc: '戰敗扣血 -2' }, { n: 5, fx: { lossRed: 4, winHeal: 1 }, desc: '戰敗扣血 -4，勝利多回 1 血' }] }
   };
   for (const k in FA.DATA.factions) FA.DATA.factions[k].members.forEach(id => { if (FA.DATA.units && FA.DATA.units[id]) FA.DATA.units[id].faction = k; });
 
   // ---- 徽章 ----（裝備的一種，佔 1 格；穿上的角色多 1 個該羈絆（計數 +1）＋小數值。run.js 會併進 items，tier:'emblem'）
-  const EMB = { blast: { blastMul: 0.05 }, magnet: { pullMul: 0.1 }, wall: { shieldPct: 0.04 }, swift: { speedPct: 0.03 }, heavy: { massPct: 0.08 }, toxic: { poisonMul: 0.2 }, mech: { atkPct: 0.04 }, bounce: { wallAdd: 0.04 }, snipe: { farDmg: 0.01 }, shade: { dodge: 0.03 } };
+  const EMB = { blast: { blastMul: 0.05 }, magnet: { pullMul: 0.1 }, wall: { shieldPct: 0.04 }, swift: { speedPct: 0.03 }, heavy: { massPct: 0.08 }, toxic: { poisonMul: 0.2 }, mech: { atkPct: 0.04 }, bounce: { wallAdd: 0.04 }, snipe: { farDmg: 0.01 }, shade: { dodge: 0.03 }, finesse: { skillDmg: 0.05, atkPct: 0.03 } };
   FA.DATA.emblems = {};
   for (const k in EMB) {
     const affix = {}; for (const m in EMB[k]) affix[m] = [EMB[k][m], EMB[k][m]];
@@ -74,6 +77,6 @@
     atkPct: v => `攻擊${s(v)}${p(v)}`, hpPct: v => `生命${s(v)}${p(v)}`, speedPct: v => `速度${s(v)}${p(v)}`, massPct: v => `重量${s(v)}${p(v)}`,
     blastMul: v => `爆炸傷害+${p(v)}`, pullMul: v => `吸力+${p(v)}`, shieldPct: v => `開場護盾 ${p(v)} 生命`, wallAdd: v => `每次撞牆加成+${p(v)}`,
     bounces: v => `撞牆加成可疊+${v}`, poisonMul: v => `毒傷+${p(v)}`, lifesteal: v => `吸血${p(v)}`, blastR: v => `撞擊爆炸範圍${v}`, blastMult: v => `撞擊爆炸${p(v)}攻擊`,
-    farDmg: v => `每飛 100 距離碰撞傷害+${p(v)}（最多 5 段）`, dodge: v => `碰撞閃避 ${p(v)}`
+    farDmg: v => `每飛 100 距離碰撞傷害+${p(v)}（最多 5 段）`, dodge: v => `碰撞閃避 ${p(v)}`, skillDmg: v => `技巧觸發時傷害+${p(v)}`, skillEn: v => `技巧觸發時大招能量+${v}`
   };
 })(globalThis);

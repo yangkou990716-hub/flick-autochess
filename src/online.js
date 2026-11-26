@@ -3,6 +3,8 @@
 // 房主每發結束寫狀態 hash（snap）＋完整快照（snapData），其他人比對 hash，不一致就讀快照覆蓋。
 // 掉線：onDisconnect 標記離線；輪到離線玩家時由房主手機用 FA.ai.choose 代打並寫入 moves；回來就接手。
 // 切出 App／重新整理：記住房號自動重連，從快照＋後續 moves 重建。房主掉線時由下一位在線玩家接手。
+// 二次操作（飛行中點畫面）：出手方先在本機預演這一發（pre），點下去（或飛完沒點）才送出 move，多帶 tap:{t 物理步數, x, y}；
+//   各端用同一個 t 在同一步套用，結果完全相同。對手看到的動畫會晚「點擊前的飛行時間」開始。
 // 資料：rooms/{4 碼房號} = { v, createdAt, hostId, state(lobby|battle|over), players/{pid}, battle, moves/{g?_n}, snap, snapData, result }
 // 第一版：2 人對戰（battle.seats 前 2 位：seat0＝藍方 team0、seat1＝紅方 team1）；players/seat 支援到 8 人，之後擴充。
 (function () {
@@ -40,7 +42,7 @@
   // ---------- 狀態 ----------
   const R = { code: null, ref: null, hostId: null, players: {}, state: null, battle: null, result: null, offs: [], ld: {} }; // ld：各欄位是否已載入
   let B = null, gen = 0, mySeat = -1, applied = 0, moveMap = {}, snapInfo = null, writing = false, building = false;
-  let aiT = 0, aiBusy = false, resyncs = 0, overShown = false, err = '', lobbyBusy = false;
+  let aiT = 0, aiBusy = false, resyncs = 0, overShown = false, err = '', lobbyBusy = false, pre = null; // pre：自己這一發的本機預演（二次操作用）
   const ui = { aim: null, msg: '', ultArmed: false };
   const isHost = () => R.hostId === pid;
   const mv = n => moveMap[mkey(gen, n)];
@@ -196,7 +198,7 @@
   function enterRoom(code, rebuild) {
     detach();
     R.code = code; R.ref = db.ref('rooms/' + code); mem.code = code; saveMem();
-    B = null; gen = 0; applied = 0; moveMap = {}; snapInfo = null; writing = false; overShown = false; err = '';
+    B = null; gen = 0; applied = 0; moveMap = {}; snapInfo = null; writing = false; overShown = false; err = ''; pre = null;
     R.rebuild = !!rebuild;
     const me = R.ref.child('players/' + pid);
     listen(db.ref('.info/connected'), 'value', s => { // 在線狀態：連上就標記在線，斷線由伺服器標記離線
@@ -257,7 +259,7 @@
     }
     R.rebuild = true; // 之後再收到同一場（例如重新整理）一律走重建
     if (gen !== bv.gen) return;
-    B = nb; applied = n; ui.aim = null; ui.ultArmed = false; writing = false; aiT = 0; building = false;
+    B = nb; applied = n; ui.aim = null; ui.ultArmed = false; writing = false; aiT = 0; building = false; pre = null;
     showScreen('netb');
     if (B.phase === 'over') showOver();
     V.banner = { txt: (bv.names[0] || '') + ' VS ' + (bv.names[1] || ''), life: 1.4 };
@@ -268,8 +270,12 @@
     if (!B || building) return;
     while (B.phase === 'aim') {
       const m = mv(applied); if (!m) break;
-      const instant = !!mv(applied + 1) || document.hidden;
-      if (!BT.launch(B, m.idx, m.angle, m.power, !!m.ult)) { console.warn('[net] 無效的一發', m); applied++; afterShot(); continue; }
+      const mine = !!pre && pre.n === applied && pre.g === gen && m.by === pid;
+      if (pre && pre.n === applied && !mine) { pre = null; V.reset(); } // 預演中被 AI 代打搶先：放棄預演
+      if (mine && !pre.done) break; // 自己的預演還在播：播完再套用（結果相同，直接算完）
+      const instant = mine || !!mv(applied + 1) || document.hidden;
+      if (mine) pre = null;
+      if (!BT.launch(B, m.idx, m.angle, m.power, !!m.ult, m.tap)) { console.warn('[net] 無效的一發', m); applied++; afterShot(); continue; }
       if (!instant) break;
       BT.runShot(B); BT.endShot(B); B.events = []; applied++; afterShot(true);
     }
@@ -292,29 +298,49 @@
     const sd = (await R.ref.child('snapData').once('value')).val();
     if (!sd || sd.g !== gen || sd.n < applied || (B && B.phase === 'moving')) return;
     console.warn('[net] 狀態不一致，讀房主快照覆蓋', applied, '→', sd.n);
-    B = JSON.parse(sd.data); applied = sd.n; resyncs++; V.reset();
+    B = JSON.parse(sd.data); applied = sd.n; resyncs++; V.reset(); pre = null;
     if (B.phase === 'over') showOver();
     pump();
   }
   function hashB(b) { // 狀態 hash（位置取到 0.1、血量取到 0.1）
     const r = v => Math.round(v * 10);
     let s = [b.turn, b.round, b.phase, b.winner, b.shotCount, b.moves.join(',')].join('|');
-    b.bodies.forEach(o => { s += '|' + [o.id, o.team, o.alive ? 1 : 0, r(o.x), r(o.y), r(o.hp), r(o.shield), Math.round(o.energy), o.stunned ? 1 : 0, o.acted ? 1 : 0].join(','); });
+    b.bodies.forEach(o => { s += '|' + [o.id, o.team, o.alive ? 1 : 0, r(o.x), r(o.y), r(o.hp), r(o.shield), Math.round(o.energy), o.stunned ? 1 : 0, o.acted ? 1 : 0, o.stacks || 0].join(','); });
     let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
     return (h >>> 0).toString(16);
   }
 
   // ---------- 出手 ----------
   const ctrlOf = t => R.battle && R.battle.seats[t];
-  const myTurn = () => B && !building && B.phase === 'aim' && mySeat >= 0 && B.turn === mySeat && !mv(applied) && !writing;
+  const myTurn = () => B && !building && B.phase === 'aim' && mySeat >= 0 && B.turn === mySeat && !mv(applied) && !writing && !pre;
   function writeMove(m) {
     return R.ref.child('moves/' + mkey(m.g, m.n)).transaction(cur => cur ? undefined : m, null, false);
   }
-  function shoot(idx, angle, power, ult) {
+  const withTap = (m, tap) => { if (tap) m.tap = { t: tap.t, x: tap.x, y: tap.y }; return m; }; // Firebase 不收 undefined：有點才帶
+  function shoot(idx, angle, power, ult, tap) {
     if (!myTurn()) return false;
     writing = true; ui.aim = null;
-    writeMove({ g: gen, n: applied, by: pid, idx, angle, power, ult: !!ult }).catch(e => console.warn('[net] 送出失敗', e)).then(() => { writing = false; });
+    writeMove(withTap({ g: gen, n: applied, by: pid, idx, angle, power, ult: !!ult }, tap)).catch(e => console.warn('[net] 送出失敗', e)).then(() => { writing = false; });
     return true;
+  }
+  // ---- 二次操作 ----：可點的角色先本機預演；點擊（或飛完）才送出
+  function aimRelease(idx, angle, power, ult) {
+    if (!myTurn()) return false;
+    if (!BT.tapAbility(B.bodies[idx])) return shoot(idx, angle, power, ult);
+    const P = JSON.parse(JSON.stringify(B)); P.events = [];
+    if (!BT.launch(P, idx, angle, power, !!ult)) return false;
+    pre = { P, g: gen, n: applied, idx, angle, power, ult: !!ult, sent: false, done: false }; ui.aim = null;
+    return true;
+  }
+  function sendPre(tap) {
+    if (!pre || pre.sent) return; pre.sent = true; writing = true;
+    writeMove(withTap({ g: pre.g, n: pre.n, by: pid, idx: pre.idx, angle: pre.angle, power: pre.power, ult: pre.ult }, tap)).catch(e => console.warn('[net] 送出失敗', e)).then(() => { writing = false; });
+  }
+  function tapAt(wx, wy) { // 畫面座標（翻轉後）→ 真實座標
+    if (!pre || pre.sent || !BT.canTap(pre.P)) return false;
+    const rec = flip() ? BT.tap(pre.P, -wx, -wy) : BT.tap(pre.P, wx, wy);
+    if (rec) sendPre(rec);
+    return !!rec;
   }
   // 房主：輪到離線玩家 → 等一下（給對方回來的機會）再用 AI 代打
   let turnT = 0, turnKey = ''; // 回合計時：每發各自計，超過 TURN_LIMIT 秒沒出手由房主 AI 代打這一發
@@ -329,7 +355,7 @@
     aiBusy = true;
     const n = applied, ch = FA.ai.choose(B, B.turn, D.enemies.difficulty(AI_LV), { s: (R.battle.seed ^ Math.imul(n + 1, 0x9e3779b1) ^ gen) | 0 }); // 獨立亂數，不動到戰鬥本身的 rng
     if (!ch) { aiBusy = false; return; }
-    writeMove({ g: gen, n, by: 'ai:' + c, idx: ch.idx, angle: ch.angle, power: ch.power, ult: !!ch.ult }).catch(() => { }).then(() => { aiBusy = false; });
+    writeMove(withTap({ g: gen, n, by: 'ai:' + c, idx: ch.idx, angle: ch.angle, power: ch.power, ult: !!ch.ult }, ch.tap)).catch(() => { }).then(() => { aiBusy = false; });
   }
 
   // ---------- 畫面：客人（seat1）上下翻轉，讓自己永遠在下方 ----------
@@ -349,15 +375,17 @@
   }
   const flipEv = e => { const o = Object.assign({}, e); ['x', 'y', 'x1', 'y1', 'x2', 'y2'].forEach(k => { if (typeof o[k] === 'number') o[k] = -o[k]; }); if (typeof o.team === 'number') o.team = 1 - o.team; if (typeof o.winner === 'number') o.winner = 1 - o.winner; return o; };
   function consumeEv() {
-    if (!B || !B.events.length) return;
+    const B = pre ? pre.P : cur(); if (!B || !B.events.length) return; // 預演中只播預演的特效
     if (flip()) { V.consume(Object.assign({}, B, { events: B.events.map(flipEv), pillars: (B.pillars || []).map(flipEv) })); B.events = []; } else V.consume(B); // 翻轉視角：事件和柱子座標一起翻，其他欄位（bodies、mover）照用
   }
   let vb = null;
+  const cur = () => B;
 
   // ---------- 輸入（翻轉時角度 +180°） ----------
   const cv = $('netcv');
   let drag = null;
   cv.addEventListener('pointerdown', e => {
+    if (pre && !pre.sent) { const w = V.toWorld(e.clientX, e.clientY); if (tapAt(w.x, w.y)) { if (navigator.vibrate) try { navigator.vibrate(18); } catch (x) { } } return; } // 飛行中點畫面
     if (!myTurn() || !vb) return;
     const w = V.toWorld(e.clientX, e.clientY), me = 0; // 畫面上自己永遠是 team0（翻轉後）
     let best = null, bd = 1e9;
@@ -370,7 +398,7 @@
     ui.aim = len < 12 ? null : { idx: drag, angle: Math.atan2(vy, vx), power: Math.min(1, len / 140) };
   });
   const up = () => {
-    if (drag != null && ui.aim && ui.aim.power > 0.1 && myTurn()) shoot(ui.aim.idx, ui.aim.angle + (flip() ? Math.PI : 0), ui.aim.power, ui.ultArmed), ui.ultArmed = false;
+    if (drag != null && ui.aim && ui.aim.power > 0.1 && myTurn()) aimRelease(ui.aim.idx, ui.aim.angle + (flip() ? Math.PI : 0), ui.aim.power, ui.ultArmed), ui.ultArmed = false;
     ui.aim = null; drag = null;
   };
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', () => { ui.aim = null; drag = null; });
@@ -391,7 +419,7 @@
       `<span style="color:#5cf">${esc(bv.names[me])}${mySeat >= 0 ? '（你）' : ''} 動數 ${Math.max(0, b.moves[me])}/${b.movesMax[me]}</span><br>` +
       `<span style="color:#f77">${esc(bv.names[op])} 動數 ${Math.max(0, b.moves[op])}/${b.movesMax[op]}</span>　${st}`;
     const opOff = !online(opId);
-    ui.msg = b.phase === 'over' ? (b.winner === mySeat ? '勝利！' : '落敗…') : b.phase !== 'aim' ? '' :
+    ui.msg = pre ? (!pre.sent && BT.canTap(pre.P) ? V.tapHint(pre.P) : '') : b.phase === 'over' ? (b.winner === mySeat ? '勝利！' : '落敗…') : b.phase !== 'aim' ? '' :
       b.turn === mySeat ? (writing || mv(applied) ? '傳送中…' : '輪到你：按住棋子往後拉' + (TURN_LIMIT - turnT < 10 ? `（${Math.max(0, Math.ceil(TURN_LIMIT - turnT))} 秒後自動出手）` : '')) : opOff ? `${bv.names[b.turn]} 離線，AI 代打中…` : `輪到 ${bv.names[b.turn]}…`;
     ui.msgCol = b.turn === mySeat ? '#ffe066' : '#f99';
     FA.sound && FA.sound.edge('turn', b.phase === 'aim' && b.turn === mySeat);
@@ -422,7 +450,11 @@
     if (!loopOn) return;
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     if (B && !building) {
-      if (B.phase === 'moving') {
+      if (pre && !pre.done) { // 自己這一發的本機預演
+        if (V.hitstop > 0) V.hitstop -= dt;
+        else { acc += dt; let n = 0; while (acc >= C.dt && n++ < 16) { acc -= C.dt; if (BT.step(pre.P)) { pre.done = true; acc = 0; consumeEv(); sendPre(null); break; } } }
+        if (pre && pre.done) pump();
+      } else if (B.phase === 'moving') {
         if (V.hitstop > 0) V.hitstop -= dt;
         else {
           acc += dt; let n = 0;
@@ -434,9 +466,10 @@
       } else pump();
       aiTick(dt);
       consumeEv(); V.update(dt); hud();
-      vb = flip() ? flipB(B) : B;
+      const DB = pre ? pre.P : B;
+      vb = flip() ? flipB(DB) : DB;
       V.draw(vb, ui, dt);
-      if (vb !== B) vb.bodies.forEach((o, i) => { if (B.bodies[i]) B.bodies[i].hurt = o.hurt; });
+      if (vb !== DB) vb.bodies.forEach((o, i) => { if (DB.bodies[i]) DB.bodies[i].hurt = o.hurt; });
     }
     sched();
   }
@@ -457,9 +490,9 @@
 
   // 測試／除錯用
   FA.online = {
-    state: () => ({ code: R.code, host: R.hostId, pid, mySeat, gen, applied, phase: B && B.phase, turn: B && B.turn, winner: B && B.winner, hash: B && hashB(B), moves: B && B.moves.slice(), resyncs, state: R.state, players: R.players, myTurn: !!myTurn(), result: R.result, building }),
-    shoot, myTurn, hash: () => B && hashB(B), battle: () => B,
-    autoShoot() { if (!myTurn()) return false; const c = FA.ai.choose(B, mySeat, D.enemies.difficulty(AI_LV), { s: (applied * 131 + 7) | 0 }); return c ? shoot(c.idx, c.angle, c.power, c.ult) : false; },
+    state: () => ({ code: R.code, host: R.hostId, pid, mySeat, gen, applied, pre: pre ? { sent: pre.sent, done: pre.done, canTap: BT.canTap(pre.P), stepN: pre.P.stepN } : null, phase: B && B.phase, turn: B && B.turn, winner: B && B.winner, hash: B && hashB(B), moves: B && B.moves.slice(), resyncs, state: R.state, players: R.players, myTurn: !!myTurn(), result: R.result, building }),
+    shoot, myTurn, aimRelease, tapAt, hash: () => B && hashB(B), battle: () => B, tapLog: () => B && B.tapLog,
+    autoShoot() { if (!myTurn()) return false; const c = FA.ai.choose(B, mySeat, D.enemies.difficulty(AI_LV), { s: (applied * 131 + 7) | 0 }); return c ? shoot(c.idx, c.angle, c.power, c.ult, c.tap) : false; },
     create: createRoom, join: joinRoom, ready: setReady, leave: leaveRoom, setName: n => { mem.name = n; saveMem(); },
     util: { hashB, flipB, flipEv, ensureDb: () => ensureDb() && { db, fb, TS }, configured, mem, saveMem, MOCK } // src/league.js 共用
   };

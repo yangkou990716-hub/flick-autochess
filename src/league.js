@@ -353,7 +353,7 @@
   }
 
   // ---------- 每一對的戰鬥 ----------
-  const bs = i => BS[i] || (BS[i] = { pv: null, r: 0, B: null, applied: 0, mv: {}, building: false, writing: false, turnT: 0, aiT: 0, aiBusy: false, key: '', shown: false });
+  const bs = i => BS[i] || (BS[i] = { pv: null, r: 0, B: null, applied: 0, mv: {}, building: false, writing: false, turnT: 0, aiT: 0, aiBusy: false, key: '', shown: false, pre: null }); // pre：自己這一發的本機預演（二次操作，見 online.js）
   const ext = strats => { const s = RUN.sfx({ strats: strats || [] }); return { mods: s.mods, shots: s.shots, chainAll: s.chainAll, revive: s.revive, echo: s.echo, blastGold: s.blastGold, openFreeze: s.openFreeze, stormZap: s.stormZap }; };
   function makeBattle(pv) {
     const t = [pv.teams[0], pv.teams[1]].map(c => RUN.importTeam(c));
@@ -363,7 +363,7 @@
   async function setupPair(i) {
     const pv = R.pairs[i]; if (!pv) return;
     const x = bs(i); if (x.r === pv.r && x.B) return;
-    x.r = pv.r; x.pv = pv; x.building = true; x.shown = false; x.applied = 0; x.writing = false; x.aiBusy = false;
+    x.r = pv.r; x.pv = pv; x.building = true; x.shown = false; x.applied = 0; x.writing = false; x.aiBusy = false; x.pre = null;
     let nb = makeBattle(pv), n = 0;
     try { const sd = (await R.ref.child('psd/' + i).once('value')).val(); if (sd && sd.r === pv.r && sd.n > 0) { nb = JSON.parse(sd.data); n = sd.n; } } catch (e) { }
     if (!R.pairs[i] || R.pairs[i].r !== x.r) return;
@@ -381,8 +381,12 @@
     const B = x.B;
     while (B.phase === 'aim') {
       const m = mvAt(x, x.applied); if (!m) break;
-      const instant = FAST || i !== view || scr !== 'lgb' || !!mvAt(x, x.applied + 1) || document.hidden;
-      if (!BT.launch(B, m.idx, m.angle, m.power, !!m.ult)) { console.warn('[lg] 無效的一發', m); x.applied++; afterShot(i); continue; }
+      const p = x.pre, mine = !!p && p.n === x.applied && p.r === x.r && m.by === pid;
+      if (p && p.n === x.applied && !mine) { x.pre = null; if (i === view) V.reset(); } // 預演中被 AI 代打搶先
+      if (mine && !p.done) break;
+      const instant = mine || FAST || i !== view || scr !== 'lgb' || !!mvAt(x, x.applied + 1) || document.hidden;
+      if (mine) x.pre = null;
+      if (!BT.launch(B, m.idx, m.angle, m.power, !!m.ult, m.tap)) { console.warn('[lg] 無效的一發', m); x.applied++; afterShot(i); continue; }
       if (!instant) break;
       BT.runShot(B); BT.endShot(B); B.events = []; x.applied++; afterShot(i, true);
     }
@@ -406,17 +410,37 @@
     const x = BS[i], sd = (await R.ref.child('psd/' + i).once('value')).val();
     if (!sd || sd.r !== x.r || sd.n < x.applied || (x.B && x.B.phase === 'moving')) return;
     console.warn('[lg] 狀態不一致，讀快照覆蓋', i, x.applied, '→', sd.n);
-    x.B = JSON.parse(sd.data); x.applied = sd.n; x.resyncs = (x.resyncs || 0) + 1; if (i === view) V.reset();
+    x.B = JSON.parse(sd.data); x.applied = sd.n; x.resyncs = (x.resyncs || 0) + 1; x.pre = null; if (i === view) V.reset();
     pump(i);
   }
   function writeMove(i, m) { return R.ref.child('pm/' + i + '/' + mkey(m.r, m.n)).transaction(cur => cur ? undefined : m, null, false); }
   const mySeat = x => !x || !x.pv ? -1 : x.pv.a === pid ? 0 : x.pv.b === pid ? 1 : -1;
-  const myTurn = () => { const x = BS[view]; return !!(x && x.B && !x.building && x.r === round() && x.B.phase === 'aim' && mySeat(x) >= 0 && x.B.turn === mySeat(x) && !mvAt(x, x.applied) && !x.writing); };
-  function shoot(idx, angle, power, ult) {
+  const myTurn = () => { const x = BS[view]; return !!(x && x.B && !x.building && x.r === round() && x.B.phase === 'aim' && mySeat(x) >= 0 && x.B.turn === mySeat(x) && !mvAt(x, x.applied) && !x.writing && !x.pre); };
+  const withTap = (m, tap) => { if (tap) m.tap = { t: tap.t, x: tap.x, y: tap.y }; return m; };
+  function shoot(idx, angle, power, ult, tap) {
     if (!myTurn()) return false;
     const x = BS[view], i = view; x.writing = true; ui.aim = null;
-    writeMove(i, { r: x.r, n: x.applied, by: pid, idx, angle, power, ult: !!ult }).catch(e => console.warn('[lg] 送出失敗', e)).then(() => { x.writing = false; });
+    writeMove(i, withTap({ r: x.r, n: x.applied, by: pid, idx, angle, power, ult: !!ult }, tap)).catch(e => console.warn('[lg] 送出失敗', e)).then(() => { x.writing = false; });
     return true;
+  }
+  // ---- 二次操作 ----：可點的角色先本機預演，點擊（或飛完）才送出 move（帶 tap）
+  function aimRelease(idx, angle, power, ult) {
+    if (!myTurn()) return false;
+    const x = BS[view]; if (!BT.tapAbility(x.B.bodies[idx])) return shoot(idx, angle, power, ult);
+    const P = JSON.parse(JSON.stringify(x.B)); P.events = [];
+    if (!BT.launch(P, idx, angle, power, !!ult)) return false;
+    x.pre = { P, i: view, r: x.r, n: x.applied, idx, angle, power, ult: !!ult, sent: false, done: false }; ui.aim = null;
+    return true;
+  }
+  function sendPre(x, tap) {
+    const p = x.pre; if (!p || p.sent) return; p.sent = true; x.writing = true;
+    writeMove(p.i, withTap({ r: p.r, n: p.n, by: pid, idx: p.idx, angle: p.angle, power: p.power, ult: p.ult }, tap)).catch(e => console.warn('[lg] 送出失敗', e)).then(() => { x.writing = false; });
+  }
+  function tapAt(wx, wy) {
+    const x = BS[view], p = x && x.pre; if (!p || p.sent || !BT.canTap(p.P)) return false;
+    const rec = flip() ? BT.tap(p.P, -wx, -wy) : BT.tap(p.P, wx, wy);
+    if (rec) sendPre(x, rec);
+    return !!rec;
   }
   // 權威端：幽靈／離線玩家等一下就由 AI 出手；在線玩家超過 turnSec 秒沒出手也由 AI 代打
   function aiTick(i, dt) {
@@ -430,7 +454,7 @@
     x.aiBusy = true;
     const n = x.applied, ch = FA.ai.choose(x.B, x.B.turn, D.enemies.difficulty(AI_LV), { s: (x.pv.seed ^ Math.imul(n + 1, 0x9e3779b1) ^ x.r) | 0 });
     if (!ch) { x.aiBusy = false; return; }
-    writeMove(i, { r: x.r, n, by: 'ai:' + (c === GH ? 'ghost' : c), idx: ch.idx, angle: ch.angle, power: ch.power, ult: !!ch.ult }).catch(() => { }).then(() => { x.aiBusy = false; });
+    writeMove(i, withTap({ r: x.r, n, by: 'ai:' + (c === GH ? 'ghost' : c), idx: ch.idx, angle: ch.angle, power: ch.power, ult: !!ch.ult }, ch.tap)).catch(() => { }).then(() => { x.aiBusy = false; });
   }
 
   // ---------- 畫面：自己在紅方（seat1）時上下翻轉 ----------
@@ -442,6 +466,7 @@
   }
   const cv = $('lgcv'); let drag = null;
   cv.addEventListener('pointerdown', e => {
+    { const x = BS[view]; if (x && x.pre && !x.pre.sent) { const w = V.toWorld(e.clientX, e.clientY); tapAt(w.x, w.y); return; } } // 飛行中點畫面
     if (!myTurn() || !vb) return;
     const w = V.toWorld(e.clientX, e.clientY);
     let best = null, bd = 1e9;
@@ -454,7 +479,7 @@
     ui.aim = len < 12 ? null : { idx: drag, angle: Math.atan2(vy, vx), power: Math.min(1, len / 140) };
   });
   cv.addEventListener('pointerup', () => {
-    if (drag != null && ui.aim && ui.aim.power > 0.1 && myTurn()) { shoot(ui.aim.idx, ui.aim.angle + (flip() ? Math.PI : 0), ui.aim.power, ui.ultArmed); ui.ultArmed = false; }
+    if (drag != null && ui.aim && ui.aim.power > 0.1 && myTurn()) { aimRelease(ui.aim.idx, ui.aim.angle + (flip() ? Math.PI : 0), ui.aim.power, ui.ultArmed); ui.ultArmed = false; }
     ui.aim = null; drag = null;
   });
   cv.addEventListener('pointercancel', () => { ui.aim = null; drag = null; });
@@ -470,7 +495,7 @@
       `<span style="color:#5cf">${nm(me0)}${s >= 0 ? '（你）' : ''}${hp(me0)} 動數 ${Math.max(0, b.moves[me0])}/${b.movesMax[me0]}</span> ${st(me0)}<br>` +
       `<span style="color:#f77">${nm(op)}${hp(op)} 動數 ${Math.max(0, b.moves[op])}/${b.movesMax[op]}</span> ${st(op)}`;
     const c = ctrl(x, b.turn), turnName = x.pv.names[b.turn], left = LD.turnSec - x.turnT;
-    ui.msg = b.phase === 'over' ? (s < 0 ? x.pv.names[b.winner] + ' 獲勝' : b.winner === s ? '勝利！' : '落敗…') : b.phase !== 'aim' ? '' :
+    ui.msg = x.pre ? (!x.pre.sent && BT.canTap(x.pre.P) ? V.tapHint(x.pre.P) : '') : b.phase === 'over' ? (s < 0 ? x.pv.names[b.winner] + ' 獲勝' : b.winner === s ? '勝利！' : '落敗…') : b.phase !== 'aim' ? '' :
       b.turn === s ? (x.writing || mvAt(x, x.applied) ? '傳送中…' : '輪到你：按住棋子往後拉' + (left < 10 ? `（${Math.max(0, Math.ceil(left))} 秒後自動出手）` : '')) :
         (c === GH || !online(c)) ? `${turnName} AI 出手中…` : `輪到 ${turnName}…`;
     ui.msgCol = b.turn === s ? '#ffe066' : '#f99';
@@ -516,7 +541,13 @@
     }
     for (const k in BS) {
       const i = +k, x = BS[i]; if (!x.B || x.building) continue;
-      if (i === view && scr === 'lgb' && x.B.phase === 'moving') {
+      if (x.pre && !x.pre.done) { // 自己這一發的本機預演（背景時直接算完）
+        const P = x.pre.P, vis = i === view && scr === 'lgb';
+        if (!vis) { BT.runShot(P); x.pre.done = true; P.events = []; sendPre(x, null); }
+        else if (V.hitstop > 0) V.hitstop -= dt;
+        else { acc += dt; let n = 0; while (acc >= C.dt && n++ < 16) { acc -= C.dt; if (BT.step(P)) { x.pre.done = true; acc = 0; consumeEv(P); sendPre(x, null); break; } } }
+        if (x.pre && x.pre.done) pump(i);
+      } else if (i === view && scr === 'lgb' && x.B.phase === 'moving') {
         if (V.hitstop > 0) V.hitstop -= dt;
         else { acc += dt; let n = 0; while (acc >= C.dt && n++ < 16) { acc -= C.dt; if (BT.step(x.B)) { BT.endShot(x.B); acc = 0; consumeEv(x.B); x.applied++; afterShot(i); pump(i); break; } } }
       } else if (x.B.phase === 'moving') { BT.runShot(x.B); BT.endShot(x.B); x.B.events = []; x.applied++; afterShot(i); pump(i); } // 背景中的那對（例如切走畫面）直接算完
@@ -526,10 +557,11 @@
     if (overT > 0) { overT -= dt; if (overT <= 0) renderOver(); }
     const x = BS[view];
     if (scr === 'lgb' && x && x.B && !x.building) {
-      consumeEv(x.B); V.update(dt); hud();
-      vb = flip() ? U.flipB(x.B) : x.B;
+      const DB = x.pre ? x.pre.P : x.B;
+      consumeEv(DB); V.update(dt); hud();
+      vb = flip() ? U.flipB(DB) : DB;
       V.draw(vb, ui, dt);
-      if (vb !== x.B) vb.bodies.forEach((o, k) => { if (x.B.bodies[k]) x.B.bodies[k].hurt = o.hurt; });
+      if (vb !== DB) vb.bodies.forEach((o, k) => { if (DB.bodies[k]) DB.bodies[k].hurt = o.hurt; });
       if (x.B.phase === 'over' || (me() && me().out)) renderOver();
     } else if (scr === 'lgb') hud();
     sched();
@@ -554,7 +586,7 @@
       pairs: Object.keys(BS).map(i => { const x = BS[i]; return { i: +i, r: x.r, a: x.pv && x.pv.a, b: x.pv && x.pv.b, src: x.pv && x.pv.src, phase: x.B && x.B.phase, applied: x.applied, winner: x.B && x.B.winner, hash: x.B && U.hashB(x.B), building: x.building, resyncs: x.resyncs || 0 }; }),
       run: run && { gold: run.gold, level: run.level, hp: run.hp, round: run.league.round, applied: run.league.applied, strats: run.strats.length, pending: run.pending && run.pending.type, front: run.front.filter(Boolean).length } }),
     autoShop() { if (!run) return false; LG.autoShop(run); saveRun(run); FA.shopHost.render(); return true; },
-    ready: () => submit(true), autoShoot() { if (!myTurn()) return false; const x = BS[view], c = FA.ai.choose(x.B, mySeat(x), D.enemies.difficulty(AI_LV), { s: (x.applied * 131 + 7) | 0 }); return c ? shoot(c.idx, c.angle, c.power, c.ult) : false; },
+    ready: () => submit(true), autoShoot() { if (!myTurn()) return false; const x = BS[view], c = FA.ai.choose(x.B, mySeat(x), D.enemies.difficulty(AI_LV), { s: (x.applied * 131 + 7) | 0 }); return c ? shoot(c.idx, c.angle, c.power, c.ult, c.tap) : false; }, aimRelease, tapAt,
     create: createRoom, join: joinRoom, start: startGame, leave: leaveRoom, setName: n => { mem.name = n; U.saveMem(); }
   };
 })();

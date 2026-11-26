@@ -1,6 +1,6 @@
 // 平衡模擬器：node sim/simulate.js [場數=1000] [seed=1] [敵人詞綴=aff_jail,aff_frenzy（可省略；位面強化以第 1 位面計）]
 // AI 互打，統計各角色、羈絆、裝備勝率（目標 45%～55%）
-// 環境變數：THINK=1 量 AI 思考時間｜CAND=40 AI 思考深度（預設 10）｜CFG='{"hpMul":1.4}' 暫時覆蓋 config
+// 環境變數：THINK=1 量 AI 思考時間｜CAND=40 AI 思考深度（預設 10）｜CFG='{"hpMul":1.4}' 暫時覆蓋 config｜EXPERT=1 雙方都用「高手 AI」（會用甜蜜點、多次反彈、撞球連撞、二次操作最佳時機）
 const path = require('path');
 ['data/config', 'data/units', 'data/traits', 'data/items', 'data/enemies', 'data/run', 'src/core/battle', 'src/core/ai', 'src/core/run']
   .forEach(f => require(path.join(__dirname, '..', f + '.js')));
@@ -28,7 +28,8 @@ function team() {
 
 const st = { unit: {}, trait: {}, faction: {}, item: {}, weapon: {} };
 const rec = (k, key, w) => { const o = st[k][key] = st[k][key] || [0, 0]; o[0]++; if (w) o[1]++; };
-const diff = { aimNoise: 0.06, candidates: +process.env.CAND || 10 }; // CAND=40：模擬高難度 AI 思考深度
+const diff = { aimNoise: 0.06, candidates: +process.env.CAND || 10, expert: process.env.EXPERT === '1' };
+if (diff.expert) console.log('高手 AI 模式'); // CAND=40：模擬高難度 AI 思考深度
 // ---- 敵人詞綴 ----（第 3 參數，套在 B 隊）
 const AFF = process.argv[4] ? FA.run.affixExt(process.argv[4].split(','), { plane: 1 }) : null;
 if (process.argv[4]) console.log('敵人詞綴（B 隊）：' + (AFF ? AFF.ids.map(id => D.enemies.affixes[id].name).join('、') : '無有效詞綴'));
@@ -43,7 +44,7 @@ for (let n = 0; n < N; n++) {
     const ch = FA.ai.choose(b, b.turn, diff, b.rng);
     if (TH) thinks.push(Number(process.hrtime.bigint() - tt0) / 1e6);
     if (!ch) break;
-    FA.battle.launch(b, ch.idx, ch.angle, ch.power, ch.ult);
+    FA.battle.launch(b, ch.idx, ch.angle, ch.power, ch.ult, ch.tap);
     if (b.bodies[ch.idx].ultOn) ultT++;
     b.events = []; shotsT++;
     FA.battle.runShot(b); simT += b.simT; FA.battle.endShot(b); b.events = [];
