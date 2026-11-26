@@ -259,7 +259,7 @@
     let nf = df.front + r.extraEnemy + (enc ? enc.extra : 0);
     if (node === 'boss') {
       const B = E.bosses[r.plane - 1][r.bossVar || 0];
-      nf = Math.max(1, df.front - 2 + r.extraEnemy);
+      nf = Math.max(1, df.front - 3 + r.extraEnemy);
       return { name: B.name, boss: true, rules: B.rules,
         front: [{ boss: true, plane: r.plane, variant: r.bossVar || 0, id: 'boss', star: 1, items: [] }].concat(a.front.slice(0, Math.min(5, nf)).map(mk)), back: a.back.slice(0, df.back).map(mk) };
     }
@@ -274,7 +274,7 @@
     if (!front.length) return null;
     const eExt = en.reward ? { mods: { hpPct: (RD().piggy.hpBase + RD().piggy.hpPerStage * r.stage) / D().units.piggy.hp - 1 } } : { threat: r.threat };
     return FA.battle.create({ pFront: front, pBack: r.back.slice(0, lv(r).back), eFront: en.front, eBack: en.back, rules: en.rules, env: efx(r),
-      pExt: battleExt(s), eExt, eNoShots: !!en.reward,
+      pExt: Object.assign(battleExt(s), en.boss ? { shots: (battleExt(s).shots || 0) + C().bossShotsAdd } : {}), eExt, eNoShots: !!en.reward,
       seed: Math.floor(R().next(r.rng) * 2 ** 31) });
   }
 
@@ -296,7 +296,10 @@
     r.stage++; r.step++; r.node = null;
     if (r.hp <= 0) r.over = 'lose';
     else if (wasBoss) {
-      if (r.plane >= RD().planes.length) r.over = 'win';
+      if (r.plane >= RD().planes.length) {
+        if (res && res.win === false) { r.step--; res.retry = true; } // 終局首領沒殺光：扣血後回商店重新挑戰
+        else r.over = 'win';
+      }
       else { r.afterStrat = 'nextPlane'; askStrategy(r); }
     }
     if (!r.over && !r.pending) afterStrategies(r);

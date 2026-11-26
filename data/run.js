@@ -11,7 +11,7 @@
     ],
     // 難度等級（開局選）：敵人強化、扣血加重、開局血量
     ascensions: [
-      { name: 'A0 新手', desc: '標準難度', threat: 0, lossAdd: 0, hp: 80 },
+      { name: 'A0 新手', desc: '敵人生命/攻擊 -15%', threat: -0.15, lossAdd: 0, hp: 80 },
       { name: 'A1', desc: '敵人生命/攻擊 +10%', threat: 0.1, lossAdd: 0, hp: 80 },
       { name: 'A2', desc: '敵人 +20%', threat: 0.2, lossAdd: 0, hp: 80 },
       { name: 'A3', desc: '敵人 +30%，戰敗多扣 2 血', threat: 0.3, lossAdd: 2, hp: 80 },

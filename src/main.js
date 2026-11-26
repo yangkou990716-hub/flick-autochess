@@ -32,7 +32,7 @@
   function backText(U) {
     const b = U.back; if (!b) return '';
     return { atkPct: `${b.trait ? D.traits[b.trait].name + '角色' : '前台'}攻擊+${pct(b.val)}`, shield: `每回合前台護盾+${b.val}`, heal: `每回合前台回血+${b.val}`,
-      zap: `每回合電擊隨機敵人（${pct(b.mult)}攻擊）`, gravity: '每回合把敵人往中間吸', cannon: `每回合炮擊隨機敵人（${pct(b.mult)}攻擊爆炸）`, revive: `第一隻陣亡的隊友以 ${pct(b.pct)} 生命復活` }[b.type];
+      zap: `每回合電擊隨機敵人（${pct(b.mult)}攻擊）`, gravity: '每回合把敵人往中間吸', cannon: `每回合炮擊隨機敵人（${pct(b.mult)}攻擊爆炸）`, revive: `第一隻陣亡的隊友以 ${pct(b.pct)} 生命復活`, mark: `每回合標記 1 名敵人，受傷 +${pct(b.amp || 0)}（${b.turns || 0} 回合）` }[b.type];
   }
   function unitInfo(u) {
     const U = D.units[u.id], m = C.starMult[u.star - 1];
@@ -134,7 +134,7 @@
       .concat(run.weapons.map((w, i) => `<span class="item wp ${sel && sel.wp === i ? 'sel' : ''}" data-wp="${i}">${D.weapons[w].icon}${D.weapons[w].name}</span>`));
     $('items').innerHTML = inv.length ? inv.join('') : '<span class="lbl">裝備/武器：補給、遭遇、撲滿、首領取得</span>';
     let info = '';
-    if (sel && sel.zone && RUN.unitAt(run, sel)) { const u = RUN.unitAt(run, sel); info = unitInfo(u) + `<button id="bSell">賣出 +${RUN.sellPrice(u)}</button>　<span class="lbl">點空位移動／點角色交換</span>`; }
+    if (sel && sel.zone && RUN.unitAt(run, sel)) { const u = RUN.unitAt(run, sel); info = unitInfo(u) + `<button id="bSell">賣出 +${RUN.sellPrice(u, run)}</button>　<span class="lbl">點空位移動／點角色交換</span>`; }
     else if (sel && sel.item != null) info = itemText(run.items[sel.item]) + '<br><span class="lbl">點角色裝上（最多 3 件）。鐵拳＋彈簧＝爆裂彈簧；護符＋疾行靴＝吸血疾靴</span>';
     else if (sel && sel.wp != null) info = weaponText(run.weapons[sel.wp]) + '<br><span class="lbl">點角色裝上（每隻 1 把，會替換）</span>';
     else if (sel && sel.trait) { const T = D.traits[sel.trait]; info = `<b>${T.name}</b>（只加給${T.name}角色）<br>` + T.tiers.map(t => `${t.n}：${modsText(t.mods)}`).join('<br>'); }
@@ -220,7 +220,7 @@
     g.innerHTML = unitHTML(u || { id, star: 1, items: [], weapon: null });
     document.body.appendChild(g); pd.ghost = g; g.style.left = pd.x + 'px'; g.style.top = pd.y + 'px';
     $('shop').classList.add('ux-dragging'); pd.el.style.opacity = '.35';
-    if (u) { $('uxSell').textContent = `拖到這裡賣出 +${RUN.sellPrice(u)} 💰`; $('uxSell').classList.remove('hidden'); }
+    if (u) { $('uxSell').textContent = `拖到這裡賣出 +${RUN.sellPrice(u, run)} 💰`; $('uxSell').classList.remove('hidden'); }
   }
   function endDrag() {
     if (!pd) return; clearTimeout(pd.timer);
@@ -262,7 +262,7 @@
     const prog = `<span class="k">升星：</span>1星 ${c[0]}/3　2星 ${c[1]}/3${c[2] ? `　3星 ×${c[2]}` : ''}`;
     const tr = D.units[id].traits.map(t => { const T = D.traits[t]; return `<span class="k">${T.name}：</span>` + T.tiers.map(x => `${x.n}隻 ${modsText(x.mods)}`).join('；'); }).join('<br>');
     const btns = shopCard ? [{ t: `購買 ${RUN.unitCost(run, id)}💰`, cls: 'go', f: () => { if (!RUN.buy(run, src.buy)) flash('金幣或空位不足'); else FA.sound.play('coin'); renderShop(); save(); } }, { t: '關閉' }]
-      : [{ t: `賣出 +${RUN.sellPrice(u)}`, f: () => { RUN.sell(run, src); renderShop(); save(); } }, { t: '關閉', cls: 'go' }];
+      : [{ t: `賣出 +${RUN.sellPrice(u, run)}`, f: () => { RUN.sell(run, src); renderShop(); save(); } }, { t: '關閉', cls: 'go' }];
     modal(`<div class="ux-detail">${unitInfo(u)}${prog}<br>${tr}</div>`, btns);
   }
 
@@ -391,7 +391,7 @@
       if (res.node === 'reward') modal(`<h2>🐷 撲滿 ${res.pigs} 隻</h2>${stats}<div class="ux-res">+${res.gold} 金${res.drops.length ? '<br>全破獎勵：' + res.drops.map(itemText).join('<br>') : ''}</div>${gold}`, [{ t: '繼續', cls: 'go', f: flow }]);
       else modal(`<h2>${res.win ? '🎉 全滅敵人' : '💥 沒殺光'}</h2>${stats}<div class="ux-res">` +
         (res.win ? `❤ 小隊 ${res.heal ? '+' + res.heal : '±0'}（${run.hp}）` : `<b style="color:#f88">❤ 小隊 -${res.dmg}（剩 ${run.hp}）</b>`) + '</div>' +
-        (res.saved ? '<b style="color:#ffe066">🛡 鎖血免死觸發！剩 1 血</b><br>' : '') + gold +
+        (res.saved ? '<b style="color:#ffe066">🛡 鎖血免死觸發！剩 1 血</b><br>' : '') + (res.retry ? '<b style="color:#ffb74d">👑 終局首領還在！整頓後再挑戰</b><br>' : '') + (res.flawless ? '<b style="color:#f8a5c2">🐷 完勝！招財豬加碼</b><br>' : '') + gold +
         (loot.length ? '<div class="ux-res">🎁 獲得：<br>' + loot.join('<br>') + '</div>' : ''),
         [{ t: '繼續', cls: 'go', f: flow }]);
       tutResult();

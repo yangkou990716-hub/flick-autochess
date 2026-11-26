@@ -6,7 +6,7 @@
     maxLaunch: 1000, dmgSpeedRef: 330, minHitSpeed: 60, wallBonusPer: 0.25, baseBounces: 2,
     restitution: 0.97, wallRest: 0.95,
     fullPowerAt: 0.95, fullPowerBonus: 0.15, // 力道：拉滿 95% 以上為「全力」，速度 +15%
-    turnsEach: 5,
+    turnsEach: 5, bossShotsAdd: 2, // 首領戰我方多 2 發
     squadHp: 80, winHeal: 2, lastStand: 1, // 開局 80 血；贏 +2（上限 80）；一次鎖一血免死
     startGold: 8, baseIncome: 5, interestPer: 10, interestMax: 5,
     streak: [[2, 1], [4, 2], [6, 3]],
