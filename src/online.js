@@ -9,7 +9,7 @@
   const FA = globalThis.FA, D = FA.DATA, C = D.config, V = FA.view, RUN = FA.run, BT = FA.battle;
   const $ = id => document.getElementById(id);
   const QS = new URLSearchParams(location.search), MOCK = QS.get('netmock') === '1';
-  const MEM_KEY = 'fa_net' + (MOCK ? '_' + (QS.get('who') || 'x') : ''); // 假 Firebase 測試時多個分頁共用 localStorage，用 who 區分
+  const MEM_KEY = 'fa_net' + (QS.get('who') ? '_' + QS.get('who') : (MOCK ? '_x' : '')); // ?who= 讓同一台裝置多個分頁當不同玩家（測試用）
   const SAVE_KEY = 'flick_autochess_save_v2';
   const NEED = 2, MAXP = 8, AI_DELAY = 1.5, ROOM_TTL = 12 * 3600e3, AI_LV = 15;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
