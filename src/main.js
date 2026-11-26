@@ -43,7 +43,7 @@
   // ---- 大招 ----：角色的大招（units.ult 覆蓋，否則看第一個羈絆）
   const UC = C.ult || { max: 100, gainLaunch: 25, gainHit: 15, gainHurt: 10 };
   const ultKey = id => { const U = D.units[id]; return (U && U.ult) || (D.traitUlt || {})[U && U.traits[0]] || 'nova'; };
-  const ultCharge = `彈射 +${UC.gainLaunch}、撞到敵人 +${UC.gainHit}、被撞 +${UC.gainHurt}，滿 ${UC.max} 可發動`;
+  const ultCharge = `開場 ${UC.start || 0}、彈射 +${UC.gainLaunch}、撞到敵人 +${UC.gainHit}、被撞 +${UC.gainHurt}，滿 ${UC.max} 可發動`;
   function ultLine(key, energy) {
     const X = (D.ults || {})[key] || { name: '大招', desc: '' }, bar = energy == null ? '' : `　<span style="color:${energy >= UC.max ? '#ffd54f' : '#9df'}">能量 ${Math.floor(Math.min(UC.max, energy))}/${UC.max}${energy >= UC.max ? '（已滿，發光中）' : ''}</span>`;
     return `<span class="k">⚡大招「${X.name}」：</span>${X.desc}${bar}<br>`;
@@ -616,7 +616,7 @@
     武器: () => Object.keys(D.weapons).map(id => `<div class="choice">${weaponText(id)}</div>`).join(''),
     策略: () => ['silver', 'gold', 'prism'].map(t => Object.values(RD.strategies).filter(S => S.tier === t).map(S => `<div class="choice"><span class="tier" style="color:${RD.tiers[t].color}">${RD.tiers[t].name}</span><b>${S.name}</b><br>${S.desc}</div>`).join('')).join(''),
     環境: () => '<div class="lbl">投資環境：開局選一次，整局都生效</div>' + Object.values(RD.envs).map(E => `<div class="choice"><b>🌐${E.name}</b><br>${E.desc}</div>`).join('') + '<h3>開局詞綴</h3>' + Object.values(RD.openers).map(E => `<div class="choice"><b>${E.name}</b><br>${E.desc}</div>`).join(''),
-    節點: () => `<div class="choice"><b>⚔ 戰鬥規則</b><br>・直式場地，雙方輪流：一輪內交替出手，每隻都動過一次才換下一輪<br>・雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈一次 -1<br>・被打倒在出生點滿血復活，但該方動數再 -${C.deathCost}<br>・<b>對方動數先歸零就贏</b>；擊倒首領直接獲勝<br>・🛟泳圈柱：加速且本發攻擊 +20%；🌵尖刺柱：撞到受傷<br>・⚡大招：${ultCharge}（見「大招」分頁）<br>・落敗扣小隊血：基礎 ${C.lossDamage.base}＋敵方每剩 ${C.deathCost} 動 +${C.lossDamage.perEnemy}＋關卡加成（首領 +4）</div>` + Object.values(RD.nodeInfo).map(N => `<div class="choice"><b>${N.icon} ${N.name}</b><br>${N.desc}</div>`).join('') + '<div class="lbl">投資策略：開局 1 次、位面 1、2 首領後各 1 次，部分策略會延後再給（期貨）。黃金讓敵人 +6%、稜彩 +20% 且多 1 隻。</div>' +
+    節點: () => `<div class="choice"><b>⚔ 戰鬥規則</b><br>・直式場地，雙方輪流：每場隨機決定先手，一輪內交替出手，每隻都動過一次才換下一輪<br>・雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈一次 -1<br>・被打倒在出生點滿血復活，但該方動數再 -${C.deathCost}<br>・<b>對方動數先歸零就贏</b>；擊倒首領直接獲勝<br>・🛟泳圈柱：加速且本發攻擊 +20%；🌵尖刺柱：撞到受傷<br>・⚡大招：${ultCharge}（見「大招」分頁）<br>・落敗扣小隊血：基礎 ${C.lossDamage.base}＋敵方每剩 ${C.deathCost} 動 +${C.lossDamage.perEnemy}＋關卡加成（首領 +4）</div>` + Object.values(RD.nodeInfo).map(N => `<div class="choice"><b>${N.icon} ${N.name}</b><br>${N.desc}</div>`).join('') + '<div class="lbl">投資策略：開局 1 次、位面 1、2 首領後各 1 次，部分策略會延後再給（期貨）。黃金讓敵人 +6%、稜彩 +20% 且多 1 隻。</div>' +
       '<h3>補給內容</h3>' + Object.values(RD.supplies).map(E => `<div class="choice"><b>${E.name}</b>：${E.desc}</div>`).join(''),
     詞綴: () => '<div class="lbl">敵人詞綴：A2 起開局依難度抽（A2 1 個溫和、A3 1、A4 2、A5 3），整局生效，第一場戰鬥前可免費重骰 1 次</div>' + Object.keys(D.enemies.affixes).map(affixCard).join(''), // ---- 敵人詞綴 ----
     首領: () => D.enemies.bosses.map((L, i) => L.map(B => `<div class="choice"><b>位面${i + 1}：${B.name}</b><br>生命 ${B.hp}｜攻擊 ${B.atk}<br>${B.rules.map(r => D.enemies.ruleText[r]).join('、')}${B.split ? '、半血分裂' : ''}${B.ability ? '、' + ({ magnetStop: '停下吸附', freezeHit: '撞到冰凍', poisonHit: '撞到下毒', chainHit: '連鎖閃電' }[B.ability.type] || '') : ''}${B.zap ? '、每回合電擊' : ''}</div>`).join('')).join('')
@@ -655,7 +655,7 @@
     battle: [{ el: bodyRect, t: '① <b>你的回合</b>：按住自己的棋子（藍框），往<b>反方向</b>拉，放開就彈射出去。' },
       { el: bodyRect, t: '② 拉越長力道越大，棋子上方有<b>力道條</b>；拉到 95% 以上是「<b>全力</b>」，速度 +15%。' },
       { el: bodyRect, t: '③ 拉的時候會出現<b>瞄準預演線</b>：虛線是你的路徑（含反彈），白線是被撞棋子的去向。' },
-      { el: '#bhud', t: `④ <b>輪流</b>：一輪內雙方交替出手，每隻棋子都動過一次才進下一輪。上方顯示第幾輪、本輪我方還沒動幾隻。` },
+      { el: '#bhud', t: `④ <b>輪流</b>：每場隨機決定誰先手，一輪內雙方交替出手，每隻棋子都動過一次才進下一輪。上方顯示第幾輪、本輪我方還沒動幾隻。` },
       { el: '#bhud', t: `⑤ <b>總動數</b>：雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈一次 -1，<span style="color:#4ea0ff">藍條</span>是我方、<span style="color:#ff5a5a">紅條</span>是敵方。<b>對方動數先歸零就贏</b>；擊倒首領直接獲勝。` },
       { el: '#bhud', t: `⑥ <b>被打倒</b>不會消失：在出生點滿血復活，但該方動數再 <b>-${C.deathCost}</b>。所以打倒敵人＝削它的動數，自己也別亂送。落敗會依敵方剩餘動數扣小隊血量。` },
       { el: '#cv', t: '⑦ <b>障礙柱</b>：🛟<b>泳圈柱</b>撞到會加速，本發攻擊 +20%；🌵<b>尖刺柱</b>撞到會受傷（敵我都會）。善用反彈繞過去！' },
