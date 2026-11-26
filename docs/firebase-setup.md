@@ -219,6 +219,16 @@
             "left": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99" },
             "n": { ".validate": "newData.isNumber()" },
             "hash": { ".validate": "newData.isString() && newData.val().length <= 16" },
+            "st": {
+              "$t": {
+                ".validate": "newData.hasChildren(['g', 'lg', 'd']) && $t.matches(/^[01]$/)",
+                "g": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99" },
+                "lg": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99" },
+                "d": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99" },
+                "tr": { "$j": { ".validate": "$j.matches(/^[0-9]{1,2}$/) && newData.isString() && newData.val().length <= 16" } },
+                "$other": { ".validate": false }
+              }
+            },
             "$other": { ".validate": false }
           }
         },
@@ -232,10 +242,33 @@
             "left": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99" },
             "hp": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999" },
             "opp": { ".validate": "newData.isString() && newData.val().length <= 12" },
+            "st": {
+              ".validate": "newData.hasChildren(['g', 'lg', 'd'])",
+              "g": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99" },
+              "lg": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99" },
+              "d": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 99" },
+              "tr": { "$j": { ".validate": "$j.matches(/^[0-9]{1,2}$/) && newData.isString() && newData.val().length <= 16" } },
+              "$other": { ".validate": false }
+            },
             "$other": { ".validate": false }
           }
         },
         "$other": { ".validate": false }
+      }
+    },
+    "lgrun": {
+      "$code": {
+        "$pid": {
+          "$key": {
+            ".read": "$code.matches(/^[0-9]{4}$/) && $key.matches(/^[a-z0-9]{16,32}$/)",
+            ".write": "$code.matches(/^[0-9]{4}$/) && $key.matches(/^[a-z0-9]{16,32}$/) && root.child('leagues/' + $code + '/players/' + $pid).exists()",
+            ".validate": "$pid.matches(/^p[a-z0-9]{4,20}$/) && newData.hasChildren(['r', 'c', 'd'])",
+            "r": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 99" },
+            "c": { ".validate": "newData.isNumber()" },
+            "d": { ".validate": "newData.isString() && newData.val().length <= 20000" },
+            "$other": { ".validate": false }
+          }
+        }
       }
     }
   }
@@ -249,6 +282,8 @@
 - 已經寫入的「每一發」不能被改（只能新增或清除），避免被竄改。
 - 房間不能被整個刪掉；超過 12 小時的舊房間才能被新房間覆蓋。
 - 沒有登入機制，所以知道房號的人都能進房看資料；遊戲裡沒有個資，只有名稱與隊伍。
+- `lgrun/` 是連線自走棋的商店進度備份（換手機接續用）：路徑最後一段是只存在自己手機與「換手機接續」連結裡的金鑰，
+  規則不開放列出底下有哪些鍵，所以只有本人讀得到、寫得了；只能寫給房間裡存在的玩家，內容限 2 萬字。
 
 ## 4. 新增 Web 應用，取得 firebaseConfig
 
@@ -294,7 +329,8 @@ Claude 會把它填進 `data/netconfig.js`（`FA.NET_CONFIG = {...}`）並更新
 3. 每回合：商店 45 秒（可提早按「準備」，時間到自動送出）→ 兩兩對戰（人數奇數時，落單的人打另一位玩家上回合隊伍的「幽靈」）→ 輸家扣小隊血量。
 4. 血量歸零淘汰，可留下觀戰；剩 1 人或第 15 回合結束依血量排名。
 5. 掉線或切出 App：回來自動接回；商店階段掉線就用上回合的隊伍，對戰由 AI 代打。
-6. 規則更新：第 3 步的 JSON 已含 `leagues` 區塊，**舊版規則要重新貼上並發布**，否則建立房間會失敗。
+6. 換手機：在房間選單按「📱 換手機接續」，把連結在另一支手機（或主畫面 App）打開，就會用你的身分接回，商店進度從雲端備份還原。
+7. 規則更新：第 3 步的 JSON 已含 `leagues`、`lgrun` 區塊與對戰資料 `st` 欄位，**舊版規則要重新貼上並發布**，否則建立房間、結算或備份會失敗。
 
 ## 常見問題
 

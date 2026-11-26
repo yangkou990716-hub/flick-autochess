@@ -10,7 +10,17 @@
   const QS = new URLSearchParams(location.search), MOCK = U.MOCK;
   const FAST = MOCK && QS.get('fast') === '1'; // 測試：畫面上的對戰也直接算完、AI 不等待
   const TEST_HP = MOCK ? +QS.get('lghp') || 0 : 0; // 測試：起始血量
-  const mem = U.mem, pid = mem.pid, GH = LG.GHOST;
+  const mem = U.mem, GH = LG.GHOST;
+  // 換裝置接手連結 ?lgtake=房號.pid.金鑰：這台改用那位玩家的身分（重新載入後自動接回房間、從 Firebase 還原商店進度）
+  { const m = /^(\d{4})\.(p[a-z0-9]{4,20})\.([a-z0-9]{16,32})$/.exec(QS.get('lgtake') || '');
+    if (m) {
+      const clean = () => { const q = new URLSearchParams(location.search); q.delete('lgtake'); history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash); };
+      if (mem.pid === m[2] || confirm(`用這個連結接手房間 ${m[1]} 的玩家？\n這台裝置原本的連線身分會被取代。`)) {
+        const sw = mem.pid !== m[2]; mem.pid = m[2]; mem.lgKey = m[3]; mem.lgCode = m[1]; U.saveMem(); clean();
+        if (sw) { location.reload(); return; }
+      } else clean();
+    } }
+  const pid = mem.pid;
   const RUN_KEY = 'fa_lg_run' + (QS.get('who') ? '_' + QS.get('who') : (MOCK ? '_x' : ''));
   const ROOM_TTL = 12 * 3600e3, AI_LV = 15, MAXPAIR = Math.ceil(LD.maxPlayers / 2);
   const AI_DELAY = FAST ? 0.15 : LD.aiDelay;
@@ -25,7 +35,7 @@
 
   // ---------- 狀態 ----------
   const R = { code: null, ref: null, hostId: null, players: {}, state: null, lg: null, pairs: {}, res: {}, snaps: {}, results: {}, offs: [], ld: {} };
-  let run = null, view = -1, scr = 'title', err = '', busy = false, menu = false, overT = 0, lastRes = null;
+  let restored = null, takeOpen = false, run = null, view = -1, scr = 'title', err = '', busy = false, menu = false, overT = 0, lastRes = null;
   const BS = {}; // 每一對：{ pv, r, B, applied, mv:{}, building, writing, turnT, aiT, aiBusy, key }
   const ui = { aim: null, msg: '', ultArmed: false };
   const isHost = () => R.hostId === pid;
@@ -48,6 +58,7 @@
     <button id="lgMenu" class="pausebtn">☰</button>
     <button id="lgUlt" class="ultbtn hidden">⚡ 大招</button>
     <div id="lgOver" class="netover hidden"></div>
+    <div id="lgSpec" class="lgspec hidden"></div>
   </section>`);
   $('shop').insertAdjacentHTML('afterbegin', '<div id="lgBar" class="lgbar hidden"></div>');
   const tb = document.createElement('button');
@@ -85,9 +96,41 @@
   }
   function ensureRun() {
     if (run) return run;
-    run = loadRun() || LG.newRun(((R.lg && R.lg.seed) || 1) ^ hstr(pid));
-    saveRun(run); return run;
+    run = loadRun() || R.bk || LG.newRun(((R.lg && R.lg.seed) || 1) ^ hstr(pid));
+    R.bk = null; saveRun(run); return run;
   }
+  // ---------- run 備份到 Firebase：lgrun/{房號}/{pid}/{金鑰}，換裝置（本機沒有進度）時還原 ----------
+  // 金鑰只存在自己手機與「換手機接續」連結裡；規則不開放列出 {pid} 底下的鍵，別人讀不到也寫不了
+  const BK_MAX = 20000; // 壓縮後字數上限（規則也限制）
+  const rid = n => { let x = ''; while (x.length < n) x += Math.random().toString(36).slice(2); return x.slice(0, n); };
+  const lgKey = () => { if (!mem.lgKey) { mem.lgKey = rid(20); U.saveMem(); } return mem.lgKey; };
+  const bkRef = () => db.ref('lgrun/' + R.code + '/' + pid + '/' + lgKey());
+  const b64 = u8 => { let t = ''; for (let i = 0; i < u8.length; i += 0x8000) t += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(t); };
+  async function zip(str) { // 'z' + deflate-raw base64（瀏覽器內建 CompressionStream）；不支援就 'j' + 原 JSON
+    if (typeof CompressionStream !== 'function') return 'j' + str;
+    try { const b = await new Response(new Blob([str]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer(); return 'z' + b64(new Uint8Array(b)); } catch (e) { return 'j' + str; }
+  }
+  async function unzip(d) {
+    if (d[0] === 'j') return d.slice(1);
+    const u8 = Uint8Array.from(atob(d.slice(1)), c => c.charCodeAt(0));
+    return await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+  }
+  let bkLast = '';
+  async function backupRun(r) {
+    if (!r || !R.ref || !r.league) return;
+    const code = R.code, json = JSON.stringify(r); if (json === bkLast) return; bkLast = json;
+    const d = await zip(json); if (R.code !== code) return;
+    if (d.length > BK_MAX) { console.warn('[lg] 進度太大，未備份', d.length); return; }
+    bkRef().set({ r: r.league.round, c: R.created || 0, d }).catch(e => console.warn('[lg] 備份失敗', e));
+  }
+  async function fetchBackup() {
+    try {
+      const v = (await bkRef().once('value')).val(); if (!v || !v.d || v.c !== (R.created || 0)) return null;
+      const r = JSON.parse(await unzip(v.d)); return r && r.league && Array.isArray(r.front) ? r : null;
+    } catch (e) { console.warn('[lg] 還原失敗', e); return null; }
+  }
+  const runSum = r => ({ gold: r.gold, level: r.level, hp: r.hp, round: r.league.round, applied: r.league.applied, strats: r.strats.length, pending: r.pending && r.pending.type, front: r.front.filter(Boolean).length });
+  const takeLink = () => location.origin + location.pathname + '?lgtake=' + R.code + '.' + pid + '.' + lgKey();
 
   // ---------- 大廳 ----------
   function renderLobby() {
@@ -135,7 +178,10 @@
       head = `<h2>第 ${round()}/${LD.maxRounds} 回合・商店</h2><p class="nethint">${ready ? '已送出隊伍，等待其他人…' : menu ? '已暫離商店' : ''}　剩 <b id="lgLeft">${left}</b> 秒</p>`;
       btns = `<button id="lgShop" class="big go">${ready ? '回商店修改（取消準備）' : '回商店'}</button>`;
     } else { head = `<h2>第 ${round()}/${LD.maxRounds} 回合・對戰中</h2>`; btns = `<button id="lgWatch" class="big go">回到對戰</button>`; }
-    box.innerHTML = `${head}<div class="netplayers">${ps.map(row).join('')}</div>${lastResHTML()}${e}${btns}<button id="lgLeave">離開房間</button>`;
+    const take = me() && !me().out && !me().quit ? `<button id="lgTake">📱 換手機接續</button><div id="lgTakeBox" class="nethint${takeOpen ? '' : ' hidden'}">在另一支手機（或主畫面 App）打開這個連結，就會用你的身分接回、商店進度從雲端還原；這支手機之後就不要再用。<input id="lgTakeUrl" readonly value="${takeOpen ? esc(takeLink()) : ''}"><button id="lgTakeCopy">複製連結</button></div>` : '';
+    box.innerHTML = `${head}<div class="netplayers">${ps.map(row).join('')}</div>${lastResHTML()}${e}${btns}${take}<button id="lgLeave">離開房間</button>`;
+    if ($('lgTake')) $('lgTake').onclick = () => { if (run) { bkLast = ''; backupRun(run); } takeOpen = !takeOpen; renderLobby(); if (takeOpen) $('lgTakeUrl').select(); };
+    if ($('lgTakeCopy')) $('lgTakeCopy').onclick = () => { const v = $('lgTakeUrl').value; (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => { $('lgTakeCopy').textContent = '已複製 ✓'; }, () => { $('lgTakeUrl').select(); document.execCommand && document.execCommand('copy'); }); };
     if ($('lgShop')) $('lgShop').onclick = () => { menu = false; if (ready) R.ref.child('players/' + pid).update({ rdy: 0 }); else sync(); };
     if ($('lgWatch')) $('lgWatch').onclick = () => { menu = false; sync(true); };
     $('lgLeave').onclick = () => { if (confirm('離開後由 AI 用你最後的隊伍代打，確定離開？')) leaveRoom(); };
@@ -199,6 +245,7 @@
   }
   async function leaveRoom() {
     const ref = R.ref; if (!ref) return;
+    try { bkRef().remove().catch(() => { }); } catch (e) { }
     try {
       ref.child('players/' + pid).onDisconnect().cancel();
       if (R.state === 'lobby') {
@@ -225,8 +272,8 @@
   // ---------- 進房：監聽 ----------
   function detach() {
     R.offs.forEach(([r, ev, cb]) => r.off(ev, cb));
-    Object.assign(R, { code: null, ref: null, hostId: null, players: {}, state: null, lg: null, pairs: {}, res: {}, snaps: {}, results: {}, offs: [], ld: {}, created: null });
-    for (const k in BS) delete BS[k];
+    Object.assign(R, { code: null, ref: null, hostId: null, players: {}, state: null, lg: null, pairs: {}, res: {}, snaps: {}, results: {}, offs: [], ld: {}, created: null, bk: null });
+    for (const k in BS) delete BS[k]; bkLast = ''; takeOpen = false;
     run = null; view = -1; lastRes = null;
   }
   function listen(ref, ev, cb) { ref.on(ev, cb); R.offs.push([ref, ev, cb]); }
@@ -235,6 +282,7 @@
     R.code = code; R.ref = db.ref('leagues/' + code); mem.lgCode = code; U.saveMem();
     try { R.created = (await R.ref.child('createdAt').once('value')).val(); } catch (e) { }
     if (R.code !== code) return;
+    if (!loadRun()) { const bk = await fetchBackup(); if (R.code !== code) return; R.bk = bk; if (bk) { restored = runSum(bk); console.log('[lg] 從雲端備份還原商店進度：第', bk.league.round, '回合'); } }
     const meRef = R.ref.child('players/' + pid);
     listen(db.ref('.info/connected'), 'value', s => {
       if (s.val() !== true || !R.ref) return;
@@ -284,14 +332,19 @@
   const resReady = () => round() <= 1 || !me() || (me().opps || '').split(',').filter(Boolean).length < round() - 1 || (R.res[pid] && R.res[pid].r >= round() - 1) || (run && run.league.applied >= round() - 1);
   function applyRes() {
     const x = R.res[pid]; if (!x || !run || run.league.applied >= x.r) return;
-    const out = LG.finishRound(run, { round: x.r, win: !!x.win, left: x.left || 0, hp: x.hp, dmg: x.dmg || 0 });
-    saveRun(run);
+    const out = LG.finishRound(run, { round: x.r, win: !!x.win, left: x.left || 0, hp: x.hp, dmg: x.dmg || 0, st: x.st || localStats(x.r) });
+    saveRun(run); backupRun(run);
     if (out) lastRes = { round: x.r, win: !!x.win, dmg: x.dmg || 0, oppName: x.opp || '', gold: out.gold + (out.income || 0) + (out.interest || 0) + (out.streakBonus || 0), drop: out.drops.map(it => D.items[it.id].icon + D.items[it.id].name).join('、') };
+  }
+  // res 沒帶戰鬥資料（舊房主）時，用自己這台算完的那場補
+  function localStats(r) {
+    for (const k in BS) { const x = BS[k]; if (x.r === r && x.B && x.B.phase === 'over' && mySeat(x) >= 0) return LG.battleStats(x.B, mySeat(x)); }
+    return null;
   }
   // 送出隊伍（按準備或時間到）
   function submit(readyClick) {
     if (!amAlive() || !run || R.lg.phase !== 'shop') return;
-    const code = LG.teamCode(run, mem.name); saveRun(run);
+    const code = LG.teamCode(run, mem.name); saveRun(run); backupRun(run);
     R.ref.child('players/' + pid).update({ team: code, rdy: round() });
     if (readyClick) { menu = false; show('lg'); }
   }
@@ -343,10 +396,11 @@
   function settleRound(r) {
     const ps = {}, results = [];
     sorted().forEach(p => { ps[p.id] = { hp: p.hp, out: p.out || 0, place: p.place || 0 }; });
-    for (let i = 0; i < (R.lg.np || 0); i++) { const v = R.pairs[i], x = R.results[i]; results.push({ a: v.a, b: v.b, winner: x.winner, left: x.left }); }
+    const bst = {}; // 各家這場的戰鬥資料（金幣、陣亡、羈絆），轉進 res/{pid}.st 給本人結算商店
+    for (let i = 0; i < (R.lg.np || 0); i++) { const v = R.pairs[i], x = R.results[i]; results.push({ a: v.a, b: v.b, winner: x.winner, left: x.left }); if (x.st) { if (x.st[0]) bst[v.a] = x.st[0]; if (x.st[1] && v.b !== GH) bst[v.b] = x.st[1]; } }
     const st = LG.settle(r, ps, results), up = {};
     for (const id in st.ps) { const a = st.ps[id]; up['players/' + id + '/hp'] = a.hp; up['players/' + id + '/out'] = a.out || 0; if (a.place) up['players/' + id + '/place'] = a.place; }
-    for (const id in st.res) { const x = st.res[id]; up['res/' + id] = { r, win: x.win, dmg: x.dmg, left: x.left, hp: x.hp, opp: x.opp === GH ? '幽靈' : nameOf(x.opp).slice(0, 12) }; }
+    for (const id in st.res) { const x = st.res[id]; up['res/' + id] = { r, win: x.win, dmg: x.dmg, left: x.left, hp: x.hp, opp: x.opp === GH ? '幽靈' : nameOf(x.opp).slice(0, 12), st: bst[id] || null }; }
     if (st.over) { up.lg = Object.assign({}, R.lg, { phase: 'over' }); up.state = 'over'; }
     else up.lg = Object.assign({}, R.lg, { round: r + 1, phase: 'shop', ends: now() + LD.shopSec * 1000, np: 0 });
     R.ref.update(up);
@@ -358,7 +412,7 @@
   function makeBattle(pv) {
     const t = [pv.teams[0], pv.teams[1]].map(c => RUN.importTeam(c));
     if (t.some(x => !x || !x.front.length)) return null;
-    return BT.create({ pFront: t[0].front, pBack: t[0].back, eFront: t[1].front, eBack: t[1].back, rules: [], env: {}, pExt: ext(t[0].strats), eExt: ext(t[1].strats), seed: pv.seed });
+    return BT.create({ pFront: t[0].front, pBack: t[0].back, eFront: t[1].front, eBack: t[1].back, rules: [], env: {}, pExt: ext(t[0].strats), eExt: ext(t[1].strats), seed: pv.seed, goldBoth: true });
   }
   async function setupPair(i) {
     const pv = R.pairs[i]; if (!pv) return;
@@ -392,7 +446,7 @@
     if (isAuth(x) && !mvAt(x, x.applied)) {
       const B = x.B, h = U.hashB(B), up = { ['ps/' + i]: { r: x.r, n: x.applied, hash: h } };
       up['psd/' + i] = { r: x.r, n: x.applied, data: JSON.stringify(B, (k, v) => k === 'events' ? [] : k === 'hurt' ? 0 : v) };
-      if (B.phase === 'over') up['pr/' + i] = { r: x.r, winner: B.winner, left: Math.max(0, B.moves[B.winner]), n: x.applied, hash: h };
+      if (B.phase === 'over') up['pr/' + i] = { r: x.r, winner: B.winner, left: Math.max(0, B.moves[B.winner]), n: x.applied, hash: h, st: [LG.battleStats(B, 0), LG.battleStats(B, 1)] };
       R.ref.update(up);
     } else checkSnap(i);
     if (x.B.phase === 'over') overT = i === view ? 0.9 : overT;
@@ -500,6 +554,27 @@
     };
   }
 
+  // 觀戰列（看的不是自己的對戰時）：切換看哪一場、回自己的對戰、離開
+  function specBar() {
+    const el = $('lgSpec'), x = BS[view], p = me();
+    const on = scr === 'lgb' && playing() && R.lg.phase === 'battle' && p && x && x.pv && x.r === round() && mySeat(x) < 0;
+    if (!on) { if (!el.classList.contains('hidden')) { el.classList.add('hidden'); el.dataset.h = ''; } return; }
+    const ks = Object.keys(R.pairs).map(Number).filter(i => R.pairs[i] && R.pairs[i].r === round()).sort((a, b) => a - b);
+    const fin = i => R.results[i] && R.results[i].r === round(), mine = myPairIdx(), out = !!p.out || !!p.quit;
+    const html = `<span>👀 觀戰</span>` + ks.map(i => `<button data-sv="${i}" class="${i === view ? 'on' : ''}">${esc(R.pairs[i].names[0])} vs ${esc(R.pairs[i].names[1])}${fin(i) ? ' ✓' : ''}</button>`).join('') +
+      (mine >= 0 ? '<button data-sv="me">回我的對戰</button>' : '') + (out ? '<button data-sv="leave">離開房間</button>' : '');
+    if (el.dataset.h !== html) { el.innerHTML = html; el.dataset.h = html; }
+    el.classList.remove('hidden');
+  }
+  $('lgSpec').onclick = e => {
+    const t = e.target.closest('[data-sv]'); if (!t) return;
+    const v = t.dataset.sv;
+    if (v === 'leave') { if (confirm('離開房間？')) leaveRoom(); return; }
+    if (v === 'me') { watching = false; view = myPairIdx(); }
+    else { view = +v; watching = true; }
+    V.reset(); ui.aim = null; $('lgOver').classList.add('hidden'); $('lgOver').dataset.h = ''; overT = 0;
+  };
+
   // ---------- 主迴圈：所有對戰都在背景推進（不是畫面上的那對直接算完），畫面只畫 view 那對 ----------
   let loopOn = false, last = 0, acc = 0, tickT = 0;
   function startLoop() { if (loopOn) return; loopOn = true; last = performance.now(); acc = 0; sched(); }
@@ -532,6 +607,7 @@
       if (vb !== x.B) vb.bodies.forEach((o, k) => { if (x.B.bodies[k]) x.B.bodies[k].hurt = o.hurt; });
       if (x.B.phase === 'over' || (me() && me().out)) renderOver();
     } else if (scr === 'lgb') hud();
+    specBar();
     sched();
   }
 
@@ -550,9 +626,10 @@
 
   // 測試／除錯用
   FA.leagueNet = {
+    takeLink: () => R.code ? takeLink() : null, lastRes: () => lastRes, spec: () => !$('lgSpec').classList.contains('hidden') && $('lgSpec').innerText,
     state: () => ({ code: R.code, host: R.hostId, pid, state: R.state, round: round(), phase: R.lg && R.lg.phase, np: R.lg && R.lg.np, scr, view, myTurn: myTurn(), me: me(), players: R.players,
       pairs: Object.keys(BS).map(i => { const x = BS[i]; return { i: +i, r: x.r, a: x.pv && x.pv.a, b: x.pv && x.pv.b, src: x.pv && x.pv.src, phase: x.B && x.B.phase, applied: x.applied, winner: x.B && x.B.winner, hash: x.B && U.hashB(x.B), building: x.building, resyncs: x.resyncs || 0 }; }),
-      run: run && { gold: run.gold, level: run.level, hp: run.hp, round: run.league.round, applied: run.league.applied, strats: run.strats.length, pending: run.pending && run.pending.type, front: run.front.filter(Boolean).length } }),
+      run: run && runSum(run), restored }),
     autoShop() { if (!run) return false; LG.autoShop(run); saveRun(run); FA.shopHost.render(); return true; },
     ready: () => submit(true), autoShoot() { if (!myTurn()) return false; const x = BS[view], c = FA.ai.choose(x.B, mySeat(x), D.enemies.difficulty(AI_LV), { s: (x.applied * 131 + 7) | 0 }); return c ? shoot(c.idx, c.angle, c.power, c.ult) : false; },
     create: createRoom, join: joinRoom, start: startGame, leave: leaveRoom, setName: n => { mem.name = n; U.saveMem(); }

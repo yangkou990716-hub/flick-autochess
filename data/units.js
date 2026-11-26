@@ -13,7 +13,7 @@
 (function (g) {
   const FA = g.FA = g.FA || {}; FA.DATA = FA.DATA || {};
   FA.DATA.units = {
-    spark: { name: '火花', cost: 1, traits: ['blast', 'swift'], role: 'front', hp: 105, atk: 28, mass: 0.8, r: 20, speed: 1.15, color: '#ff7a45',
+    spark: { name: '火花', cost: 1, traits: ['blast', 'swift'], role: 'front', hp: 125, atk: 33, mass: 0.8, r: 20, speed: 1.15, color: '#ff7a45',
       ability: { type: 'burn', r: 60, mult: 0.65, shots: 3, desc: '撞到敵人留下火焰地板（3 發內碰到就燒）' },
       link: { with: 'barrel', combo: { type: 'blast', r: 150, mult: 1.6, name: '火海' } } },
     magnet: { name: '小磁', cost: 1, traits: ['magnet'], role: 'front', hp: 185, atk: 40, mass: 1, r: 22, speed: 1, color: '#5b8cff',
