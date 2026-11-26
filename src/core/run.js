@@ -15,6 +15,7 @@
       strats: [], threat: A.threat || 0, extraEnemy: 0, env: null, opener: null, node: null, encLv: 0,
       timed: [], futures: [], afterStrat: null, lvPaid: {} };
     r.bossVar = R().int(r.rng, D().enemies.bosses[0].length);
+    initCons(r, A); // ---- 道具 ----
     r.pending = { type: 'opener', options: pickN(r, Object.keys(RD().openers), 3) };
     rollShop(r, true);
     return r;
@@ -175,6 +176,7 @@
     const give = (cost, n, star) => { for (let k = 0; k < n; k++) addUnit(r, R().pick(r.rng, shopIds().filter(i => D().units[i].cost === cost)), star || 1); };
     if (f.units) give(f.units.cost, f.units.n, f.units.star);
     if (f.units2) f.units2.forEach(([c, n]) => give(c, n, 1));
+    if (f.cons) giveCons(r, f.cons); // ---- 道具 ----
   }
 
   function strategyOptions(r, forceTier) {
@@ -212,10 +214,12 @@
     const p = r.pending; if (!p) return null;
     const id = p.options[i];
     r.pending = null;
+    if (p.type === 'armory') { pickArmory(r, p, i); return null; } // ---- 道具 ----
+    if (p.type === 'carrier') { pickCarrier(r, p, i); return null; } // ---- 補給 ----
     if (p.type === 'opener') { r.opener = id; applyFx(r, RD().openers[id].fx); if (RD().openers[id].fx.bonusPick) r.futures.push({ at: 0, tier: RD().openers[id].fx.bonusPick }); r.pending = { type: 'env', options: pickN(r, Object.keys(RD().envs), 3) }; }
     else if (p.type === 'env') { r.env = id; askStrategy(r); }
     else if (p.type === 'path') {
-      if (id === 'supply') r.pending = { type: 'supply', options: pickN(r, Object.keys(RD().supplies), 3) };
+      if (id === 'supply') r.pending = carrierOn() ? carrierPending(r) : { type: 'supply', options: pickN(r, Object.keys(RD().supplies), 3) }; // ---- 補給 ----
       else if (id === 'encounter') r.pending = { type: 'encounter', options: RD().encounter.map((_, k) => k) };
       else { r.node = id; if (id === 'boss') r.gold += sfx(r).onBossGold; return 'battle'; }
     }
@@ -237,7 +241,7 @@
     if (r.pending) return;
     const due = r.futures.findIndex(f => r.stage >= f.at);
     if (due >= 0) { const f = r.futures.splice(due, 1)[0]; return askStrategy(r, f.tier); }
-    if (r.afterStrat === 'nextPlane') { r.afterStrat = null; r.plane++; r.step = 0; r.bossVar = R().int(r.rng, D().enemies.bosses[r.plane - 1].length); }
+    if (r.afterStrat === 'nextPlane') { r.afterStrat = null; r.plane++; r.step = 0; r.bossVar = R().int(r.rng, D().enemies.bosses[r.plane - 1].length); planeCons(r); }
   }
 
   // ---- 敵人 ----
@@ -313,6 +317,7 @@
       const P = RD().piggy, killed = b.bodies.filter(o => o.team === 1 && !o.alive).length;
       res.gold = killed * P.goldEach; res.pigs = killed;
       if (win) { for (let k = 0; k < (P.allBonus.item || 0); k++) { const it = makeItem(r, randomBase(r)); r.items.push(it); res.drops.push(it); } }
+      if (win) rewardCons(r, P.allBonus, res); // ---- 道具 ----
       r.gold += res.gold; finishNode(r, res, false); r.last = res; return res;
     }
     r.streak = win ? Math.max(1, r.streak + 1) : Math.min(-1, r.streak - 1);
@@ -327,13 +332,14 @@
       if (s.flawlessGold && b.bodies.every(o => o.team !== 0 || o.temp || o.alive)) { res.gold += s.flawlessGold; res.flawless = true; }
       let rw = null;
       if (node === 'encounter') rw = RD().encounter[r.encLv].reward;
-      if (node === 'boss') rw = { weapon: 1, item: 2 };
-      if (!rw && R().next(r.rng) < c.dropChance) rw = { item: 1 };
+      if (node === 'boss') rw = RD().bossReward || { weapon: 1, item: 2 };
+      if (!rw && R().next(r.rng) < c.dropChance) rw = RD().dropReward || { item: 1 };
       if (rw) {
         res.gold += rw.gold || 0;
         for (let k = 0; k < (rw.item || 0); k++) { const it = makeItem(r, randomBase(r)); r.items.push(it); res.drops.push(it); }
         for (let k = 0; k < (rw.weapon || 0); k++) { const w = randomWeapon(r); r.weapons.push(w); res.weapons.push(w); }
         if (rw.strategy) res.stratTier = rw.strategy;
+        rewardCons(r, rw, res); // ---- 道具 ----
       }
     }
     if (e.battleHeal && r.hp > 0) { const h = Math.min(e.battleHeal, r.maxHp - r.hp); r.hp += h; res.heal = (res.heal || 0) + h; }
@@ -344,6 +350,90 @@
     return res;
   }
 
+  // ---- 道具 ----
+  // r.consumables：道具 id 陣列（舊存檔沒有這欄，一律經 cons(r) 取用）
+  const CD = () => D().consumables || {};
+  const cons = r => r.consumables || (r.consumables = []);
+  function initCons(r, A) { cons(r); if (A && A.wrench && CD()[A.wrench]) r.consumables.push(A.wrench); }
+  function giveCons(r, m, out) {
+    for (const id in m || {}) for (let k = 0; k < m[id]; k++) if (CD()[id]) { cons(r).push(id); if (out) out.push(id); }
+  }
+  // 獎勵物件 rw 的 cons:{id:n}、consOne:[候選]（隨機給 1 個）→ 進物品欄，記到 res.cons
+  function rewardCons(r, rw, res) {
+    if (!rw) return; const out = res ? (res.cons = res.cons || []) : null;
+    if (rw.cons) giveCons(r, rw.cons, out);
+    if (rw.consOne && rw.consOne.length) giveCons(r, { [R().pick(r.rng, rw.consOne)]: 1 }, out);
+  }
+  function planeCons(r) { const L = (RD().planeStartCons || {})[r.plane]; if (L) L.forEach(id => giveCons(r, { [id]: 1 })); }
+  const consNeeds = id => (CD()[id] || {}).target || 'none';
+  // 使用第 ci 個道具。tgt：角色 {zone,i}；裝備 {item:k}（物品欄）或 {zone,i,slot:k}（角色身上）。
+  // 回傳 false 或 { ok:true, msg }；武裝箱會設 r.pending = { type:'armory' }
+  function useCons(r, ci, tgt) {
+    const id = cons(r)[ci], X = CD()[id]; if (!X) return false;
+    const fail = msg => ({ ok: false, msg });
+    if (X.act === 'pick') {
+      if (r.pending) return fail('先完成目前的選擇');
+      const pool = Object.keys(D().items).filter(k => D().items[k].tier === X.tier);
+      r.pending = { type: 'armory', options: pickN(r, pool, X.pick || 3), src: id };
+      r.consumables.splice(ci, 1); return { ok: true, msg: X.name + '打開了' };
+    }
+    if (X.act === 'reforge') {
+      const u = tgt && tgt.zone ? unitAt(r, tgt) : null, list = u ? u.items : r.items, k = u ? tgt.slot : tgt && tgt.item;
+      const it = list && k != null ? list[k] : null; if (!it) return fail('請選 1 件裝備');
+      const tier = D().items[it.id].tier, pool = Object.keys(D().items).filter(x => D().items[x].tier === tier);
+      const others = pool.filter(x => x !== it.id), nid = R().pick(r.rng, others.length ? others : pool);
+      list[k] = makeItem(r, nid); r.consumables.splice(ci, 1);
+      return { ok: true, msg: `${D().items[it.id].name} → ${D().items[nid].name}`, item: list[k] };
+    }
+    const u = tgt && tgt.zone ? unitAt(r, tgt) : null; if (!u) return fail('請選 1 隻角色');
+    if (X.act === 'clone') {
+      if (D().units[u.id].cost > (X.maxCost || 99)) return fail(`只能用在 ≤${X.maxCost} 費角色`);
+      if (r.bench.indexOf(null) < 0) return fail('備戰區沒有空位');
+      r.consumables.splice(ci, 1); addUnit(r, u.id, 1); return { ok: true, msg: '複製了 ' + D().units[u.id].name };
+    }
+    if (X.act === 'strip') {
+      if (!u.items.length && !u.weapon) return fail('這隻沒有裝備');
+      r.items.push(...u.items); u.items = []; if (u.weapon) { r.weapons.push(u.weapon); u.weapon = null; }
+      if (!X.reusable) r.consumables.splice(ci, 1);
+      return { ok: true, msg: '裝備已拆回物品欄' };
+    }
+    return false;
+  }
+  function pickArmory(r, p, i) { const id = p.options[i]; if (id && D().items[id]) r.items.push(makeItem(r, id)); }
+  // ---- 補給 ----
+  // 選人帶裝：選項 { u:角色id, it:裝備 } 或 { sup:'heal'|'gold' }（保底）
+  const carrierOn = () => RD().supplyMode && RD().supplyMode.mode === 'carrier';
+  function rollUnitId(r) { // 依目前等級的商店機率抽 1 隻（只抽商店可買的）
+    const odds = C().odds[r.level - 1], ids = shopIds();
+    let x = R().next(r.rng) * 100, cost = 1;
+    for (let i = 0; i < 5; i++) { if (x < odds[i]) { cost = i + 1; break; } x -= odds[i]; }
+    let pool = ids.filter(id => D().units[id].cost === cost);
+    while (!pool.length && cost > 1) { cost--; pool = ids.filter(id => D().units[id].cost === cost); }
+    return R().pick(r.rng, pool);
+  }
+  function carrierOptions(r) {
+    const M = RD().supplyMode, out = [], seen = [];
+    for (let k = 0, g = 0; k < (M.n || 4) && g < 40; g++) { const id = rollUnitId(r); if (seen.includes(id) && g < 30) continue; seen.push(id); out.push({ u: id, it: makeItem(r, randomBase(r)) }); k++; }
+    const fb = (M.fallback || ['heal', 'gold']).filter(k => RD().supplies[k]);
+    if (fb.length) out.push({ sup: R().pick(r.rng, fb) });
+    return out;
+  }
+  function carrierPending(r) { return { type: 'carrier', options: carrierOptions(r), rerolls: RD().supplyMode.rerolls == null ? 1 : RD().supplyMode.rerolls }; }
+  const carrierRerollCost = () => RD().supplyMode.rerollCost || 2;
+  function rerollCarrier(r) {
+    const p = r.pending; if (!p || p.type !== 'carrier' || !(p.rerolls > 0) || r.gold < carrierRerollCost()) return false;
+    r.gold -= carrierRerollCost(); p.rerolls--; p.options = carrierOptions(r); return true;
+  }
+  function pickCarrier(r, p, i) {
+    const o = p.options[i]; r.node = 'supply';
+    if (o && o.sup) applyFx(r, RD().supplies[o.sup].fx);
+    else if (o && o.u) {
+      const slot = r.bench.indexOf(null);
+      if (slot < 0) { r.gold += D().units[o.u].cost; r.items.push(o.it); } // 備戰區滿：退錢、裝備進物品欄
+      else { r.bench[slot] = { uid: r.uid++, id: o.u, star: 1, items: o.it ? [o.it] : [], weapon: null }; merge(r); }
+    }
+    finishNode(r, null);
+  }
   // ---- 隊伍代碼（匯出／匯入）----
   function exportTeam(r, name) {
     const L = lv(r), pack = u => u && [u.id, u.star, u.weapon || '', u.items.map(it => [it.id, it.rolls])];
@@ -372,5 +462,6 @@
 
   FA.run = { newRun, rollShop, reroll, buyXp, buy, sell, move, equip, equipWeapon, merge, makeItem, startBattle, endBattle, enemyTeam,
     bossInfo: r => D().enemies.bosses[r.plane - 1][r.bossVar || 0], sellPrice, unitCost, lv, isBoss, steps, unitAt, choose, advance, sfx, efx, nodeOptions,
-    exportTeam, importTeam, duelBattle, shopIds };
+    exportTeam, importTeam, duelBattle, shopIds,
+    cons, giveCons, useCons, consNeeds, carrierPending, rerollCarrier, carrierRerollCost }; // ---- 道具 ---- / ---- 補給 ----
 })(globalThis);
