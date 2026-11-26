@@ -10,12 +10,13 @@
   function newRun(seed, asc) {
     const c = C(), A = RD().ascensions ? RD().ascensions[asc || 0] : { threat: 0, hp: c.squadHp };
     const r = { v: 3, rng: { s: seed | 0 }, plane: 1, step: 0, stage: 0, asc: asc || 0, hp: A.hp, maxHp: A.hp, gold: c.startGold, level: 1, xp: 0, streak: 0,
-      front: Array(c.maxFront).fill(null), back: Array(3).fill(null), bench: Array(c.benchSize).fill(null),
+      front: Array(c.maxFront).fill(null), back: Array(c.maxBack || 3).fill(null), bench: Array(c.benchSize).fill(null),
       items: [], weapons: [], shop: [], locked: false, uid: 1, over: null, last: null, lastStand: c.lastStand, freeReroll: 0, freeLeft: 0,
       strats: [], threat: A.threat || 0, extraEnemy: 0, env: null, opener: null, node: null, encLv: 0,
       timed: [], futures: [], afterStrat: null, lvPaid: {} };
     r.bossVar = R().int(r.rng, D().enemies.bosses[0].length);
     initCons(r, A); // ---- 道具 ----
+    r.ecoRng = { s: ((seed | 0) ^ 0x2c1b3c6d) | 0 }; ecoNode(r); // ---- 經濟擴充 ----
     r.pending = { type: 'opener', options: pickN(r, Object.keys(RD().openers), 3) };
     rollAffixes(r, seed); // ---- 敵人詞綴 ----
     rollShop(r, true);
@@ -96,7 +97,11 @@
   // 策略效果 → battle.create 的 pExt／eExt
   const battleExt = s => ({ mods: s.mods, shots: s.shots, chainAll: s.chainAll, revive: s.revive, echo: s.echo, blastGold: s.blastGold, openFreeze: s.openFreeze, stormZap: s.stormZap });
 
-  const lv = r => { const L = C().levels[r.level - 1]; return { front: Math.min(C().maxFront, L.front + sfx(r).frontAdd), back: L.back }; };
+  const lv = r => {
+    const L = C().levels[Math.min(r.level, C().levels.length) - 1], mb = C().maxBack || 3;
+    while (r.back.length < mb) r.back.push(null); // ---- 經濟擴充 ----：舊存檔後台只有 3 格
+    return { front: Math.min(C().maxFront, L.front + sfx(r).frontAdd), back: Math.min(L.back, r.back.length) };
+  };
   const unitAt = (r, l) => r[l.zone][l.i];
   const unitCost = (r, id) => Math.max(1, D().units[id].cost + (efx(r).costAdd || 0));
   // 傳入 r 時，降價環境（拍賣行）照降價後價格回收，避免低買高賣
@@ -106,22 +111,16 @@
 
   function rollShop(r, force) {
     if (r.locked && !force) return;
-    const c = C(), odds = c.odds[r.level - 1], ids = shopIds();
+    const c = C();
     r.shop = [];
-    for (let k = 0; k < c.shopSize; k++) {
-      let x = R().next(r.rng) * 100, cost = 1;
-      for (let i = 0; i < 5; i++) { if (x < odds[i]) { cost = i + 1; break; } x -= odds[i]; }
-      let pool = ids.filter(id => D().units[id].cost === cost);
-      while (!pool.length && cost > 1) { cost--; pool = ids.filter(id => D().units[id].cost === cost); }
-      r.shop.push(R().pick(r.rng, pool));
-    }
+    for (let k = 0; k < c.shopSize; k++) r.shop.push(rollUnitId(r)); // ---- 經濟擴充 ----：輪崗／概念股權重在 rollUnitId
   }
 
   function reroll(r) {
-    if (r.freeLeft > 0) { r.freeLeft--; rollShop(r, true); return true; }
-    if (r.gold < rerollCost(r)) return false; r.gold -= rerollCost(r); rollShop(r, true); return true;
+    if (r.freeLeft > 0) { r.freeLeft--; rollShop(r, true); rerollQuest(r); return true; }
+    if (r.gold < rerollCost(r)) return false; const rc = rerollCost(r); r.gold -= rc; if (rc > 0) r.spentNode = true; rollShop(r, true); rerollQuest(r); return true;
   }
-  function buyXp(r) { if (r.gold < C().xpCost || r.level >= C().levels.length) return false; r.gold -= C().xpCost; addXp(r, C().xpGain); return true; }
+  function buyXp(r) { if (r.gold < C().xpCost || r.level >= C().levels.length) return false; r.gold -= C().xpCost; r.spentNode = true; addXp(r, C().xpGain); return true; }
   function addXp(r, n) {
     r.xp += n; while (r.level < C().levels.length && r.xp >= C().levels[r.level].xp) r.level++;
     r.strats.forEach(id => { const f = RD().strategies[id].fx.atLevel; if (f && r.level >= f.lv && !r.lvPaid[id]) { r.lvPaid[id] = 1; r.gold += f.gold; } });
@@ -146,7 +145,7 @@
     const cost = unitCost(r, id); if (r.gold < cost) return false;
     const slot = r.bench.indexOf(null);
     if (slot < 0 && count(r, id, 1) < 2) return false;
-    r.gold -= cost; r.shop[i] = null;
+    r.gold -= cost; r.shop[i] = null; r.spentNode = true;
     if (slot < 0) {
       const locs = []; ZONES.forEach(z => r[z].forEach((x, k) => { if (x && x.id === id && x.star === 1) locs.push({ zone: z, i: k }); }));
       const keep = unitAt(r, locs[0]), o = unitAt(r, locs[1]);
@@ -235,7 +234,7 @@
     if (f.cons) giveCons(r, f.cons); // ---- 道具 ----
   }
 
-  function strategyOptions(r, forceTier) {
+  function strategyOptions(r, forceTier, exempt) {
     const T = RD().tiers, S = RD().strategies, out = [], bias = efx(r).tierBias;
     const chance = { silver: T.silver.chance, gold: T.gold.chance, prism: T.prism.chance };
     if (bias === 'gold') { chance.silver = 30; chance.gold = 62; chance.prism = 8; }
@@ -244,6 +243,7 @@
     if (bias === 'silver') { chance.silver = 100; chance.gold = 0; chance.prism = 0; }
     for (let k = 0; k < nOpt; k++) {
       let tier = forceTier;
+      if (!exempt && hasFx(r, 'lockTier')) tier = hasFx(r, 'lockTier'); // ---- 經濟擴充 ----：遠見
       if (!tier) { let x = R().next(r.rng) * 100; tier = 'silver'; for (const t of ['silver', 'gold', 'prism']) { if (x < chance[t]) { tier = t; break; } x -= chance[t]; } }
       let pool = Object.keys(S).filter(id => S[id].tier === tier && !r.strats.includes(id) && !out.includes(id));
       if (!pool.length) pool = Object.keys(S).filter(id => !r.strats.includes(id) && !out.includes(id));
@@ -251,7 +251,7 @@
     }
     return out;
   }
-  const askStrategy = (r, tier) => { r.pending = { type: 'strategy', options: strategyOptions(r, tier), tier: tier || null }; };
+  const askStrategy = (r, tier, exempt) => { r.pending = { type: 'strategy', options: strategyOptions(r, tier, exempt), tier: (!exempt && hasFx(r, 'lockTier')) || tier || null }; };
 
   function nodeOptions(r) {
     const fixed = steps(r)[r.step], sw = efx(r).planeSwap;
@@ -263,7 +263,10 @@
     return a === b ? [a] : [a, b];
   }
 
-  function advance(r) { r.pending = { type: 'path', options: nodeOptions(r) }; }
+  function advance(r) {
+    if (preBossSupply(r)) return; // ---- 經濟擴充 ----：人身意外險
+    r.pending = { type: 'path', options: nodeOptions(r) };
+  }
 
   // 回傳 'battle' 代表要開戰
   function choose(r, i) {
@@ -272,22 +275,26 @@
     r.pending = null;
     if (p.type === 'armory') { pickArmory(r, p, i); return null; } // ---- 道具 ----
     if (p.type === 'carrier') { pickCarrier(r, p, i); return null; } // ---- 補給 ----
-    if (p.type === 'opener') { r.opener = id; applyFx(r, RD().openers[id].fx); if (RD().openers[id].fx.bonusPick) r.futures.push({ at: 0, tier: RD().openers[id].fx.bonusPick }); r.pending = { type: 'env', options: pickN(r, Object.keys(RD().envs), 3) }; }
-    else if (p.type === 'env') { r.env = id; askStrategy(r); }
+    if (p.type === 'opener') { r.opener = id; applyFx(r, RD().openers[id].fx); if (RD().openers[id].fx.bonusPick) r.futures.push({ at: 0, tier: RD().openers[id].fx.bonusPick }); r.pending = { type: 'env', options: envOptions(r) }; }
+    else if (p.type === 'env') { r.env = id; envPicked(r); askStrategy(r); }
     else if (p.type === 'path') {
+      if (efx(r).perNodeAtk) r.evoN = (r.evoN || 0) + 1; // ---- 經濟擴充 ----：進化演算法
       if (id === 'supply') r.pending = carrierOn() ? carrierPending(r) : { type: 'supply', options: pickN(r, Object.keys(RD().supplies), 3) }; // ---- 補給 ----
-      else if (id === 'encounter') r.pending = { type: 'encounter', options: RD().encounter.map((_, k) => k) };
+      else if (id === 'encounter') r.pending = { type: 'encounter', options: hasFx(r, 'encMode') === 'diode' ? [0, RD().encounter.length - 1] : RD().encounter.map((_, k) => k) }; // ---- 經濟擴充 ----：二極體
       else { r.node = id; if (id === 'boss') r.gold += sfx(r).onBossGold; return 'battle'; }
     }
     else if (p.type === 'encounter') { r.node = 'encounter'; r.encLv = id; return 'battle'; }
+    else if (p.type === 'supply' && p.extra) { applyFx(r, RD().supplies[id].fx); r.pending = { type: 'path', options: nodeOptions(r) }; } // ---- 經濟擴充 ----：人身意外險
     else if (p.type === 'supply') { applyFx(r, RD().supplies[id].fx); r.node = 'supply'; finishNode(r, null); }
     else if (p.type === 'strategy') {
       const S = RD().strategies[id], T = RD().tiers[S.tier];
-      r.strats.push(id); r.threat += T.threat; r.extraEnemy += T.extraEnemy;
+      const noThreat = hasFx(r, 'noThreat'); // ---- 經濟擴充 ----：遠見之後的策略不再加敵人強度
+      r.strats.push(id); if (!noThreat) { r.threat += T.threat; r.extraEnemy += T.extraEnemy; }
+      stratPicked(r, S.fx); // ---- 經濟擴充 ----
       applyFx(r, S.fx);
       if (S.fx.perNode) r.timed.push(Object.assign({ src: id }, S.fx.perNode));
       if (S.fx.future) r.futures.push({ at: r.stage + S.fx.future.after, tier: S.fx.future.tier });
-      if (S.fx.pickNow) askStrategy(r, S.fx.pickNow);
+      if (S.fx.pickNow) askStrategy(r, S.fx.pickNow, !!S.fx.lockTier);
       else afterStrategies(r);
     }
     return null;
@@ -335,9 +342,11 @@
     if (!front.length) return null;
     const eExt = en.reward ? { mods: { hpPct: (RD().piggy.hpBase + RD().piggy.hpPerStage * r.stage) / D().units.piggy.hp - 1 } } : { threat: r.threat };
     if (en.affix) eExt.affix = en.affix; // ---- 敵人詞綴 ----
-    return FA.battle.create({ pFront: front, pBack: r.back.slice(0, lv(r).back), eFront: en.front, eBack: en.back, rules: en.rules, env: efx(r),
-      pExt: battleExt(s), eExt, eNoShots: !!en.reward, extraMoves: en.boss ? C().bossMovesAdd : 0,
+    const b = FA.battle.create({ pFront: front, pBack: r.back.slice(0, lv(r).back), eFront: en.front, eBack: en.back, rules: en.rules, env: efx(r),
+      pExt: econExt(r, battleExt(s)), eExt, eNoShots: !!en.reward, extraMoves: en.boss ? C().bossMovesAdd : 0,
       seed: Math.floor(R().next(r.rng) * 2 ** 31) });
+    if (!en.reward) pinpoint(r, b); // ---- 經濟擴充 ----：定點爆破
+    return b;
   }
 
   // 每個節點結束：收入、經驗、持續效果、前進
@@ -350,7 +359,8 @@
     const inc = c.baseIncome + s.income + (e.incomeAdd || 0);
     r.gold += inc + interest + sb;
     if (res) Object.assign(res, { income: inc, interest, streakBonus: sb });
-    r.timed.forEach(t => { if (t.n > 0) { t.n--; if (t.gold) r.gold += t.gold; if (t.xp) addXp(r, t.xp); if (t.rerolls) r.freeLeft += t.rerolls; } });
+    r.timed.forEach(t => { if (t.n > 0) { t.n--; if (t.gold) r.gold += t.gold; if (t.xp) addXp(r, t.xp); if (t.rerolls) r.freeLeft += t.rerolls; if (t.unit) addUnit(r, t.unit, 1); } });
+    econFinish(r, res); // ---- 經濟擴充 ----：存款回報
     r.timed = r.timed.filter(t => t.n > 0);
     addXp(r, c.xpPerRound);
     r.freeLeft += r.freeReroll + (factionFx(r).nodeReroll || 0);
@@ -365,6 +375,7 @@
       else { r.afterStrat = 'nextPlane'; askStrategy(r); }
     }
     if (!r.over && !r.pending) afterStrategies(r);
+    ecoNode(r); // ---- 經濟擴充 ----：輪崗、商店道具格（先於下一個商店）
     rollShop(r);
   }
 
@@ -383,6 +394,7 @@
       const left = b.moves ? Math.ceil(Math.max(0, b.moves[1]) / c.deathCost) : FA.battle.alive(b, 1).length, L = c.lossDamage, A = RD().ascensions ? RD().ascensions[r.asc || 0] : { lossAdd: 0 };
       res.dmg = Math.round(L.base + left * L.perEnemy + (r.stage + 1) * L.perStage + (node === 'boss' ? 4 : 0) + A.lossAdd);
       res.dmg = Math.max(1, res.dmg - (factionFx(r).lossRed || 0));
+      if (hasFx(r, 'lossMul')) res.dmg = Math.round(res.dmg * hasFx(r, 'lossMul')); // ---- 經濟擴充 ----：擴張的代價
       r.hp = Math.max(0, r.hp - res.dmg);
       if (r.hp <= 0 && r.lastStand > 0) { r.lastStand--; r.hp = 1; res.saved = true; }
     } else {
@@ -404,6 +416,7 @@
     }
     if (e.battleHeal && r.hp > 0) { const h = Math.min(e.battleHeal, r.maxHp - r.hp); r.hp += h; res.heal = (res.heal || 0) + h; }
     bondAfterBattle(r, b, res, win);
+    bondQuest(r, b, res); // ---- 經濟擴充 ----：人脈進階
     res.gold += b.gold || 0; r.gold += res.gold;
     finishNode(r, res, true);
     if (res.stratTier && !r.over) { if (r.pending) r.futures.push({ at: r.stage, tier: res.stratTier }); else askStrategy(r, res.stratTier); }
@@ -464,12 +477,17 @@
   // ---- 補給 ----
   // 選人帶裝：選項 { u:角色id, it:裝備 } 或 { sup:'heal'|'gold' }（保底）
   const carrierOn = () => RD().supplyMode && RD().supplyMode.mode === 'carrier';
-  function rollUnitId(r) { // 依目前等級的商店機率抽 1 隻（只抽商店可買的）
-    const odds = C().odds[r.level - 1], ids = shopIds();
-    let x = R().next(r.rng) * 100, cost = 1;
+  function rollUnitId(r) { // 依目前等級的商店機率抽 1 隻（只抽商店可買的）；---- 經濟擴充 ----：輪崗費用 ×2、概念股羈絆權重
+    const odds = shopOdds(r), ids = shopIds(), tot = odds.reduce((a, b) => a + b, 0);
+    let x = R().next(r.rng) * tot, cost = 1;
     for (let i = 0; i < 5; i++) { if (x < odds[i]) { cost = i + 1; break; } x -= odds[i]; }
     let pool = ids.filter(id => D().units[id].cost === cost);
     while (!pool.length && cost > 1) { cost--; pool = ids.filter(id => D().units[id].cost === cost); }
+    const cc = efx(r).concept;
+    if (cc && pool.some(id => D().units[id].traits.includes(cc.trait))) {
+      const w = id => (D().units[id].traits.includes(cc.trait) ? cc.w : 1), sum = pool.reduce((a, id) => a + w(id), 0);
+      let y = R().next(r.rng) * sum; for (const id of pool) { if (y < w(id)) return id; y -= w(id); } return pool[pool.length - 1];
+    }
     return R().pick(r.rng, pool);
   }
   function carrierOptions(r) {
@@ -483,16 +501,17 @@
   const carrierRerollCost = () => RD().supplyMode.rerollCost || 2;
   function rerollCarrier(r) {
     const p = r.pending; if (!p || p.type !== 'carrier' || !(p.rerolls > 0) || r.gold < carrierRerollCost()) return false;
-    r.gold -= carrierRerollCost(); p.rerolls--; p.options = carrierOptions(r); return true;
+    r.gold -= carrierRerollCost(); r.spentNode = true; p.rerolls--; p.options = carrierOptions(r); return true;
   }
   function pickCarrier(r, p, i) {
-    const o = p.options[i]; r.node = 'supply';
+    const o = p.options[i]; if (!p.extra) r.node = 'supply';
     if (o && o.sup) applyFx(r, RD().supplies[o.sup].fx);
     else if (o && o.u) {
       const slot = r.bench.indexOf(null);
       if (slot < 0) { r.gold += D().units[o.u].cost; r.items.push(o.it); } // 備戰區滿：退錢、裝備進物品欄
       else { r.bench[slot] = { uid: r.uid++, id: o.u, star: 1, items: o.it ? [o.it] : [], weapon: null }; merge(r); }
     }
+    if (p.extra) { r.pending = { type: 'path', options: nodeOptions(r) }; return; } // ---- 經濟擴充 ----：人身意外險的額外補給不算節點
     finishNode(r, null);
   }
   // ---- 徽章 ----：併進 items（tier:'emblem'，不進基礎裝備池、不參與合成）
@@ -516,6 +535,113 @@
     if (b.lot && b.lot.gold) { res.gold += b.lot.gold; res.lotGold = b.lot.gold; }
   }
 
+  // ---- 經濟擴充 ----（C1 投資策略、C2 投資環境、C3 商店道具格、C7 等級）
+  // 狀態欄位（舊存檔沒有，一律以預設值讀）：ecoRng 獨立亂數（輪崗／道具格，不擾動主亂數）、rotCost 輪崗費用、shopCons 商店道具格 {id,price}
+  //   spentNode 本節點有花錢、evoN 進化層數、rerollN/rqDone 二手市場、bondQ 人脈進階 {need,gold,cons,step,goldStep}、insDone 意外險已給的位面、econNotes 給 UI 的提示
+  (function () { // 概念股：依羈絆自動產生 c_<羈絆>
+    const T = D().traits || {};
+    for (const k in T) if (!RD().envs['c_' + k]) RD().envs['c_' + k] = { name: T[k].name + '概念股', concept: true,
+      desc: `開局送 1 隻${T[k].name} 1～2 費角色＋簡易武裝箱；整局${T[k].name}角色在商店出現的權重 ×1.8`,
+      fx: { concept: { trait: k, w: 1.8 }, unitTrait: { trait: k, cost: [1, 2] }, cons: { armory: 1 } } };
+  })();
+  const eco = r => r.ecoRng || (r.ecoRng = { s: ((r.rng.s | 0) ^ 0x2c1b3c6d) | 0 });
+  const note = (r, t) => (r.econNotes = r.econNotes || []).push(t);
+  function hasFx(r, k) { for (const id of r.strats || []) { const S = RD().strategies[id]; if (S && S.fx[k] != null) return S.fx[k]; } return null; }
+  function envOptions(r) { // 概念股在選項裡最多 1 個
+    const E = RD().envs, keys = Object.keys(E), con = keys.filter(k => E[k].concept);
+    return pickN(r, keys.filter(k => !E[k].concept).concat(con.length ? [R().pick(eco(r), con)] : []), 3);
+  }
+  function envPicked(r) {
+    const f = efx(r);
+    if (f.unitTrait) {
+      const [a, b] = f.unitTrait.cost, pool = shopIds().filter(id => D().units[id].traits.includes(f.unitTrait.trait) && D().units[id].cost >= a && D().units[id].cost <= b);
+      if (pool.length) addUnit(r, R().pick(r.rng, pool), 1);
+    }
+    if (f.cons) giveCons(r, f.cons);
+    ecoNode(r);
+    if (f.concept || f.rotateCost) rollShop(r, true); // 第一個商店套用新權重
+  }
+  function shopOdds(r) {
+    const odds = C().odds[Math.min(r.level, C().odds.length) - 1].slice(), m = efx(r).rotateCost;
+    if (m && r.rotCost) odds[r.rotCost - 1] *= m;
+    return odds;
+  }
+  function ecoNode(r) { // 每個節點開始：輪崗換費用、商店道具格
+    const odds = C().odds[Math.min(r.level, C().odds.length) - 1], m = efx(r).rotateCost;
+    if (m) { const cs = [1, 2, 3, 4, 5].filter(c => odds[c - 1] > 0); r.rotCost = R().pick(eco(r), cs); } else r.rotCost = 0;
+    const SC = C().shopCons;
+    if (SC && !(r.locked && r.shopCons)) {
+      const ids = Object.keys(SC.pool || {}).filter(id => CD()[id]);
+      r.shopCons = ids.length && R().next(eco(r)) < SC.chance ? (id => ({ id, price: SC.pool[id] }))(R().pick(eco(r), ids)) : null;
+    }
+  }
+  function buyShopCons(r) {
+    const sc = r.shopCons; if (!sc || r.gold < sc.price) return false;
+    r.gold -= sc.price; r.spentNode = true; giveCons(r, { [sc.id]: 1 }); r.shopCons = null; return true;
+  }
+  function stratPicked(r, f) {
+    if (f.valueInv) {
+      const v = f.valueInv, id = R().pick(r.rng, shopIds().filter(i => D().units[i].cost === v.cost));
+      addUnit(r, id, v.star || 2); r.timed.push({ src: 'g_value', unit: id, n: v.n });
+    }
+    if (f.sellAll) {
+      let g = 0;
+      ZONES.forEach(z => r[z].forEach((u, i) => { if (!u) return; g += sellPrice(u, r) * f.sellAll; r.items.push(...u.items); if (u.weapon) r.weapons.push(u.weapon); r[z][i] = null; }));
+      r.gold += g; note(r, `大裁員：賣出全部角色 +${g} 金`);
+    }
+    if (f.bondQuest) r.bondQ = Object.assign({}, f.bondQuest);
+  }
+  function preBossSupply(r) {
+    if (!efx(r).preBossSupply || steps(r)[r.step] !== 'boss') return false;
+    const done = r.insDone || (r.insDone = {}); if (done[r.plane]) return false;
+    done[r.plane] = 1;
+    r.pending = carrierOn() ? Object.assign(carrierPending(r), { extra: true }) : { type: 'supply', options: pickN(r, Object.keys(RD().supplies), 3), extra: true };
+    return true;
+  }
+  function activeTraitN(r) {
+    const us = teamUnits(r), tt = FA.battle.traitTiers(us.map(u => u.id), FA.battle.emblemMap(us));
+    return Object.keys(tt.active).filter(k => tt.active[k]).length;
+  }
+  // pExt 加上：進化演算法、團隊力量·銀（攻擊）；dmgTaken／lowStarDmg 交給 battle.js（尚未支援時無效果）
+  function econExt(r, ext) {
+    const mods = FA.battle.addMods({}, ext.mods), pt = hasFx(r, 'perTrait');
+    let atk = (efx(r).perNodeAtk || 0) * (r.evoN || 0);
+    if (pt && pt.atkPct) atk += pt.atkPct * activeTraitN(r);
+    if (atk) mods.atkPct = (mods.atkPct || 0) + atk;
+    const o = Object.assign({}, ext, { mods });
+    let dt = 0; (r.strats || []).forEach(id => { dt += RD().strategies[id].fx.dmgTaken || 0; }); if (dt) o.dmgTaken = dt;
+    const ls = hasFx(r, 'lowStarDmg'); if (ls) o.lowStarDmg = ls;
+    return o;
+  }
+  function econAtk(r) { const m = econExt(r, { mods: {} }).mods; return m.atkPct || 0; } // UI 顯示用
+  function pinpoint(r, b) { // 定點爆破：開打時直接扣生命最高敵人的血（不致死，留 1 血）
+    const f = hasFx(r, 'pinpoint'); if (!f || !b) return;
+    const es = b.bodies.filter(o => o.team === 1 && o.alive && !o.temp); if (!es.length) return;
+    const t = es.reduce((a, o) => (o.hp > a.hp ? o : a), es[0]), amt = Math.min(t.hp - 1, t.maxHp * (t.boss ? f.bossPct : f.pct));
+    if (amt <= 0) return;
+    t.hp -= amt; b.pinpoint = { i: t.i, amt };
+    b.events.push({ t: 'dmg', x: t.x, y: t.y, amt, kind: 'blast', team: 1 });
+  }
+  function econFinish(r, res) { // finishNode 內：存款回報
+    const n = hasFx(r, 'saveRerolls');
+    if (n && !r.spentNode) { r.freeLeft += n; if (res) res.saveRerolls = n; note(r, `存款回報：+${n} 次免費刷新`); }
+    r.spentNode = false;
+  }
+  function rerollQuest(r) {
+    const q = efx(r).rerollQuest; if (!q || r.rqDone) return;
+    r.rerollN = (r.rerollN || 0) + 1;
+    if (r.rerollN >= q.n) { r.rqDone = true; r.gold += q.gold || 0; giveCons(r, q.cons); note(r, `二手市場：刷新 ${q.n} 次，+${q.gold} 金＋員工投影儀`); }
+  }
+  function bondQuest(r, b, res) {
+    const q = r.bondQ; if (!q || !b || !b.sides) return;
+    const n = Object.keys(b.sides[0].traits || {}).filter(k => b.sides[0].traits[k]).length;
+    if (n < q.need) return;
+    res.gold += q.gold; rewardCons(r, { cons: q.cons }, res);
+    res.bond = { n, need: q.need, gold: q.gold }; note(r, `人脈進階：啟動 ${n} 個羈絆，+${q.gold} 金`);
+    q.need += q.step || 1; q.gold += q.goldStep || 0;
+  }
+  const takeNotes = r => { const a = r.econNotes || []; r.econNotes = []; return a; };
+
   // ---- 隊伍代碼（匯出／匯入）----
   function exportTeam(r, name) {
     const L = lv(r), pack = u => u && [u.id, u.star, u.weapon || '', u.items.map(it => [it.id, it.rolls])];
@@ -530,7 +656,7 @@
         if (!D().units[a[0]] || D().units[a[0]].noShop) throw 0;
         return { id: a[0], star: Math.max(1, Math.min(3, a[1] | 0)), weapon: D().weapons[a[2]] ? a[2] : null, items: (a[3] || []).filter(x => D().items[x[0]]).slice(0, 3).map(x => ({ id: x[0], rolls: x[1] })) };
       };
-      return { name: String(d.n || '對手').slice(0, 12), front: d.f.slice(0, 7).map(un), back: d.b.slice(0, 3).map(un), strats: (d.s || []).filter(s => RD().strategies[s]) };
+      return { name: String(d.n || '對手').slice(0, 12), front: d.f.slice(0, 7).map(un), back: d.b.slice(0, C().maxBack || 3).map(un), strats: (d.s || []).filter(s => RD().strategies[s]) };
     } catch (e) { return null; }
   }
   function duelBattle(r, team) {
@@ -538,7 +664,7 @@
     if (!mine.length || !team.front.length) return null;
     const s2 = sfx({ strats: team.strats });
     return FA.battle.create({ pFront: mine, pBack: r.back.slice(0, lv(r).back), eFront: team.front, eBack: team.back, rules: [], env: {},
-      pExt: battleExt(s), eExt: battleExt(s2),
+      pExt: econExt(r, battleExt(s)), eExt: battleExt(s2),
       seed: Math.floor(R().next(r.rng) * 2 ** 31) });
   }
 
@@ -548,4 +674,5 @@
     cons, giveCons, useCons, consNeeds, carrierPending, rerollCarrier, carrierRerollCost }; // ---- 道具 ---- / ---- 補給 ----
   Object.assign(FA.run, { rollAffixes, rerollAffixes, affixExt, affixEnemy }); // ---- 敵人詞綴 ----
   Object.assign(FA.run, { factionFx, rerollCost, teamUnits }); // ---- 陣營 ----
+  Object.assign(FA.run, { buyShopCons, shopOdds, takeNotes, econExt, econAtk, hasFx, envOptions, activeTraitN }); // ---- 經濟擴充 ----
 })(globalThis);

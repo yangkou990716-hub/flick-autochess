@@ -24,13 +24,20 @@
     startGold: 8, baseIncome: 5, interestPer: 10, interestMax: 5,
     streak: [[2, 1], [4, 2], [6, 3]],
     rerollCost: 2, xpCost: 4, xpGain: 4, xpPerRound: 2,
+    // 等級（C7）：7 級，前台 3→6、後台 1→4；odds 每列對應一級（1～5 費機率，合計 100）
     levels: [
-      { xp: 0, front: 3, back: 2 },
-      { xp: 4, front: 4, back: 2 },
-      { xp: 12, front: 5, back: 3 },
-      { xp: 26, front: 6, back: 3 }
+      { xp: 0, front: 3, back: 1 },
+      { xp: 4, front: 3, back: 2 },
+      { xp: 10, front: 4, back: 2 },
+      { xp: 20, front: 4, back: 3 },
+      { xp: 34, front: 5, back: 3 },
+      { xp: 52, front: 6, back: 3 },
+      { xp: 76, front: 6, back: 4 }
     ],
-    odds: [[70, 25, 5, 0, 0], [45, 35, 15, 5, 0], [30, 30, 25, 12, 3], [15, 25, 30, 20, 10]],
+    odds: [[75, 25, 0, 0, 0], [60, 30, 10, 0, 0], [45, 33, 20, 2, 0], [30, 38, 25, 7, 0], [20, 30, 33, 15, 2], [15, 22, 30, 25, 8], [10, 15, 25, 32, 18]],
+    maxBack: 4, // ---- 經濟擴充 ----：後台格數（舊存檔 back 只有 3 格，lv() 會補齊）
+    // ---- 經濟擴充 ----：商店道具格（每節點 chance 機率出現 1 格，pool：道具 id → 價格）
+    shopCons: { chance: 0.1, pool: { furnace: 3 } },
     shopSize: 5, benchSize: 6, starMult: [1, 1.8, 3.2], maxItems: 3, maxFront: 7,
     lossDamage: { base: 3, perEnemy: 2, perStage: 0.4 }, // 沒殺光敵人就算輸：基礎 + 每隻存活敵人 + 關卡
     dropChance: 0.35

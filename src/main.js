@@ -643,6 +643,30 @@
   const tutBattle = () => { if (screen === 'battle' && battle && battle.phase === 'aim' && battle.turn === 0 && !paused) tutor('battle', TUT.battle); };
   const tutResult = () => tutor('result', TUT.result);
 
+  // ---- 經濟擴充 ----：商店上方的輪崗／二手市場／人脈進階／進化提示、商店道具格（冶金爐）按鈕、經濟事件提示
+  // 以包裝 renderShop 的方式插入，不改原本的商店渲染
+  (function () {
+    const base = renderShop;
+    renderShop = function () {
+      base();
+      if (!run) return;
+      const e = RUN.efx(run), bits = [];
+      if (e.rotateCost && run.rotCost) bits.push(`🔄輪崗：${run.rotCost} 費機率 ×${e.rotateCost}`);
+      if (e.rerollQuest && !run.rqDone) bits.push(`♻二手市場 ${run.rerollN || 0}/${e.rerollQuest.n}`);
+      if (e.perNodeAtk && run.evoN) bits.push(`🧬進化 攻擊 +${Math.round(e.perNodeAtk * run.evoN * 100)}%`);
+      if (run.bondQ) bits.push(`🤝人脈進階：啟動 ${run.bondQ.need} 個羈絆 → +${run.bondQ.gold} 金`);
+      const sc = run.shopCons, X = sc && CS[sc.id];
+      if (X) bits.push(`<button data-econ="cons" ${run.gold < sc.price ? 'disabled' : ''}>${X.icon}${X.name} ${sc.price}💰</button>`);
+      if (bits.length) $('enemyInfo').innerHTML += `<div class="lbl econ-bar">${bits.join('　')}</div>`;
+      const notes = RUN.takeNotes(run); if (notes.length) $('info').innerHTML = `<b style="color:#ffc531">${notes.join('<br>')}</b>`;
+    };
+    $('shop').addEventListener('click', ev => {
+      const t = ev.target.closest('[data-econ]'); if (!t || !run) return;
+      if (t.dataset.econ === 'cons') { if (!RUN.buyShopCons(run)) return flash('金幣不足'); FA.sound.play('coin'); }
+      renderShop(); save();
+    });
+  })();
+
   // ---------- 標題 ----------
   function toTitle() { battle = null; $('modal').classList.add('hidden'); show('title'); $('btnCont').classList.toggle('hidden', !load()); }
   $('btnCodex').onclick = () => codex();
