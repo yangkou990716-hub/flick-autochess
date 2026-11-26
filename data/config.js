@@ -41,6 +41,7 @@
     shopCons: { chance: 0.1, pool: { furnace: 3 } },
     shopSize: 5, benchSize: 6, starMult: [1, 1.8, 3.2], maxItems: 3, maxFront: 7,
     lossDamage: { base: 3, perEnemy: 2, perStage: 0.4 }, // 舊公式；落敗扣血改依敵方剩餘動數（見 run.endBattle）
-    dropChance: 0.35
+    dropChance: 0.35,
+    farCap: 5, dodgeCap: 0.5 // 狙擊：助跑加成最多 5 段（500 距離）；幽影：閃避上限
   };
 })(globalThis);
