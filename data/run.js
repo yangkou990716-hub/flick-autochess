@@ -11,29 +11,29 @@
     ],
     // 難度等級（開局選）：敵人強化、扣血加重、開局血量
     ascensions: [
-      { name: 'A0 新手', desc: '敵人生命/攻擊 -15%', threat: -0.15, lossAdd: 0, hp: 80 },
-      { name: 'A1', desc: '敵人生命/攻擊 +10%', threat: 0.1, lossAdd: 0, hp: 80 },
-      { name: 'A2', desc: '敵人 +20%', threat: 0.2, lossAdd: 0, hp: 80 },
-      { name: 'A3', desc: '敵人 +30%，戰敗多扣 2 血', threat: 0.3, lossAdd: 2, hp: 80 },
-      { name: 'A4', desc: '敵人 +40%，戰敗多扣 3 血', threat: 0.4, lossAdd: 3, hp: 80 },
-      { name: 'A5 地獄', desc: '敵人 +50%，戰敗多扣 4 血，開局 60 血', threat: 0.5, lossAdd: 4, hp: 60 }
+      { name: 'A0 新手', desc: '敵人生命/攻擊 -15%', threat: -0.15, lossAdd: 0, hp: 80, wrench: 'wrench' },
+      { name: 'A1', desc: '敵人生命/攻擊 +10%', threat: 0.1, lossAdd: 0, hp: 80, wrench: 'wrench' },
+      { name: 'A2', desc: '敵人 +20%', threat: 0.2, lossAdd: 0, hp: 80, wrench: 'wrench' },
+      { name: 'A3', desc: '敵人 +30%，戰敗多扣 2 血', threat: 0.3, lossAdd: 2, hp: 80, wrench: 'wrench1' },
+      { name: 'A4', desc: '敵人 +40%，戰敗多扣 3 血', threat: 0.4, lossAdd: 3, hp: 80, wrench: 'wrench1' },
+      { name: 'A5 地獄', desc: '敵人 +50%，戰敗多扣 4 血，開局 60 血', threat: 0.5, lossAdd: 4, hp: 60, wrench: 'wrench1' }
     ],
     nodeWeights: { battle: 4, encounter: 3, reward: 2, supply: 1 },
     nodeInfo: {
       battle: { name: '戰鬥', icon: '⚔️', desc: '一般敵人' },
       encounter: { name: '遭遇', icon: '❗', desc: '自選難度，越難獎勵越好' },
       reward: { name: '獎勵', icon: '🐷', desc: '打破撲滿拿金幣，失敗不扣血' },
-      supply: { name: '補給', icon: '📦', desc: '3 選 1：角色或裝備' },
+      supply: { name: '補給', icon: '📦', desc: '4 隻帶裝角色選 1（可重骰），或拿保底' },
       boss: { name: '首領', icon: '👑', desc: '位面首領，打完選投資策略' }
     },
     // 遭遇的難度分支：stage 加成、多派敵人、獎勵
     encounter: [
       { name: '難度 1', add: 0, extra: 0, reward: { gold: 4 } },
-      { name: '難度 2', add: 2, extra: 0, reward: { gold: 7, item: 1 } },
-      { name: '難度 3', add: 4, extra: 1, reward: { gold: 10, weapon: 1 } },
-      { name: '難度 4', add: 6, extra: 1, reward: { gold: 14, weapon: 1, strategy: 'gold' } }
+      { name: '難度 2', add: 2, extra: 0, reward: { gold: 7, cons: { armory: 1 } } },
+      { name: '難度 3', add: 4, extra: 1, reward: { gold: 10, weapon: 1, cons: { projector: 1 } } },
+      { name: '難度 4', add: 6, extra: 1, reward: { gold: 14, weapon: 1, strategy: 'gold', consOne: ['projectorX', 'armoryP'] } }
     ],
-    piggy: { hpBase: 120, hpPerStage: 25, goldEach: 3, allBonus: { item: 1 } },
+    piggy: { hpBase: 120, hpPerStage: 25, goldEach: 3, allBonus: { cons: { armory: 1 } } },
     // 開局詞綴（3 選 1）
     openers: {
       rich: { name: '富二代', desc: '開局 +10 金', fx: { gold: 10 } },
@@ -105,11 +105,19 @@
       p_swap: { tier: 'prism', name: '不等價交換', desc: '小隊生命和金幣數值互換（生命最多到上限，多的變金幣）', fx: { swapHpGold: true } },
       p_double: { tier: 'prism', name: '雙響', desc: '每場我方多 2 次彈射', fx: { shots: 2 } }
     },
-    // 補給節點：3 選 1
+    // ---- 道具 ----
+    // 首領獎勵、戰鬥掉落（取代原本直接給裝備）、進入位面時送的道具（ascensions[].wrench＝開局扳手）
+    bossReward: { weapon: 1, cons: { armoryP: 1 } },
+    dropReward: { cons: { armory: 1 } },
+    planeStartCons: { 2: ['furnace'] },
+    // ---- 補給 ----
+    // 選人帶裝：n 隻角色（依目前等級商店機率）各帶 1 件隨機基礎裝備，選 1；可花 rerollCost 重骰 rerolls 次；另有 1 格保底（fallback 隨機 1 個 supplies）
+    supplyMode: { mode: 'carrier', n: 4, rerollCost: 2, rerolls: 1, fallback: ['heal', 'gold'] },
+    // 補給節點（supplyMode 關閉時的舊版 3 選 1；heal/gold 也是選人帶裝的保底）
     supplies: {
       unit2: { name: '援軍', desc: '隨機 2 星 1～2 費角色', fx: { unit2: 1 } },
       unit3c: { name: '精英招募', desc: '隨機 3 費角色 ×2', fx: { units: { cost: 3, n: 2, star: 1 } } },
-      item: { name: '裝備箱', desc: '隨機基礎裝備 2 件', fx: { items: 2 } },
+      item: { name: '裝備箱', desc: '簡易武裝箱 ×2', fx: { cons: { armory: 2 } } },
       weapon: { name: '武器箱', desc: '隨機武器 1 把', fx: { weapons: 1 } },
       heal: { name: '醫療包', desc: '小隊回 12 血', fx: { heal: 12 } },
       xp: { name: '特訓', desc: '+6 經驗', fx: { xp: 6 } },

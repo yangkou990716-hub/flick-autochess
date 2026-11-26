@@ -15,6 +15,18 @@
     vampboots: { name: '吸血疾靴', tier: 'adv', icon: '🦇', recipe: ['charm', 'boots'],
       affix: { speedPct: [0.12, 0.2], lifesteal: [0.12, 0.2], hpPct: [0.1, 0.15] } }
   };
+  // ---- 道具 ----
+  // 消耗品（放在物品欄，點或拖到目標使用）：target unit=角色 / item=裝備 / none=直接打開
+  // act: clone 複製 1 星到備戰區（maxCost 費用上限）/ strip 拆回裝備與武器（reusable 可重複用）/ pick 3 選 1 裝備（tier）/ reforge 重骰同階裝備
+  FA.DATA.consumables = {
+    projector: { name: '員工投影儀', icon: '📽️', target: 'unit', act: 'clone', maxCost: 3, desc: '點 ≤3 費角色：在備戰區做出 1 隻同角色 1 星（不複製裝備）' },
+    projectorX: { name: '完美投影儀', icon: '🎞️', target: 'unit', act: 'clone', maxCost: 99, desc: '點任何角色：在備戰區做出 1 隻同角色 1 星（不複製裝備）' },
+    wrench: { name: '精密扳手', icon: '🔧', target: 'unit', act: 'strip', reusable: true, desc: '點角色：把裝備＋武器全部拆回物品欄（可重複使用）' },
+    wrench1: { name: '拆裝扳手', icon: '🪚', target: 'unit', act: 'strip', reusable: false, desc: '點角色：把裝備＋武器全部拆回物品欄（用一次就沒了）' },
+    armory: { name: '簡易武裝箱', icon: '🎁', target: 'none', act: 'pick', pick: 3, tier: 'base', desc: '打開：3 選 1 基礎裝備' },
+    armoryP: { name: '特權武裝箱', icon: '💎', target: 'none', act: 'pick', pick: 3, tier: 'adv', desc: '打開：3 選 1 進階裝備' },
+    furnace: { name: '冶金爐', icon: '🔥', target: 'item', act: 'reforge', desc: '點 1 件裝備（物品欄或角色身上）：重骰成同階的隨機一件，數值也重骰' }
+  };
   // 武器：mods 數值 + fx 特殊效果
   // fx: shieldPierce 無視護盾 / noWallLoss 撞牆不減速 / hitPull 撞到時吸附 / everyN 每 N 次碰撞爆炸 / glide 自身摩擦力倍率 / exposeHit 撞到破甲
   FA.DATA.weapons = {

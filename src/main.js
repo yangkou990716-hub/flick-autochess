@@ -49,12 +49,13 @@
 
   // ---------- 選擇卡（開局詞綴／環境／路線／獎勵／策略）----------
   function choiceCard(type, id) {
+    if (type === 'carrier' || type === 'armory') return extraCard(type, id); // ---- 道具 ---- / ---- 補給 ----
     if (type === 'opener') { const o = RD.openers[id]; return `<b>${o.name}</b><br>${o.desc}`; }
     if (type === 'env') { const o = RD.envs[id]; return `<b>🌐 ${o.name}</b><br>${o.desc}`; }
     if (type === 'supply') { const o = RD.supplies[id]; return `<b>📦 ${o.name}</b><br>${o.desc}`; }
     if (type === 'encounter') {
       const e = RD.encounter[id], w = e.reward;
-      return `<b>❗ ${e.name}</b>${e.add ? `<span class="tier" style="color:#f88">敵人 +${e.add} 關${e.extra ? `、多 ${e.extra} 隻` : ''}</span>` : ''}<br>勝利獎勵：${[w.gold ? w.gold + ' 金' : '', w.item ? '裝備' : '', w.weapon ? '武器' : '', w.strategy ? RD.tiers[w.strategy].name + '投資策略' : ''].filter(Boolean).join('＋')}`;
+      return `<b>❗ ${e.name}</b>${e.add ? `<span class="tier" style="color:#f88">敵人 +${e.add} 關${e.extra ? `、多 ${e.extra} 隻` : ''}</span>` : ''}<br>勝利獎勵：${[w.gold ? w.gold + ' 金' : '', w.item ? '裝備' : '', w.weapon ? '武器' : '', w.cons ? consNames(w.cons) : '', w.consOne ? w.consOne.map(k => consNames({ [k]: 1 })).join('或') : '', w.strategy ? RD.tiers[w.strategy].name + '投資策略' : ''].filter(Boolean).join('＋')}`;
     }
     if (type === 'path') { const o = RD.nodeInfo[id]; return `<b>${o.icon} ${o.name}</b><br>${o.desc}`; }
     if (type === 'strategy') {
@@ -64,6 +65,7 @@
     }
   }
   const choiceTitle = { opener: '選擇開局詞綴', env: '投資環境（持續整局）', path: '選擇路線', supply: '補給 3 選 1', encounter: '遭遇：選擇難度', strategy: '投資策略' };
+  Object.assign(choiceTitle, { carrier: '補給：選 1 隻（連裝備）', armory: '武裝箱：3 選 1' }); // ---- 道具 ---- / ---- 補給 ----
   function flow() {
     if (!run) return;
     if (hs) {
@@ -90,9 +92,10 @@
       const sub = p.type === 'env' ? '開局選一次，整局都生效' : p.type === 'path' ? `第 ${run.plane} 位面・節點 ${run.step + 1}/${RUN.steps(run).length}` : p.type === 'strategy' ? (p.tier ? RD.tiers[p.tier].name + '投資策略' : '黃金、稜彩越強，之後敵人也越強') : '';
       $('modalBox').innerHTML = `<h2>${choiceTitle[p.type]}</h2>${sub ? `<div class="lbl">${sub}</div>` : ''}<div class="choices">` +
         p.options.map((id, i) => `<div class="choice" data-c="${i}">${choiceCard(p.type, id)}</div>`).join('') + '</div>' +
-        (p.type === 'path' || p.type === 'encounter' ? '<button data-back="1">先回商店</button>' : '');
+        (p.type === 'path' || p.type === 'encounter' ? '<button data-back="1">先回商店</button>' : '') + (p.type === 'carrier' ? carrierBtn(p) : '');
       $('modal').classList.remove('hidden');
       $('modalBox').onclick = e => {
+        if (e.target.dataset.reroll) { if (RUN.rerollCarrier(run)) { FA.sound.play('coin'); save(); } return flow(); } // ---- 補給 ----
         if (e.target.dataset.back) { run.pending = null; $('modal').classList.add('hidden'); save(); renderShop(); return; }
         const t = e.target.closest('[data-c]'); if (!t) return;
         $('modal').classList.add('hidden');
@@ -132,9 +135,11 @@
     });
     const inv = run.items.map((it, i) => `<span class="item ${sel && sel.item === i ? 'sel' : ''}" data-it="${i}">${D.items[it.id].icon}${D.items[it.id].name}</span>`)
       .concat(run.weapons.map((w, i) => `<span class="item wp ${sel && sel.wp === i ? 'sel' : ''}" data-wp="${i}">${D.weapons[w].icon}${D.weapons[w].name}</span>`));
+    inv.push(...consChips()); // ---- 道具 ----
     $('items').innerHTML = inv.length ? inv.join('') : '<span class="lbl">裝備/武器：補給、遭遇、撲滿、首領取得</span>';
     let info = '';
     if (sel && sel.zone && RUN.unitAt(run, sel)) { const u = RUN.unitAt(run, sel); info = unitInfo(u) + `<button id="bSell">賣出 +${RUN.sellPrice(u, run)}</button>　<span class="lbl">點空位移動／點角色交換</span>`; }
+    else if (sel && sel.cs != null && (run.consumables || [])[sel.cs]) info = consInfo(sel.cs); // ---- 道具 ----
     else if (sel && sel.item != null) info = itemText(run.items[sel.item]) + '<br><span class="lbl">點角色裝上（最多 3 件）。鐵拳＋彈簧＝爆裂彈簧；護符＋疾行靴＝吸血疾靴</span>';
     else if (sel && sel.wp != null) info = weaponText(run.weapons[sel.wp]) + '<br><span class="lbl">點角色裝上（每隻 1 把，會替換）</span>';
     else if (sel && sel.trait) { const T = D.traits[sel.trait]; info = `<b>${T.name}</b>（只加給${T.name}角色）<br>` + T.tiers.map(t => `${t.n}：${modsText(t.mods)}`).join('<br>'); }
@@ -170,7 +175,8 @@
   }
 
   $('shop').addEventListener('click', e => {
-    const t = e.target.closest('[data-z],[data-it],[data-wp],[data-b],[data-tr],[data-st],#bSell'); if (!t) return;
+    const t = e.target.closest('[data-z],[data-it],[data-wp],[data-b],[data-tr],[data-st],[data-cs],#bSell'); if (!t) return;
+    if (consClick(t)) return; // ---- 道具 ----
     if (t.id === 'bSell') { RUN.sell(run, sel); sel = null; }
     else if (t.dataset.b != null) { if (!RUN.buy(run, +t.dataset.b)) return flash('金幣或空位不足'); FA.sound.play('coin'); }
     else if (t.dataset.it != null) { const i = +t.dataset.it; sel = sel && sel.item === i ? null : { item: i }; }
@@ -179,6 +185,7 @@
     else if (t.dataset.st) sel = { st: t.dataset.st };
     else {
       const loc = { zone: t.dataset.z, i: +t.dataset.i }, u = RUN.unitAt(run, loc);
+      if (sel && sel.cs != null) { const ci = sel.cs; sel = null; if (u) return applyCons(ci, loc); renderShop(); return; } // ---- 道具 ----
       if (sel && sel.item != null) { if (u) { const r = RUN.equip(run, sel.item, loc); sel = null; if (!r) { renderShop(); return flash('最多 3 件裝備'); } if (r === 'combine') { renderShop(); save(); return flash('合成進階裝備！'); } } }
       else if (sel && sel.wp != null) { if (u) { RUN.equipWeapon(run, sel.wp, loc); sel = null; } }
       else if (sel && sel.zone) { if (!(sel.zone === loc.zone && sel.i === loc.i)) RUN.move(run, sel, loc); sel = null; }
@@ -193,7 +200,8 @@
   $('shop').addEventListener('click', e => { if (performance.now() < noClickUntil) { e.stopPropagation(); e.preventDefault(); } }, true);
   $('shop').addEventListener('pointerdown', e => {
     if (e.button > 0 || pd || !run) return;
-    const t = e.target.closest('[data-z],[data-b]'); if (!t) return;
+    const t = e.target.closest('[data-z],[data-b],[data-cs]'); if (!t) return;
+    if (t.dataset.cs != null) return consDown(e, t); // ---- 道具 ----
     const src = t.dataset.b != null ? { buy: +t.dataset.b } : { zone: t.dataset.z, i: +t.dataset.i };
     if (src.buy != null ? !run.shop[src.buy] : !RUN.unitAt(run, src)) return;
     pd = { src, el: t, x: e.clientX, y: e.clientY, id: e.pointerId, drag: false, over: null, ghost: null };
@@ -214,6 +222,7 @@
   });
   addEventListener('pointercancel', e => { if (pd && e.pointerId === pd.id) endDrag(); });
   function startDrag() {
+    if (pd.src.cs != null) return consStartDrag(); // ---- 道具 ----
     pd.drag = true; sel = null;
     const u = pd.src.buy != null ? null : RUN.unitAt(run, pd.src), id = u ? u.id : run.shop[pd.src.buy];
     const g = document.createElement('div'); g.className = 'ux-ghost';
@@ -231,6 +240,7 @@
   function dropAt(x, y) {
     const el = document.elementFromPoint(x, y); if (!el) return null;
     if (el.closest('#uxSell')) return { sell: true, el: $('uxSell') };
+    const ie = el.closest('[data-it]'); if (ie && pd && pd.src.cs != null) return { item: +ie.dataset.it, el: ie }; // ---- 道具 ----
     const s = el.closest('[data-z]');
     if (s && !s.classList.contains('lock')) return { loc: { zone: s.dataset.z, i: +s.dataset.i }, el: s };
     const row = el.closest('#front,#back,#bench');
@@ -242,6 +252,7 @@
   }
   function doDrop(src, tg) {
     if (!tg) return;
+    if (src.cs != null) { if (tg.loc || tg.item != null) applyCons(src.cs, tg.loc || { item: tg.item }); return; } // ---- 道具 ----
     if (src.buy != null) {
       if (!tg.loc) return;
       const uid = run.uid;
@@ -257,6 +268,7 @@
   }
   // 長按：詳細資訊
   function detail(src) {
+    if (src.cs != null) return consDetail(src.cs); // ---- 道具 ----
     const shopCard = src.buy != null, id = shopCard ? run.shop[src.buy] : RUN.unitAt(run, src).id;
     const u = shopCard ? { id, star: 1, items: [], weapon: null } : RUN.unitAt(run, src), c = owned(id);
     const prog = `<span class="k">升星：</span>1星 ${c[0]}/3　2星 ${c[1]}/3${c[2] ? `　3星 ×${c[2]}` : ''}`;
@@ -266,6 +278,58 @@
     modal(`<div class="ux-detail">${unitInfo(u)}${prog}<br>${tr}</div>`, btns);
   }
 
+  // ---- 道具 ----
+  // 消耗品：物品欄虛線框顯示；武裝箱點了直接開 3 選 1；其他先點道具再點角色／裝備，或直接拖過去；長按看說明
+  const CS = D.consumables || {};
+  const consNames = m => Object.keys(m).map(k => CS[k] ? CS[k].icon + CS[k].name + (m[k] > 1 ? '×' + m[k] : '') : '').filter(Boolean).join('＋');
+  const consChips = () => (run.consumables || []).map((id, i) => CS[id] ? `<span class="item cs ${sel && sel.cs === i ? 'sel' : ''}" data-cs="${i}" style="border-style:dashed;${sel && sel.cs === i ? '' : 'border-color:#5cf;'}">${CS[id].icon}${CS[id].name}</span>` : '').filter(Boolean);
+  const consHow = { unit: '點角色使用（或把道具拖到角色上）', item: '點物品欄裝備或角色（身上有多件會再問）使用，也可以拖過去', none: '點一下直接打開' };
+  function consInfo(ci) { const X = CS[run.consumables[ci]]; return `<b>${X.icon}${X.name}</b>（道具）<br>${X.desc}<br><span class="lbl">${consHow[X.target || 'none']}；再點一次道具取消</span>`; }
+  function consDetail(ci) { const X = CS[(run.consumables || [])[ci]]; if (!X) return; modal(`<div class="ux-detail"><b>${X.icon}${X.name}</b>（道具${X.reusable ? '・可重複使用' : '・一次性'}）<br>${X.desc}<br><span class="lbl">${consHow[X.target || 'none']}</span></div>`, [{ t: '關閉', cls: 'go' }]); }
+  // 商店 click：點道具／道具選中時點物品欄裝備。回傳 true 表示已處理
+  function consClick(t) {
+    if (t.dataset.cs != null) {
+      const i = +t.dataset.cs; if (!(run.consumables || [])[i]) return false;
+      if (RUN.consNeeds(run.consumables[i]) === 'none') { applyCons(i, null); return true; }
+      sel = sel && sel.cs === i ? null : { cs: i }; renderShop(); return true;
+    }
+    if (t.dataset.it != null && sel && sel.cs != null && RUN.consNeeds(run.consumables[sel.cs]) === 'item') { applyCons(sel.cs, { item: +t.dataset.it }); return true; }
+    return false;
+  }
+  // 使用道具：tgt＝null（武裝箱）／角色格 {zone,i}／物品欄 {item:k}
+  function applyCons(ci, tgt) {
+    const X = CS[(run.consumables || [])[ci]]; if (!X) return;
+    if (X.target === 'item' && tgt && tgt.zone && tgt.slot == null) {
+      const u = RUN.unitAt(run, tgt); if (!u || !u.items.length) { sel = null; renderShop(); return flash('這隻沒有裝備'); }
+      if (u.items.length > 1) return modal(`<h2>${X.icon} ${X.name}：選 1 件</h2>`, u.items.map((it, k) => ({ t: itemText(it), f: () => applyCons(ci, Object.assign({ slot: k }, tgt)) })).concat([{ t: '取消', f: () => { sel = null; renderShop(); } }]));
+      tgt = Object.assign({ slot: 0 }, tgt);
+    }
+    const r = RUN.useCons(run, ci, tgt); sel = null;
+    if (!r || !r.ok) { renderShop(); return flash((r && r.msg) || '無法使用'); }
+    FA.sound.play('coin'); vib(15); save();
+    if (run.pending) return flow();
+    renderShop(); $('info').innerHTML = `<b style="color:#5cf">${X.icon} ${r.msg}</b>` + (r.item ? '<br>' + itemText(r.item) : '');
+  }
+  function consDown(e, t) {
+    const ci = +t.dataset.cs; if (!(run.consumables || [])[ci]) return;
+    pd = { src: { cs: ci }, el: t, x: e.clientX, y: e.clientY, id: e.pointerId, drag: false, over: null, ghost: null };
+    pd.timer = setTimeout(() => { if (pd && !pd.drag) { const s = pd.src; endDrag(); noClickUntil = performance.now() + 600; vib(10); detail(s); } }, 450);
+  }
+  function consStartDrag() {
+    pd.drag = true; sel = null;
+    const g = document.createElement('div'); g.className = 'ux-ghost'; g.style.fontSize = '30px'; g.textContent = CS[run.consumables[pd.src.cs]].icon;
+    document.body.appendChild(g); pd.ghost = g; g.style.left = pd.x + 'px'; g.style.top = pd.y + 'px';
+    $('shop').classList.add('ux-dragging'); pd.el.style.opacity = '.35';
+  }
+  // ---- 補給 ----／武裝箱 選擇卡
+  function extraCard(type, o) {
+    if (type === 'armory') { const I = D.items[o]; return `<b>${I.icon} ${I.name}</b>${I.recipe ? `<span class="tier">${I.recipe.map(x => D.items[x].name).join('＋')}</span>` : ''}<br>${Object.entries(I.affix).map(([k, v]) => D.modText[k] ? D.modText[k](v[0]) + (v[0] !== v[1] ? '～' + D.modText[k](v[1]).replace(/^[^\d+-]*/, '') : '') : '').filter(Boolean).join('、')}`; }
+    if (o.sup) { const S = RD.supplies[o.sup]; return `<span class="tier">保底</span><b>📦 ${S.name}</b><br>${S.desc}`; }
+    const U = D.units[o.u], cc = ['#888', '#3fb950', '#4ea0ff', '#b072ff', '#ffb000'][U.cost - 1], ic = icon(o.u, 1, 40), c = owned(o.u);
+    return `<div style="display:flex;gap:10px;align-items:center">${ic ? `<img src="${ic}" style="width:44px;height:44px;flex:none">` : `<div style="width:36px;height:36px;border-radius:50%;flex:none;background:${U.color}"></div>`}<div>` +
+      `<span class="tier" style="color:${cc}">${U.cost} 費</span><b>${U.name}</b>${c[0] || c[1] ? `　<span class="lbl">已有 ${c[0]}${c[1] ? '＋★★' + c[1] : ''}</span>` : ''}<br>${U.traits.map(t => D.traits[t].name).join('・')}　${{ front: '前台', back: '後台', both: '兩用' }[U.role]}<br>帶：${itemText(o.it)}</div></div>`;
+  }
+  function carrierBtn(p) { const c = RUN.carrierRerollCost(); return p.rerolls > 0 ? `<button data-reroll="1" ${run.gold < c ? 'disabled' : ''}>重骰 ${c}💰（剩 ${p.rerolls} 次，現有 ${run.gold}）</button>` : ''; }
   $('bReroll').onclick = () => { RUN.reroll(run); renderShop(); save(); };
   $('bLock').onclick = () => { run.locked = !run.locked; renderShop(); save(); };
   $('bXp').onclick = () => { RUN.buyXp(run); renderShop(); save(); };
@@ -386,9 +450,9 @@
       const stats = statsHTML(); bst = null;
       if (mode === 'duel') { battle = null; mode = 'run'; save(); modal(`<h2>${b.winner === 0 ? '🎉 你贏了' : '💥 你輸了'}</h2>對手：${duelName}${stats}`, [{ t: '回商店', cls: 'go', f: () => { show('shop'); renderShop(); } }]); return tutResult(); }
       const res = RUN.endBattle(run, b); battle = null; save();
-      const loot = res.drops.map(itemText).concat(res.weapons.map(weaponText));
+      const loot = res.drops.map(itemText).concat(res.weapons.map(weaponText)).concat((res.cons || []).map(k => CS[k] ? CS[k].icon + CS[k].name : '')); // ---- 道具 ----
       const gold = `<div class="ux-res">💰 收入 ${res.income}＋利息 ${res.interest}${res.streakBonus ? `＋連${run.streak > 0 ? '勝' : '敗'} ${res.streakBonus}` : ''}${res.gold ? `＋戰利 ${res.gold}` : ''}　→ 共 ${run.gold} 金</div>`;
-      if (res.node === 'reward') modal(`<h2>🐷 撲滿 ${res.pigs} 隻</h2>${stats}<div class="ux-res">+${res.gold} 金${res.drops.length ? '<br>全破獎勵：' + res.drops.map(itemText).join('<br>') : ''}</div>${gold}`, [{ t: '繼續', cls: 'go', f: flow }]);
+      if (res.node === 'reward') modal(`<h2>🐷 撲滿 ${res.pigs} 隻</h2>${stats}<div class="ux-res">+${res.gold} 金${res.drops.length ? '<br>全破獎勵：' + res.drops.map(itemText).concat((res.cons || []).map(k => CS[k] ? CS[k].icon + CS[k].name : '')).join('<br>') : (res.cons || []).length ? '<br>全破獎勵：' + res.cons.map(k => CS[k].icon + CS[k].name).join('、') : ''}</div>${gold}`, [{ t: '繼續', cls: 'go', f: flow }]);
       else modal(`<h2>${res.win ? '🎉 全滅敵人' : '💥 沒殺光'}</h2>${stats}<div class="ux-res">` +
         (res.win ? `❤ 小隊 ${res.heal ? '+' + res.heal : '±0'}（${run.hp}）` : `<b style="color:#f88">❤ 小隊 -${res.dmg}（剩 ${run.hp}）</b>`) + '</div>' +
         (res.saved ? '<b style="color:#ffe066">🛡 鎖血免死觸發！剩 1 血</b><br>' : '') + (res.retry ? '<b style="color:#ffb74d">👑 終局首領還在！整頓後再挑戰</b><br>' : '') + (res.flawless ? '<b style="color:#f8a5c2">🐷 完勝！招財豬加碼</b><br>' : '') + gold +
@@ -469,6 +533,7 @@
       '<h3>補給內容</h3>' + Object.values(RD.supplies).map(E => `<div class="choice"><b>${E.name}</b>：${E.desc}</div>`).join(''),
     首領: () => D.enemies.bosses.map((L, i) => L.map(B => `<div class="choice"><b>位面${i + 1}：${B.name}</b><br>生命 ${B.hp}｜攻擊 ${B.atk}<br>${B.rules.map(r => D.enemies.ruleText[r]).join('、')}${B.split ? '、半血分裂' : ''}${B.ability ? '、' + ({ magnetStop: '停下吸附', freezeHit: '撞到冰凍', poisonHit: '撞到下毒', chainHit: '連鎖閃電' }[B.ability.type] || '') : ''}${B.zap ? '、每回合電擊' : ''}</div>`).join('')).join('')
   };
+  CODEX.道具 = () => Object.values(CS).map(X => `<div class="choice"><b>${X.icon}${X.name}</b>${X.reusable ? '（可重複使用）' : ''}<br>${X.desc}</div>`).join('') + '<div class="lbl">取得：補給、遭遇、撲滿全破、首領、戰鬥掉落；開局送扳手（A0–A2 精密、A3 起普通）；第二位面開頭送冶金爐</div>'; // ---- 道具 ----
   function codex(tab) {
     tab = tab || '角色';
     $('modalBox').innerHTML = `<h2>📖 圖鑑</h2><div class="traits">${Object.keys(CODEX).map(k => `<span class="tr ${k === tab ? 'act' : ''}" style="${k === tab ? 'background:#ffc531' : ''}" data-tab="${k}">${k}</span>`).join('')}</div><div class="choices">${CODEX[tab]()}</div><button data-close="1">關閉</button>`;
