@@ -38,9 +38,9 @@
     const cfg = C(), rm = env.radiusMul || 1;
     const base = blankBody(team);
     if (inst.boss) {
-      const B = D().enemies.bosses[inst.plane - 1][inst.variant || 0], sc = 1 + (inst.threat || 0);
+      const B = D().enemies.bosses[inst.plane - 1][inst.variant || 0], sc = 1 + (inst.threat || 0), HM = cfg.hpMul || 1;
       return Object.assign(base, { id: 'boss', name: B.name, boss: true, star: 1, traits: [], color: B.color, r: B.r * rm, m: B.mass,
-        hp: B.hp * sc, maxHp: B.hp * sc, atk: B.atk * sc, baseAtk: B.atk * sc, bounces: cfg.baseBounces, speed: 0.9,
+        hp: B.hp * sc * HM, maxHp: B.hp * sc * HM, atk: B.atk * sc, baseAtk: B.atk * sc, bounces: cfg.baseBounces, speed: 0.9,
         ultType: 'nova', zapMult: B.zap || 0, ab: B.ability ? Object.assign({}, B.ability) : null, split: B.split ? Object.assign({}, B.split) : null });
     }
     const U = D().units[inst.id], m = cfg.starMult[inst.star - 1];
@@ -48,7 +48,7 @@
     (inst.items || []).forEach(it => addMods(mods, it.rolls));
     if (inst.weapon) addMods(mods, D().weapons[inst.weapon].mods);
     unitTraits(inst).forEach(t => { if (traitsActive[t]) addMods(mods, traitsActive[t].mods); });
-    const hp = U.hp * m * (1 + (mods.hpPct || 0)), atk = U.atk * m * (1 + (mods.atkPct || 0));
+    const hp = U.hp * m * (1 + (mods.hpPct || 0)) * (cfg.hpMul || 1), atk = U.atk * m * (1 + (mods.atkPct || 0));
     const b = Object.assign(base, { id: inst.id, name: U.name, star: inst.star, traits: unitTraits(inst), color: U.color,
       r: (U.r + (inst.star - 1) * 2) * rm, m: Math.max(0.3, U.mass * (1 + (mods.massPct || 0))), hp, maxHp: hp, atk, baseAtk: atk,
       speed: U.speed * (1 + (mods.speedPct || 0)), bounces: cfg.baseBounces + (mods.bounces || 0), wallAdd: mods.wallAdd || 0,
@@ -121,6 +121,7 @@
     const M = cfg.movesEach + (o.extraMoves || 0);
     const rs = { s: (o.seed | 0) ^ 0x5bd1e995 }, lay = cfg.pillarLayouts[rng.int(rs, cfg.pillarLayouts.length)];
     const pillars = lay.map(([x, y, r, kind]) => ({ x: x * hw, y: y * hh, r: r * hw, kind }));
+    const U0 = cfg.ult && cfg.ult.start || 0; if (U0) bodies.forEach(b => { if (!b.temp) b.energy = U0; }); // 大招開場能量
     const bt = { R, R0: R, hw, hh, hw0: hw, hh0: hh, pillars, rules: o.rules || [], env, bodies, sides: [p.side, e.side], turn: 0, shots: [0, 0], round: 1, maxRounds: 999, bonus: [0, 0],
       moves: [M + p.side.shotsAdd * 2, e.side.noAct ? 0 : M + e.side.shotsAdd * 2], movesMax: [0, 0], deaths: [0, 0],
       phase: 'aim', winner: null, rng: { s: o.seed | 0 }, events: [], simT: 0, mover: -1, chain: 0, hits: 0, pending: [], comboUsed: {},
@@ -181,6 +182,7 @@
     if (b.env.storm) { const a = rng.range(b.rng, 0, 6.283), rr = rng.range(b.rng, 0, 0.5), x = Math.cos(a) * rr * b.hw, y = Math.sin(a) * rr * b.hh; b.events.push({ t: 'pull', x, y, r: b.R * 0.8 }); shift(b, null, x, y, b.env.storm * 0.1); }
     if (b.turn === 0 && b.shotCount > 0 && b.rules.includes('shrink')) { b.hw = Math.max(b.hw0 * 0.65, b.hw - 10); b.hh = Math.max(b.hh0 * 0.65, b.hh - 14); b.R = b.hw; relax(b); b.events.push({ t: 'shrink' }); }
     if (b.affix) affixTurn(b); // ---- 敵人詞綴 ----
+    if (b.bodies.some(o => o.down)) { reviveDowned(b); if (checkEnd(b)) return; } // 回合開始的毒／電擊／炮擊打倒：當下扣動數並復活，避免卡住
     if (!alive(b, foe).length || !alive(b, b.turn).length) return checkEnd(b);
     refreshShots(b);
     if (!canMove(b, b.turn)) return nextTurn(b, b.turn);
@@ -388,7 +390,7 @@
     if (o.team === b.turn && o.traits.indexOf('bounce') >= 0) lotDraw(b, o.team, 'wall', o.x, o.y);
     if (kind === 'spike' && !o.temp) dealDamage(b, o, o.maxHp * 0.06, null, 'spike');
     if (kind === 'ring') { const k = Math.min(1.2, 1700 / (hyp(o.vx, o.vy) || 1)); o.vx *= k; o.vy *= k; o.ringBuff = 1; b.events.push({ t: 'ring', x: o.x, y: o.y }); }
-    if (kind === 'wall' && b.rules.includes('spikes') && o.team === 0) dealDamage(b, o, o.maxHp * 0.06, null, 'spike');
+    if (kind === 'wall' && b.rules.includes('spikes') && o.team === 0) dealDamage(b, o, o.maxHp * (C().spikeWall || 0.06), null, 'spike');
     if (o.ab && o.ab.type === 'boomerang') { const k = Math.min(1 + o.ab.boost, 1700 / (hyp(o.vx, o.vy) || 1)); o.vx *= k; o.vy *= k; }
     if (o.ab && o.ab.type === 'split' && !o.splitDone && i === b.mover) { o.splitDone = true; spawnShards(b, o); }
   }
@@ -517,7 +519,7 @@
   // ---- 大招 ----
   function ultLaunch(b, x) {
     const t = x.ultOn; let k = 1;
-    if (t === 'bulwark') { b.bodies.forEach(o => { if (o.alive && !o.temp && o.team === x.team) o.shield += o.maxHp * 0.3; }); x.ultMassMul = 3; x.m *= 3; }
+    if (t === 'bulwark') { b.bodies.forEach(o => { if (o.alive && !o.temp && o.team === x.team) o.shield += o.maxHp * 0.2; }); x.ultMassMul = 3; x.m *= 3; }
     if (t === 'phase') { x.pierceLeft = 99; k = 1.35; }
     if (t === 'ricochet') { x.wallAdd += 0.5; x.bounces += 6; }
     if (t === 'heal') k = 1.2;
@@ -586,7 +588,7 @@
   // ---- 敵人詞綴 ----
   // b.affix：run.affixExt 產生的純資料＋狀態（lavaN）；每個棋子的詞綴狀態放 o.aff（create 時一次補齊，形狀一致）
   function affixSetup(bt, o) {
-    const A = bt.affix = JSON.parse(JSON.stringify(o.eExt.affix)); A.lavaN = 0;
+    const A = bt.affix = JSON.parse(JSON.stringify(o.eExt.affix)); A.lavaN = 0; A.cdLeft = A.cheatN || (A.cheatDeath ? 99 : 0);
     const pf = (o.pFront || []).filter(Boolean), maxI = C().maxItems;
     bt.bodies.forEach((x, k) => {
       x.aff = { mhp0: x.maxHp, empty: 0, q: 0, cd: 0, ih: 0, low: 0, cl: 0 };
@@ -625,7 +627,7 @@
       if (A.trauma && tgt.hp > 0) { tgt.maxHp = Math.max(f.mhp0 * (1 - A.traumaCap), tgt.maxHp - amt * A.trauma); tgt.hp = Math.min(tgt.hp, tgt.maxHp); }
       return;
     }
-    if (A.cheatDeath && tgt.hp <= 0 && !f.cd) { f.cd = 1; tgt.hp = tgt.maxHp * A.cheatDeath; b.events.push({ t: 'revive', x: tgt.x, y: tgt.y }); }
+    if (A.cheatDeath && tgt.hp <= 0 && !f.cd && A.cdLeft > 0) { f.cd = 1; A.cdLeft--; tgt.hp = tgt.maxHp * A.cheatDeath; b.events.push({ t: 'revive', x: tgt.x, y: tgt.y }); }
     if (A.firstHitSpeed && kind === 'hit' && !f.ih) { f.ih = 1; tgt.speed *= 1 + A.firstHitSpeed; b.events.push({ t: 'boost', x: tgt.x, y: tgt.y }); }
     if (tgt.hp <= 0) return;
     const L = A.lowHp;
