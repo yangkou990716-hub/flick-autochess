@@ -119,6 +119,7 @@
     const bt = { R, R0: R, rules: o.rules || [], env, bodies, sides: [p.side, e.side], turn: 0, shots: [T + p.side.shotsAdd, T + e.side.shotsAdd],
       phase: 'aim', winner: null, rng: { s: o.seed | 0 }, events: [], simT: 0, mover: -1, chain: 0, hits: 0, pending: [], comboUsed: {},
       shotCount: 0, zones: [], ghost: {}, echoUsed: false, gold: 0, stopDone: false };
+    if (o.eExt && o.eExt.affix) affixSetup(bt, o); // ---- 敵人詞綴 ----
     relax(bt);
     if (bt.rules.includes('swamp')) [[-0.45, 0.12], [0.45, 0.12], [0, -0.02]].forEach(([x, y]) => bt.zones.push({ kind: 'pool', x: x * R, y: y * R, r: 50, dmg: 0, team: 1, left: 999, hit: {}, pDmg: 18, turns: 2 }));
     [0, 1].forEach(t => { for (let k = 0; k < bt.sides[t].openFreeze; k++) { const f = alive(bt, 1 - t); if (f.length) { const x = rng.pick(bt.rng, f); x.stunned = true; bt.events.push({ t: 'freeze', x: x.x, y: x.y }); } } });
@@ -168,6 +169,7 @@
     if (s.gravity) { b.events.push({ t: 'pull', x: 0, y: 0, r: b.R }); shift(b, foe, 0, 0, s.gravity * 0.15); }
     if (b.env.storm) { const a = rng.range(b.rng, 0, 6.283), rr = rng.range(b.rng, 0, b.R * 0.5), x = Math.cos(a) * rr, y = Math.sin(a) * rr; b.events.push({ t: 'pull', x, y, r: b.R * 0.8 }); shift(b, null, x, y, b.env.storm * 0.1); }
     if (b.turn === 0 && b.shotCount > 0 && b.rules.includes('shrink')) { b.R = Math.max(170, b.R - 14); relax(b); b.events.push({ t: 'shrink' }); }
+    if (b.affix) affixTurn(b); // ---- 敵人詞綴 ----
     if (!alive(b, foe).length || !alive(b, b.turn).length) return checkEnd(b);
     if (!canMove(b, b.turn)) { b.events.push({ t: 'skip', team: b.turn }); endShot(b); }
   }
@@ -178,6 +180,7 @@
     const x = b.bodies[idx], cfg = C();
     if (!x || !x.alive || x.temp || x.team !== b.turn || x.stunned || b.phase !== 'aim') return false;
     power = Math.max(0, Math.min(1, power));
+    if (b.affix) power = affixLaunch(b, x, power); // ---- 敵人詞綴 ----
     const full = power >= cfg.fullPowerAt;
     const sp = power * cfg.maxLaunch * x.speed * (full ? 1 + cfg.fullPowerBonus : 1);
     if (full) b.events.push({ t: 'fullpower', x: x.x, y: x.y });
@@ -193,6 +196,7 @@
   function dealDamage(b, tgt, amt, src, kind) {
     if (!tgt.alive || tgt.temp || amt <= 0) return 0;
     if (kind === 'hit' && tgt.ab && tgt.ab.type === 'guard') amt *= 1 - tgt.ab.red;
+    if (b.affix && kind === 'hit') amt = affixDmgMul(b, tgt, amt, src); // ---- 敵人詞綴 ----
     if (tgt.exposed > 0) amt *= 1 + tgt.exposeAmp;
     const pierceShield = src && kind === 'hit' && ((src.fx && src.fx.shieldPierce) || (src.ab && src.ab.type === 'armorBreak'));
     if (tgt.shield > 0 && !pierceShield) {
@@ -202,6 +206,7 @@
     }
     if (amt <= 0) return 0;
     tgt.hp -= amt; tgt.hurt = 1;
+    if (b.affix) affixOnDamage(b, tgt, amt, src, kind); // ---- 敵人詞綴 ----
     b.events.push({ t: 'dmg', x: tgt.x, y: tgt.y, amt, kind, team: tgt.team });
     if (kind === 'hit' && src) {
       if (src.lifesteal && !src.temp) src.hp = Math.min(src.maxHp, src.hp + amt * src.lifesteal);
@@ -465,6 +470,68 @@
     if (checkEnd(b)) return;
     b.turn = b.shots[1 - t] ? 1 - t : t;
     startTurn(b);
+  }
+
+  // ---- 敵人詞綴 ----
+  // b.affix：run.affixExt 產生的純資料＋狀態（lavaN）；每個棋子的詞綴狀態放 o.aff（create 時一次補齊，形狀一致）
+  function affixSetup(bt, o) {
+    const A = bt.affix = JSON.parse(JSON.stringify(o.eExt.affix)); A.lavaN = 0;
+    const pf = (o.pFront || []).filter(Boolean), maxI = C().maxItems;
+    bt.bodies.forEach((x, k) => {
+      x.aff = { mhp0: x.maxHp, empty: 0, q: 0, cd: 0, ih: 0, low: 0, cl: 0 };
+      if (x.team === 0) { const u = pf[k]; x.aff.empty = u ? Math.max(0, maxI - (u.items || []).length) : 0; return; }
+      const hm = 1 + A.hpPct + (x.boss ? A.bossHp : A.minionHp);
+      x.hp *= hm; x.maxHp *= hm; x.aff.mhp0 = x.maxHp;
+      if (A.speedPct) x.speed *= 1 + A.speedPct;
+      if (!x.boss && A.minionMass) x.m *= 1 + A.minionMass;
+    });
+    if (A.bossShots && bt.bodies.some(x => x.boss)) bt.shots[1] += A.bossShots;
+  }
+  function affixTurn(b) {
+    const A = b.affix;
+    if (A.lava && b.turn === 0) {
+      A.lavaN = Math.min(A.lavaMax || 5, A.lavaN + 1);
+      const t = b.bodies.find(x => x.alive && !x.temp && x.team === 0);
+      if (t) { b.events.push({ t: 'boom', x: t.x, y: t.y, r: t.r + 10, n: 0 }); dealDamage(b, t, t.maxHp * A.lava * A.lavaN, null, 'burn'); }
+    }
+  }
+  function affixLaunch(b, x, power) {
+    if (x.aff && x.aff.q) { x.aff.q = 0; return Math.min(power, 1 - b.affix.hitSlow); }
+    return power;
+  }
+  function affixDmgMul(b, tgt, amt, src) {
+    const A = b.affix;
+    if (tgt.team !== 0 || !src || src.team !== 1) return amt;
+    let k = 1;
+    if (A.vsStar1 && tgt.star === 1) k += A.vsStar1;
+    if (A.emptySlotDmg && tgt.aff) k += A.emptySlotDmg * tgt.aff.empty;
+    return amt * k;
+  }
+  function affixOnDamage(b, tgt, amt, src, kind) {
+    const A = b.affix, f = tgt.aff; if (!f) return;
+    if (tgt.team === 0) {
+      if (A.hitSlow && kind === 'hit' && src && src.team === 1) f.q = 1;
+      if (A.trauma && tgt.hp > 0) { tgt.maxHp = Math.max(f.mhp0 * (1 - A.traumaCap), tgt.maxHp - amt * A.trauma); tgt.hp = Math.min(tgt.hp, tgt.maxHp); }
+      return;
+    }
+    if (A.cheatDeath && tgt.hp <= 0 && !f.cd) { f.cd = 1; tgt.hp = tgt.maxHp * A.cheatDeath; b.events.push({ t: 'revive', x: tgt.x, y: tgt.y }); }
+    if (A.firstHitSpeed && kind === 'hit' && !f.ih) { f.ih = 1; tgt.speed *= 1 + A.firstHitSpeed; b.events.push({ t: 'boost', x: tgt.x, y: tgt.y }); }
+    if (tgt.hp <= 0) return;
+    const L = A.lowHp;
+    if (L && !f.low && tgt.hp < tgt.maxHp * L.at) {
+      f.low = 1; tgt.atk *= 1 + L.atkPct; tgt.baseAtk *= 1 + L.atkPct;
+      if (L.counter && b.phase === 'moving') {
+        let best = null, bd = 1e9;
+        b.bodies.forEach(o => { if (o.alive && !o.temp && o.team !== tgt.team) { const d = hyp(o.x - tgt.x, o.y - tgt.y); if (d < bd) { bd = d; best = o; } } });
+        if (best) { const ang = Math.atan2(best.y - tgt.y, best.x - tgt.x), v = 650 * tgt.speed; tgt.vx = Math.cos(ang) * v; tgt.vy = Math.sin(ang) * v; }
+      }
+      b.events.push({ t: 'boost', x: tgt.x, y: tgt.y });
+    }
+    const Q = A.cleanse;
+    if (Q && !f.cl && tgt.hp < tgt.maxHp * Q.at) {
+      f.cl = 1; tgt.poison = null; tgt.stunned = false; tgt.hp = Math.min(tgt.maxHp, tgt.hp + tgt.maxHp * Q.heal);
+      b.events.push({ t: 'heal', x: tgt.x, y: tgt.y });
+    }
   }
 
   function finish(b, w) { if (b.phase === 'over') return; b.phase = 'over'; b.winner = w; b.events.push({ t: 'over', winner: w }); }

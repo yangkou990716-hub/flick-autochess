@@ -1,4 +1,4 @@
-// 平衡模擬器：node sim/simulate.js [場數=1000] [seed=1]
+// 平衡模擬器：node sim/simulate.js [場數=1000] [seed=1] [敵人詞綴=aff_jail,aff_frenzy（可省略；位面強化以第 1 位面計）]
 // AI 互打，統計各角色、羈絆、裝備勝率（目標 45%～55%）
 const path = require('path');
 ['data/config', 'data/units', 'data/traits', 'data/items', 'data/enemies', 'data/run', 'src/core/battle', 'src/core/ai', 'src/core/run']
@@ -25,10 +25,13 @@ function team() {
 const st = { unit: {}, trait: {}, item: {}, weapon: {} };
 const rec = (k, key, w) => { const o = st[k][key] = st[k][key] || [0, 0]; o[0]++; if (w) o[1]++; };
 const diff = { aimNoise: 0.06, candidates: 10 };
+// ---- 敵人詞綴 ----（第 3 參數，套在 B 隊）
+const AFF = process.argv[4] ? FA.run.affixExt(process.argv[4].split(','), { plane: 1 }) : null;
+if (process.argv[4]) console.log('敵人詞綴（B 隊）：' + (AFF ? AFF.ids.map(id => D.enemies.affixes[id].name).join('、') : '無有效詞綴'));
 const t0 = Date.now(); let wipes = 0;
 for (let n = 0; n < N; n++) {
   const A = team(), B = team();
-  const b = FA.battle.create({ pFront: A.front, pBack: A.back, eFront: B.front, eBack: B.back, seed: FA.rng.int(rs, 1e9) });
+  const b = FA.battle.create({ pFront: A.front, pBack: A.back, eFront: B.front, eBack: B.back, seed: FA.rng.int(rs, 1e9), eExt: AFF ? { affix: AFF } : {}, rules: AFF ? AFF.rules : [] });
   let guard = 0;
   while (b.phase !== 'over' && guard++ < 40) {
     const ch = FA.ai.choose(b, b.turn, diff, b.rng);

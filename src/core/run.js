@@ -16,8 +16,63 @@
       timed: [], futures: [], afterStrat: null, lvPaid: {} };
     r.bossVar = R().int(r.rng, D().enemies.bosses[0].length);
     r.pending = { type: 'opener', options: pickN(r, Object.keys(RD().openers), 3) };
+    rollAffixes(r, seed); // ---- 敵人詞綴 ----
     rollShop(r, true);
     return r;
+  }
+
+  // ---- 敵人詞綴 ----
+  // 用獨立亂數（由 seed 衍生），不影響主亂數序列：A0/A1 的局和加入詞綴前完全相同
+  const AFX = () => D().enemies.affixes || {};
+  function rollAffixes(r, seed) {
+    const A = RD().ascensions ? RD().ascensions[r.asc || 0] : null, n = (A && A.affixN) || 0;
+    if (seed != null) r.affRng = { s: (seed ^ 0x5f3759df) | 0 };
+    if (r.affixRerolls == null) r.affixRerolls = 1;
+    r.affixSeen = !n;
+    const pool = Object.keys(AFX()).filter(id => !(A && A.affixSoft) || AFX()[id].tier === 'soft');
+    const a = pool.slice(), out = [];
+    while (out.length < n && a.length) out.push(a.splice(R().int(r.affRng, a.length), 1)[0]);
+    r.affixes = out;
+    return out;
+  }
+  // 開局免費重骰（第一場戰鬥前、每局 1 次）
+  function rerollAffixes(r) {
+    if (!r.affixes || !r.affixes.length || !(r.affixRerolls > 0) || r.stage > 0) return false;
+    r.affixRerolls--; const seen = r.affixSeen; rollAffixes(r); r.affixSeen = seen; return true;
+  }
+  // 詞綴 id 清單 → battle.create 的 eExt.affix（純資料）；ctx: {plane, boss}
+  function affixExt(ids, ctx) {
+    ctx = ctx || {};
+    const o = { ids: [], hpPct: 0, speedPct: 0, bossHp: 0, bossShots: 0, minionHp: 0, minionMass: 0, hitSlow: 0, trauma: 0, traumaCap: 0, cheatDeath: 0,
+      vsStar1: 0, emptySlotDmg: 0, firstHitSpeed: 0, lowHp: null, cleanse: null, lava: 0, lavaMax: 0, rules: [] };
+    (ids || []).forEach(id => {
+      const X = AFX()[id]; if (!X) return; const f = X.fx;
+      if (f.plane && f.plane !== ctx.plane) return; // 位面強化只在對應位面生效
+      if (f.boss && !ctx.boss) return; // 首領強化只在首領戰
+      o.ids.push(id);
+      if (f.plane) { o.hpPct += f.hpPct || 0; o.speedPct += f.speedPct || 0; }
+      if (f.boss) { o.bossHp += f.boss.hpPct || 0; o.bossShots += f.boss.shots || 0; }
+      if (f.minion) { o.minionHp += f.minion.hpPct || 0; o.minionMass += f.minion.massPct || 0; }
+      if (f.hitSlow) o.hitSlow = Math.max(o.hitSlow, f.hitSlow);
+      if (f.trauma) { o.trauma += f.trauma; o.traumaCap = Math.max(o.traumaCap, f.cap || 0.4); }
+      if (f.cheatDeath) o.cheatDeath = Math.max(o.cheatDeath, f.cheatDeath);
+      if (f.vsStar1) o.vsStar1 += f.vsStar1;
+      if (f.emptySlotDmg) o.emptySlotDmg += f.emptySlotDmg;
+      if (f.firstHitSpeed) o.firstHitSpeed += f.firstHitSpeed;
+      if (f.lowHp) o.lowHp = Object.assign({}, f.lowHp);
+      if (f.cleanse) o.cleanse = Object.assign({}, f.cleanse);
+      if (f.lava) { o.lava += f.lava; o.lavaMax = Math.max(o.lavaMax, f.lavaMax || 5); }
+      if (f.rules) f.rules.forEach(k => { if (!o.rules.includes(k)) o.rules.push(k); });
+    });
+    return o.ids.length ? o : null;
+  }
+  // startBattle 用：把本局詞綴掛到敵隊（撲滿不套用）；尖刺圍欄重用 'spikes' 規則
+  function affixEnemy(r, en) {
+    if (en.reward || !r.affixes || !r.affixes.length) return;
+    const ax = affixExt(r.affixes, { plane: r.plane, boss: !!en.boss }); if (!ax) return;
+    en.affix = ax;
+    const add = ax.rules.filter(k => !(en.rules || []).includes(k));
+    if (add.length) en.rules = (en.rules || []).concat(add);
   }
 
   // ---- 策略／環境效果彙總（戰鬥與經濟用）----
@@ -269,10 +324,12 @@
 
   function startBattle(r) {
     const en = enemyTeam(r), s = sfx(r);
+    affixEnemy(r, en); // ---- 敵人詞綴 ----
     r.enemy = { name: en.name, boss: !!en.boss, rules: en.rules, reward: !!en.reward };
     const front = r.front.slice(0, lv(r).front).filter(Boolean);
     if (!front.length) return null;
     const eExt = en.reward ? { mods: { hpPct: (RD().piggy.hpBase + RD().piggy.hpPerStage * r.stage) / D().units.piggy.hp - 1 } } : { threat: r.threat };
+    if (en.affix) eExt.affix = en.affix; // ---- 敵人詞綴 ----
     return FA.battle.create({ pFront: front, pBack: r.back.slice(0, lv(r).back), eFront: en.front, eBack: en.back, rules: en.rules, env: efx(r),
       pExt: Object.assign(battleExt(s), en.boss ? { shots: (battleExt(s).shots || 0) + C().bossShotsAdd } : {}), eExt, eNoShots: !!en.reward,
       seed: Math.floor(R().next(r.rng) * 2 ** 31) });
@@ -373,4 +430,5 @@
   FA.run = { newRun, rollShop, reroll, buyXp, buy, sell, move, equip, equipWeapon, merge, makeItem, startBattle, endBattle, enemyTeam,
     bossInfo: r => D().enemies.bosses[r.plane - 1][r.bossVar || 0], sellPrice, unitCost, lv, isBoss, steps, unitAt, choose, advance, sfx, efx, nodeOptions,
     exportTeam, importTeam, duelBattle, shopIds };
+  Object.assign(FA.run, { rollAffixes, rerollAffixes, affixExt, affixEnemy }); // ---- 敵人詞綴 ----
 })(globalThis);

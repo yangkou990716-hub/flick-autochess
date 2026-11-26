@@ -22,6 +22,27 @@
        { name: '雷霆君王', hp: 720, atk: 38, mass: 3.8, r: 44, color: '#fbc02d', rules: ['shrink'], ability: { type: 'chainHit', n: 3, mult: 0.5, r: 260 }, zap: 1.0 }]
     ],
     ruleText: { spikes: '牆面尖刺：我方撞牆受傷', shrink: '場地縮小：每回合縮圈', swamp: '毒沼：場上有毒池' },
+    // ---- 敵人詞綴（參考貨幣戰爭；開局依難度抽，整局生效；tier: soft 較溫和 / hard 較兇）----
+    // fx 欄位：plane+hpPct+speedPct 位面強化｜boss:{hpPct,shots} 首領強化｜minion:{hpPct,massPct} 嘍囉強化｜hitSlow 被撞後下一發力道上限 -X
+    //   trauma+cap 損血轉最大生命下降｜cheatDeath 第一次將死保留 X 生命｜vsStar1 對 1 星碰撞傷害 +X｜emptySlotDmg 每空裝備格被撞傷害 +X
+    //   firstHitSpeed 第一次被撞後速度 +X｜lowHp:{at,atkPct,counter} 低血狂暴反擊｜cleanse:{at,heal} 低血淨化回血｜lava 每回合燒第一個前台（疊加）｜rules 追加場地規則
+    affixes: {
+      aff_p1: { name: '第一位面強化', desc: '第一位面敵人生命 +20%、速度 +10%', tier: 'soft', fx: { plane: 1, hpPct: 0.2, speedPct: 0.1 } },
+      aff_p2: { name: '第二位面強化', desc: '第二位面敵人生命 +25%、速度 +15%', tier: 'soft', fx: { plane: 2, hpPct: 0.25, speedPct: 0.15 } },
+      aff_p3: { name: '第三位面強化', desc: '第三位面敵人生命 +30%、速度 +20%', tier: 'soft', fx: { plane: 3, hpPct: 0.3, speedPct: 0.2 } },
+      aff_boss: { name: '首領強化', desc: '首領生命 +30%，首領戰敵方多 1 發', tier: 'hard', fx: { boss: { hpPct: 0.3, shots: 1 } } },
+      aff_minion: { name: '嘍囉強化', desc: '非首領敵人生命 +20%、重量 +15%', tier: 'soft', fx: { minion: { hpPct: 0.2, massPct: 0.15 } } },
+      aff_quake: { name: '沉重腳步', desc: '我方被敵人撞到的角色，下一發力道上限 -30%', tier: 'hard', fx: { hitSlow: 0.3 } },
+      aff_trauma: { name: '永久創傷', desc: '我方損失的生命有 30% 變成本場最大生命下降（最多 -40%）', tier: 'hard', fx: { trauma: 0.3, cap: 0.4 } },
+      aff_jail: { name: '免死金牌', desc: '每隻敵人第一次將死時保留 10% 生命', tier: 'hard', fx: { cheatDeath: 0.1 } },
+      aff_bully: { name: '欺弱', desc: '敵人對我方 1 星角色的碰撞傷害 +20%', tier: 'soft', fx: { vsStar1: 0.2 } },
+      aff_naked: { name: '空格打擊', desc: '我方角色每空 1 格裝備，被撞傷害 +5%', tier: 'soft', fx: { emptySlotDmg: 0.05 } },
+      aff_inertia: { name: '慣性', desc: '敵人第一次被撞後，彈射速度永久 +30%', tier: 'soft', fx: { firstHitSpeed: 0.3 } },
+      aff_frenzy: { name: '戰或逃', desc: '敵人生命第一次低於 50% 時攻擊 +30%，並立刻朝最近的我方反衝', tier: 'hard', fx: { lowHp: { at: 0.5, atkPct: 0.3, counter: true } } },
+      aff_cleanse: { name: '純淨身心', desc: '敵人第一次低於 50% 生命時，解除中毒與冰凍並回 10% 生命', tier: 'soft', fx: { cleanse: { at: 0.5, heal: 0.1 } } },
+      aff_lava: { name: '熔岩轟炸', desc: '我方第一個前台每回合開始受到 4% 生命燒傷（每回合疊加，最多 5 層）', tier: 'hard', fx: { lava: 0.04, lavaMax: 5 } },
+      aff_spikes: { name: '尖刺圍欄', desc: '一般戰鬥也有牆面尖刺（我方撞牆受傷）', tier: 'hard', fx: { rules: ['spikes'] } }
+    },
     eliteBonus: 3, // 精英 = 難度 +3 關、必帶裝備
     difficulty: function (stage) {
       return {
