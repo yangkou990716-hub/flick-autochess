@@ -136,7 +136,7 @@
   function renderLobby() {
     const box = $('lgBox'), e = err ? `<p class="netwarn">${esc(err)}</p>` : '';
     if (!U.configured()) { box.innerHTML = `<h2>🏆 連線自走棋</h2><p class="netwarn">尚未設定連線</p><p class="nethint">請照 docs/firebase-setup.md 設定 Firebase。</p><button id="lgBack">返回</button>`; $('lgBack').onclick = toTitle; return; }
-    if (!ensureDb()) { box.innerHTML = `<h2>🏆 連線自走棋</h2><p class="netwarn">Firebase 載入失敗，請確認網路後重開。</p><button id="lgBack">返回</button>`; $('lgBack').onclick = toTitle; return; }
+    if (!ensureDb()) { box.innerHTML = `<h2>🏆 連線自走棋</h2><p class="netwarn">連線元件載入失敗：請確認網路，再重新開啟遊戲。</p><button id="lgBack">返回</button>`; $('lgBack').onclick = toTitle; return; }
     if (!R.code) {
       box.innerHTML = `<h2>🏆 連線自走棋</h2>
         <p class="nethint">2～${LD.maxPlayers} 人各自經營商店，每回合兩兩對戰，輸了扣小隊血量（${LD.hp}）。血量歸零淘汰，剩 1 人或 ${LD.maxRounds} 回合結束時依血量排名。</p>
@@ -212,30 +212,30 @@
           { v: 1, createdAt: TS, hostId: pid, state: 'lobby', players: { [pid]: newPlayer(0) } }, null, false).catch(() => null);
         if (res && res.committed) { busy = false; return enterRoom(code); }
       }
-      err = '建立房間失敗，請再試一次';
-    } catch (e) { err = '建立房間失敗：' + (e.message || e); }
+      err = '建立房間失敗：連線不穩，請稍後再試';
+    } catch (e) { err = '建立房間失敗：請檢查網路後再試（' + (e.message || e) + '）'; }
     busy = false; renderLobby();
   }
   async function joinRoom(code) {
-    if (!/^\d{4}$/.test(code)) { err = '房號是 4 位數字'; return renderLobby(); }
+    if (!/^\d{4}$/.test(code)) { err = '房號是 4 位數字，例如 0427'; return renderLobby(); }
     busy = true; err = ''; renderLobby();
     try {
       const ref = db.ref('leagues/' + code), v = (await ref.once('value')).val();
-      if (!v || !v.players || Date.now() - (v.createdAt || 0) > ROOM_TTL) throw new Error('找不到房間 ' + code);
+      if (!v || !v.players || Date.now() - (v.createdAt || 0) > ROOM_TTL) throw new Error(`找不到房號 ${code}：請確認號碼，或房間已過期，請朋友重開一間`);
       if (v.players[pid]) { busy = false; return enterRoom(code); }
-      if (v.state !== 'lobby') throw new Error('這個房間已經開始了');
+      if (v.state !== 'lobby') throw new Error('這個房間已經開打，無法中途加入，請朋友再開一間');
       const pref = ref.child('players'); let warm; await new Promise(r => { warm = () => r(); pref.on('value', warm); });
       let why = '';
       const res = await pref.transaction(ps => {
-        if (!ps) { why = '找不到房間'; return null; }
-        if (Object.keys(ps).length >= LD.maxPlayers) { why = '房間已滿'; return undefined; }
+        if (!ps) { why = '找不到這個房間，請確認房號'; return null; }
+        if (Object.keys(ps).length >= LD.maxPlayers) { why = `房間已滿（最多 ${LD.maxPlayers} 人），請朋友另開一間`; return undefined; }
         const used = Object.values(ps).map(p => p.seat); let seat = 0; while (used.includes(seat)) seat++;
         ps[pid] = newPlayer(seat); return ps;
       }, null, false);
       pref.off('value', warm);
       if (!res.committed || !res.snapshot.val() || !res.snapshot.val()[pid]) throw new Error(why || '加入失敗');
       busy = false; return enterRoom(code);
-    } catch (e) { err = e.message || String(e); }
+    } catch (e) { const m = e.message || String(e); err = /[\u4e00-\u9fff]/.test(m) ? m : '連線失敗：請檢查網路後再試（' + m + '）'; }
     busy = false; renderLobby();
   }
   async function rejoin(code) {

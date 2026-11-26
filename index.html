@@ -103,8 +103,8 @@
     <button id="btnNew" class="big">單人新遊戲</button>
     <button id="btnHot" class="big">同手機輪流（2～4 人）</button>
     <div class="asc">難度 <select id="selAsc"></select></div>
-    <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:center"><button id="btnCodex">📖 圖鑑</button><button id="btnSound">🔊 音效開</button><button id="btnMusic">🎵 音樂開</button><button id="uxVib">📳 震動開</button><button id="uxTutBtn">📘 教學</button></div>
-    <p class="hint">拖曳己方棋子往反方向拉，放開彈射</p>
+    <div class="row trow"><button id="btnCodex">📖 圖鑑</button><button id="uxTutBtn">📘 教學</button><button id="btnSet">⚙ 設定</button><button id="btnLog">📝 更新紀錄</button></div>
+    <p class="hint">按住棋子往反方向拉，放開就彈射</p>
   </section>
 
   <section id="shop" class="screen hidden">
@@ -124,20 +124,20 @@
       <button id="bReroll">刷新 2</button><button id="bLock">鎖定</button><button id="bXp">經驗 4</button>
       <button id="bFight" class="go">前進 ▶</button>
     </div>
-    <div class="ctrls sub2"><button id="bExport">📤 匯出隊伍代碼</button><button id="bDuel">⚔ 代碼對戰</button><button id="bQuit">🏠</button></div>
+    <div class="ctrls sub2"><button id="bExport">📤 匯出隊伍代碼</button><button id="bDuel">⚔ 代碼對戰</button><button id="bQuit" aria-label="存檔並回標題">🏠</button></div>
   </section>
 
   <section id="battle" class="screen hidden">
     <canvas id="cv"></canvas>
     <div id="bhud" class="bhud"></div>
-    <button id="uxSpeed" class="ux-speed">1x</button>
-    <button id="bPause" class="pausebtn">⏸</button>
+    <button id="uxSpeed" class="ux-speed" aria-label="播放速度">1x</button>
+    <button id="bPause" class="pausebtn" aria-label="暫停">⏸</button>
     <button id="bUlt" class="ultbtn hidden">⚡ 大招</button>
     <div id="uxBinfo" class="hidden"></div>
   </section>
 
   <div id="uxSell" class="hidden">賣出</div>
-  <div id="uxTut" class="hidden"><div id="uxRing"></div><div id="uxBubble"></div></div>
+  <div id="uxTut" class="hidden"><div id="uxRing"></div><div id="uxBubble" role="dialog" aria-live="polite"></div></div>
   <div id="modal" class="modal hidden"><div id="modalBox" class="box"></div></div>
 </div>
 <script src="data/config.js"></script>
@@ -159,6 +159,7 @@
 <script src="src/ui/sprites_r8.js"></script>
 <script src="src/ui/render.js"></script>
 <script src="src/main.js"></script>
+<script src="src/ui/settings.js"></script>
 <script src="src/ui/title.js"></script>
 <script src="vendor/firebase-app-compat.js"></script>
 <script src="vendor/firebase-database-compat.js"></script>

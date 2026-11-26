@@ -8,13 +8,13 @@
 
   // ---------- 設定（震動、播放速度）：FA.settings 給 render.js 共用 ----------
   const SET_KEY = 'fa_settings';
-  FA.settings = Object.assign({ vibrate: true, speed: 1 }, (() => { try { return JSON.parse(localStorage.getItem(SET_KEY)) || {}; } catch (e) { return {}; } })());
-  const saveSet = () => { try { localStorage.setItem(SET_KEY, JSON.stringify(FA.settings)); } catch (e) { } };
+  FA.settings = Object.assign({ vibrate: true, speed: 1, aim: 'long', hand: 'right', reduceMotion: !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches), lang: 'zh-Hant' }, (() => { try { return JSON.parse(localStorage.getItem(SET_KEY)) || {}; } catch (e) { return {}; } })());
+  const saveSet = FA.saveSettings = () => { try { localStorage.setItem(SET_KEY, JSON.stringify(FA.settings)); } catch (e) { } };
   const vib = ms => { if (FA.settings.vibrate) try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { } };
 
   // ---------- 存檔 ----------
   let lgHost = null; // ---- 連線自走棋 ----：商店借給 src/league.js 用時的回呼（存檔、準備、離開）
-  const save = () => { if (lgHost) { try { lgHost.save(run); } catch (e) { } return; } try { if (run) localStorage.setItem(KEY, JSON.stringify(hs ? { hs, battle, mode, bst } : { run, battle, mode, bst })); } catch (e) { } };
+  const save = () => { if (mode === 'guide') return; if (lgHost) { try { lgHost.save(run); } catch (e) { } return; } try { if (run) localStorage.setItem(KEY, JSON.stringify(hs ? { hs, battle, mode, bst } : { run, battle, mode, bst })); } catch (e) { } };
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } };
   const clearSave = () => { try { localStorage.removeItem(KEY); } catch (e) { } };
 
@@ -39,6 +39,9 @@
   const tierLine = t => `${t.n}：${modsText(t.mods)}${t.lottery ? '<br>　' + lotText(t.lottery) : ''}`;
   const counterLine = T => (T.beats || T.weakTo) ? `<br><span class="lbl">⚔ 剋制：${(T.beats || []).map(k => D.traits[k].name).join('、') || '—'}｜被剋：${(T.weakTo || []).map(k => D.traits[k].name).join('、') || '—'}${T.why ? '（' + T.why + '）' : ''}</span>` : '';
   const FAC = D.factions || {};
+  // 色盲友善：每個羈絆配圖示，介面不只靠顏色區分（新羈絆沒列到就用 ◆）
+  const TRAIT_IC = { blast: '💥', magnet: '🧲', wall: '🧱', swift: '💨', heavy: '🪨', toxic: '🦠', mech: '⚙️', bounce: '🏀', snipe: '🎯', shade: '🌑', finesse: '✨' };
+  const tIc = k => TRAIT_IC[k] || (D.traits[k] && D.traits[k].icon) || '◆';
   const facName = id => { const U = D.units[id], F = U && U.faction && FAC[U.faction]; return F ? `<span style="color:${F.color}">${F.icon}${F.name}</span>` : ''; };
   const teamEmb = () => FA.battle.emblemMap(RUN.teamUnits(run));
   const weaponText = id => `${D.weapons[id].icon}${D.weapons[id].name}：${D.weapons[id].desc}`;
@@ -127,7 +130,7 @@
       $('modalBox').innerHTML = `<h2>${choiceTitle[p.type]}</h2>${p.type === 'path' ? planeMap() : ''}${sub ? `<div class="lbl">${sub}</div>` : ''}<div class="choices">` +
         p.options.map((id, i) => `<div class="choice ${choiceCls(p.type, id)}" data-c="${i}">${choiceCard(p.type, id)}</div>`).join('') + '</div>' +
         (p.type === 'path' || p.type === 'encounter' ? '<button data-back="1">先回商店</button>' : '') + (p.type === 'carrier' ? carrierBtn(p) : '');
-      $('modal').classList.remove('hidden');
+      $('modal').classList.remove('hidden'); setTimeout(() => tutPending(p.type), 60);
       $('modalBox').onclick = e => {
         if (e.target.dataset.reroll) { if (RUN.rerollCarrier(run)) { FA.sound.play('coin'); save(); } return flow(); } // ---- 補給 ----
         if (e.target.dataset.back) { run.pending = null; $('modal').classList.add('hidden'); save(); renderShop(); return; }
@@ -160,8 +163,8 @@
     $('traits').innerHTML = (Object.keys(D.traits).map(k => {
       const T = D.traits[k], n = tt.counts[k] || 0, a = tt.active[k];
       if (!n) return '';
-      return `<span class="tr ${a ? 'act' : ''}" style="${a ? 'background:' + T.color : ''}" data-tr="${k}">${T.name} ${n}/${(T.tiers.find(t => t.n > n) || T.tiers[T.tiers.length - 1]).n}${a && a.lottery ? '🎰' : ''}</span>`;
-    }).join('') + factionChips(onTeam)) || '<span class="lbl">羈絆：同羈絆角色湊 2 隻起有小加成</span>';
+      return `<span class="tr ${a ? 'act' : ''}" style="${a ? 'background:' + T.color : ''}" data-tr="${k}"><span class="tic" aria-hidden="true">${tIc(k)}</span>${a ? '✓' : ''}${T.name} ${n}/${(T.tiers.find(t => t.n > n) || T.tiers[T.tiers.length - 1]).n}${a && a.lottery ? '🎰' : ''}</span>`;
+    }).join('') + factionChips(onTeam)) || '<span class="lbl">羈絆：同羈絆的不同角色湊 2 隻起有加成</span>';
     ['front', 'back', 'bench'].forEach(z => {
       const lim = z === 'front' ? lv.front : z === 'back' ? lv.back : C.benchSize;
       const len = z === 'front' ? Math.max(6, lv.front) : run[z].length;
@@ -179,7 +182,7 @@
     else if (sel && sel.cs != null && (run.consumables || [])[sel.cs]) info = consInfo(sel.cs); // ---- 道具 ----
     else if (sel && sel.item != null) info = itemText(run.items[sel.item]) + '<br><span class="lbl">點角色裝上（最多 3 件）。鐵拳＋彈簧＝爆裂彈簧；護符＋疾行靴＝吸血疾靴</span>';
     else if (sel && sel.wp != null) info = weaponText(run.weapons[sel.wp]) + '<br><span class="lbl">點角色裝上（每隻 1 把，會替換）</span>';
-    else if (sel && sel.trait) { const T = D.traits[sel.trait]; info = `<b>${T.name}</b>（只加給${T.name}角色）<br>` + T.tiers.map(tierLine).join('<br>') + counterLine(T); }
+    else if (sel && sel.trait) { const T = D.traits[sel.trait]; info = `<b>${tIc(sel.trait)} ${T.name}</b>（只加給${T.name}角色）<br>` + T.tiers.map(tierLine).join('<br>') + counterLine(T); }
     else if (sel && sel.fa) info = facInfo(sel.fa);
     else if (sel && sel.st) { const S = RD.strategies[sel.st]; info = `<b>${S.name}</b>（${RD.tiers[S.tier].name}）<br>${S.desc}`; }
     else info = `<span class="lbl">雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈 -1、被打倒 -${C.deathCost}，對方動數先歸零就贏；擊倒首領直接贏。贏 +${C.winHeal} 血、輸了扣血；🛡＝鎖血免死。點商店卡片購買；點角色查看／移動；3 隻同星自動升星。佈好陣按「前進」選路線。</span>`;
@@ -187,7 +190,7 @@
     $('shopRow').innerHTML = run.shop.map((id, i) => {
       if (!id) return `<div class="card empty"></div>`;
       const U = D.units[id], cc = ['#888', '#3fb950', '#4ea0ff', '#b072ff', '#ffb000'][U.cost - 1];
-      return `<div class="card cost-${U.cost}" data-b="${i}" style="border-color:${cc}">${icon(id, 1, 48) ? `<img src="${icon(id, 1, 48)}" style="width:${Math.round(30 + U.r * 0.55)}px;height:${Math.round(30 + U.r * 0.55)}px;display:block;margin:-5px auto -3px">` : `<div class="dot" style="background:${U.color};width:${U.r * 1.2}px;height:${U.r * 1.2}px"></div>`}${U.name}<br><span class="c">${RUN.unitCost(run, id)} 金</span><div class="t">${U.traits.map(t => `<span class="cdot" style="background:${D.traits[t].color}"></span>${D.traits[t].name}`).join(' ')}</div>${cardHint(id, onTeam, tt)}</div>`;
+      return `<div class="card cost-${U.cost}" data-b="${i}" style="border-color:${cc}">${icon(id, 1, 48) ? `<img src="${icon(id, 1, 48)}" style="width:${Math.round(30 + U.r * 0.55)}px;height:${Math.round(30 + U.r * 0.55)}px;display:block;margin:-5px auto -3px">` : `<div class="dot" style="background:${U.color};width:${U.r * 1.2}px;height:${U.r * 1.2}px"></div>`}${U.name}<br><span class="c">${RUN.unitCost(run, id)} 金</span><div class="t">${U.traits.map(t => `<span class="cdot" style="background:${D.traits[t].color}"></span>${tIc(t)}${D.traits[t].name}`).join(' ')}</div>${cardHint(id, onTeam, tt)}</div>`;
     }).join('');
     $('bReroll').textContent = run.freeLeft ? `免費刷新` : `刷新 ${RUN.rerollCost(run)}`;
     $('bReroll').disabled = !run.freeLeft && run.gold < RUN.rerollCost(run); $('bXp').disabled = run.gold < C.xpCost || run.level >= C.levels.length;
@@ -405,6 +408,7 @@
   $('bQuit').onclick = () => { save(); if (lgHost) return lgHost.quit(); toTitle(); };
   $('bUlt').onclick = () => { ui.ultArmed = !ui.ultArmed; vib(ui.ultArmed ? 25 : 8); if (ui.ultArmed) V.banner = { txt: '⚡ 彈發光的棋子放大招', life: 1, max: 1, col: '#ffd54f' }; };
   function startFight() {
+    if (guideWanted()) return guideOffer(startFight);
     mode = 'run';
     const b = RUN.startBattle(run); if (!b) { run.node = null; show('shop'); renderShop(); return flash('前台至少要放 1 隻'); }
     battle = b; bst = newStats(); V.reset(); ai = null; ui.aim = null; hideBInfo(); show('battle'); V.resize(); save();
@@ -475,6 +479,7 @@
 
   function hud() {
     const b = battle, hp = t => Math.round(FA.battle.hpSum(b, t));
+    if (mode === 'guide') { $('bhud').innerHTML = '<div class="ux-hl">🎯 練習關｜把木樁全部撞倒</div>' + movesHUD(b); $('bUlt').classList.add('hidden'); ui.msg = ''; return; } // 練習關的說明在下方提示列（coach）
     if (mode === 'duel') run.enemy = { name: '對戰：' + duelName };
     const env = run.env && mode !== 'duel' ? '🌐' + RD.envs[run.env].name : '';
     $('bhud').innerHTML = `<div class="ux-hl">位面${run.plane}｜${run.enemy.name}${b.rules.length ? '｜' + b.rules.map(r => D.enemies.ruleText[r]).join('、') : ''}　${env}</div>` + movesHUD(b);
@@ -517,9 +522,11 @@
   }
 
   function afterShot() {
+    if (mode === 'guide') guideShots++;
     save();
     if (battle.phase !== 'over') return;
     const b = battle;
+    if (mode === 'guide') return guideOver(b);
     setTimeout(() => {
       FA.sound.music(b.winner === 0 ? 'win' : 'lose'); hideBInfo(); // 勝負短音效由 render.js 的 over 事件播
       const stats = movesRes(b) + statsHTML(); bst = null;
@@ -594,8 +601,9 @@
         if (battle) { consume(battle); V.update(dt); }
         if (binfoT > 0 && (binfoT -= dt0) <= 0) hideBInfo();
       }
-      if (battle) { hud(); V.draw(battle, ui, paused || tutOn ? 0 : dt); }
+      if (battle) { hud(); V.draw(battle, ui, paused || tutOn ? 0 : dt); tutTick(); }
     }
+    if (screen !== 'battle' || !battle) coach(null);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -635,7 +643,7 @@
   // ---------- 圖鑑 ----------
   const CODEX = {
     角色: () => Object.keys(D.units).sort((a, b) => D.units[a].cost - D.units[b].cost).map(id => `<div class="choice cx-u">${icon(id, 1, 52) ? `<img src="${icon(id, 1, 52)}" alt="">` : ''}<div>${unitInfo({ id, star: 1, items: [], weapon: null })}</div></div>`).join(''),
-    羈絆: () => Object.values(D.traits).map(T => `<div class="choice"><b style="color:${T.color}">${T.name}</b>：${Object.keys(D.units).filter(k => D.units[k].traits.includes(Object.keys(D.traits).find(x => D.traits[x] === T))).map(k => D.units[k].name).join('、')}<br>` + T.tiers.map(tierLine).join('<br>') + counterLine(T) + '</div>').join(''),
+    羈絆: () => Object.values(D.traits).map(T => `<div class="choice"><b style="color:${T.color}">${tIc(Object.keys(D.traits).find(x => D.traits[x] === T))} ${T.name}</b>：${Object.keys(D.units).filter(k => D.units[k].traits.includes(Object.keys(D.traits).find(x => D.traits[x] === T))).map(k => D.units[k].name).join('、')}<br>` + T.tiers.map(tierLine).join('<br>') + counterLine(T) + '</div>').join(''),
     陣營: () => '<div class="lbl">第二條羈絆軸：每隻角色屬於 1 個陣營，湊 3／5 隻給經濟或規則加成</div>' + Object.keys(FAC).map(k => `<div class="choice">${facInfo(k)}</div>`).join(''),
     徽章: () => '<div class="lbl">徽章佔 1 格裝備：穿上的角色多 1 個該羈絆（羈絆計數 +1，原本就有的不重複算）。取得：補給、遭遇難度 3+、白銀策略「買彩票」</div>' + Object.keys(D.emblems).map(k => `<div class="choice">${itemText({ id: k, rolls: Object.fromEntries(Object.entries(D.emblems[k].affix).map(([m, v]) => [m, v[0]])) })}</div>`).join(''),
     裝備: () => Object.values(D.items).filter(I => I.tier !== 'emblem').map(I => `<div class="choice"><b>${I.icon}${I.name}</b>${I.recipe ? `（${I.recipe.map(x => D.items[x].name).join('＋')}）` : '（基礎）'}<br>${Object.entries(I.affix).map(([k, v]) => D.modText[k] ? D.modText[k](v[0]) + (v[0] !== v[1] ? '～' + D.modText[k](v[1]).replace(/^[^\d+-]*/, '') : '') : '').join('、')}</div>`).join(''),
@@ -659,61 +667,162 @@
     $('modalBox').onclick = e => { if (e.target.dataset.tab) codex(e.target.dataset.tab); else if (e.target.dataset.close) $('modal').classList.add('hidden'); };
   }
 
-  // ---------- 新手教學：第一次玩分步提示（localStorage 標記，可跳過，標題可重看）----------
+  // ---------- 新手教學：分階段、用到才跳出（fa_tut 記已看過的章節；「跳過教學」全部關掉；標題「📘 教學」可挑章節重看、重置、重玩練習關）----------
   const TUT_KEY = 'fa_tut';
   let tutSeen = (() => { try { return JSON.parse(localStorage.getItem(TUT_KEY)) || {}; } catch (e) { return {}; } })(), tutOn = false;
+  const tutQ = [];
   const saveTut = () => { try { localStorage.setItem(TUT_KEY, JSON.stringify(tutSeen)); } catch (e) { } };
-  // 戰場棋子的螢幕座標（由 V.toWorld 反推）
-  function bodyRect() {
-    if (!battle) return null;
-    const o = battle.bodies.find(x => x.alive && !x.temp && x.team === 0 && !x.stunned); if (!o) return null;
-    const w0 = V.toWorld(0, 0), w1 = V.toWorld(1, 0), S = 1 / (w1.x - w0.x), x = o.x * S - w0.x * S, y = o.y * S - w0.y * S, r = o.r * S + 12;
-    return { left: x - r, top: y - r, width: r * 2, height: r * 2 };
-  }
+  // 戰場座標 → 螢幕座標（由 V.toWorld 反推）
+  const scrOf = o => { const w0 = V.toWorld(0, 0), w1 = V.toWorld(1, 0), S = 1 / (w1.x - w0.x); return { x: (o.x - w0.x) * S, y: (o.y - w0.y) * S, r: o.r * S }; };
+  const rectOf = o => { if (!o) return null; const p = scrOf(o), r = p.r + 12; return { left: p.x - r, top: p.y - r, width: r * 2, height: r * 2 }; };
+  const myBody = pred => battle && battle.bodies.find(x => x.alive && !x.temp && x.team === 0 && (!pred || pred(x)));
+  const bodyRect = () => rectOf(myBody(x => !x.stunned));
+  const abOf = pred => () => rectOf(myBody(x => x.ab && pred(x.ab)));
+  const abUnit = pred => { const o = myBody(x => x.ab && pred(x.ab)); return o ? o : null; };
+  const LG = D.league || {};
   const TUT = {
-    intro: [{ t: '歡迎來到<b>彈射自走棋</b>！在商店買角色組隊，再到戰場把棋子彈出去撞敵人。第一次玩時會在需要的地方給你簡短提示，隨時可按「跳過教學」，之後在標題「📘 教學」可重看。' },
-      { el: '#btnNew', t: '按「單人新遊戲」開始。開局會連續選：開局詞綴 → 投資環境（整局生效）→ 投資策略，點一張卡片就選定。' }],
-    shop: [{ el: '#shopRow', t: '① <b>買角色</b>：點商店卡片購買，或直接把卡片<b>拖到</b>前台／後台格子。卡片下方顯示已有幾隻（3 隻同星自動升星）和能不能湊羈絆。<b>長按</b>看詳細。' },
-      { el: '#front', t: '② <b>前台</b>：上場彈射的棋子。把角色拖到這裡（也可以先點角色、再點格子）。' },
-      { el: '#back', t: '③ <b>後台</b>：不上場，每回合給前台被動效果（加攻、護盾、電擊…）。「兩用」角色放哪邊效果不同。' },
-      { el: '#bench', t: '④ <b>備戰區</b>：買來先放這。拖曳時底部會出現「賣出」區，拖過去就賣掉。' },
-      { el: '#traits', t: '⑤ <b>羈絆</b>：前台＋後台同羈絆的不同角色湊 2 隻起有加成，點羈絆看說明。' },
-      { el: '#bFight', t: '⑥ 佈好陣按「<b>前進</b>」，選一條路線：戰鬥、遭遇（自選難度）、撲滿（拿錢）、補給、首領。' }],
-    battle: [{ el: bodyRect, t: '① <b>你的回合</b>：按住自己的棋子（藍框），往<b>反方向</b>拉，放開就彈射出去。' },
-      { el: bodyRect, t: '② 拉越長力道越大，棋子上方有<b>力道條</b>；拉到 95% 以上是「<b>全力</b>」，速度 +15%。' },
-      { el: bodyRect, t: '③ 拉的時候會出現<b>瞄準預演線</b>：虛線是你的路徑（含反彈），白線是被撞棋子的去向。' },
-      { el: '#bhud', t: `④ <b>輪流</b>：每場隨機決定誰先手，一輪內雙方交替出手，每隻棋子都動過一次才進下一輪。上方顯示第幾輪、本輪我方還沒動幾隻。` },
-      { el: '#bhud', t: `⑤ <b>總動數</b>：雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈一次 -1，<span style="color:#4ea0ff">藍條</span>是我方、<span style="color:#ff5a5a">紅條</span>是敵方。<b>對方動數先歸零就贏</b>；擊倒首領直接獲勝。` },
-      { el: '#bhud', t: `⑥ <b>被打倒</b>不會消失：在出生點滿血復活，但該方動數再 <b>-${C.deathCost}</b>。所以打倒敵人＝削它的動數，自己也別亂送。落敗會依敵方剩餘動數扣小隊血量。` },
-      { el: '#cv', t: '⑦ <b>障礙柱</b>：🛟<b>泳圈柱</b>撞到會加速，本發攻擊 +20%；🌵<b>尖刺柱</b>撞到會受傷（敵我都會）。善用反彈繞過去！' },
-      { el: '#bUlt', t: `⑧ <b>大招</b>：${ultCharge}。<b>能量滿的棋子會發光</b>，右下出現「⚡大招」按鈕：先按它，再拉射發光的棋子；想取消就再按一次。每隻大招依羈絆不同，短按棋子可看。` },
-      { el: '#uxSpeed', t: '⑨ 這裡切 <b>1x／2x</b> 播放速度。敵方瞄準時點空白處可快轉；<b>短按</b>任何棋子看能力、血量、中毒/冰凍狀態。' }],
-    result: [{ el: '#modalBox', t: '<b>結算</b>：勝負、雙方剩餘動數、我方被打倒次數、本場最高傷害、小隊血量變化（落敗依敵方剩餘動數扣血）、金幣（收入＋利息＋連勝敗）和戰利品。按「繼續」回到路線／商店。' }]
+    intro: { n: '開始', s: [{ t: '<b>彈射自走棋</b>：在商店組隊，到戰場把棋子彈出去撞敵人。<br>提示只在第一次用到時出現，隨時可跳過；標題「📘 教學」可重看。' }] },
+    env: { n: '投資環境與策略', s: [{ pos: 'top', t: '開局連選 3 次：<b>開局詞綴</b>（起手資源）→ <b>投資環境</b>（整局規則）→ <b>投資策略</b>。<br>策略分白銀、黃金、稜彩：越強，之後的敵人也越強。點卡片就選定。' }] },
+    shop: { n: '商店：買賣', s: [{ el: '#shopRow', t: '<b>買角色</b>：點卡片買，或直接拖到格子上。<b>長按</b>看詳細。' },
+      { el: '#front', t: '<b>前台</b>：上場彈射的棋子，至少放 1 隻。' },
+      { el: '#back', t: '<b>後台</b>：不上場，每回合給前台加成（加攻、護盾、電擊…）。' },
+      { el: '#bench', t: '<b>備戰區</b>：買來先放這。拖曳角色時底部出現「賣出」區，拖過去就賣。' },
+      { el: '#bFight', t: '佈好陣按<b>前進</b>，選下一個節點。' }] },
+    star: { n: '升星', s: [{ el: () => { const e = document.querySelector('#shopRow .ux-own.up'); return e && e.closest('.card'); }, t: '<b>升星</b>：3 隻同角色同星會自動合成 ★★，數值大漲。<br>這張再買 1 隻就升星。' }] },
+    traits: { n: '羈絆', s: [{ el: '#traits', t: '<b>羈絆</b>：前台＋後台湊到 2 隻以上同羈絆的不同角色就啟動（標 ✓）。湊越多越強，點羈絆看每階加成。' }] },
+    path: { n: '節點類型', s: [{ pos: 'top', t: '<b>選路線</b>：⚔ 戰鬥、❗ 遭遇（自選難度換獎勵）、🐷 撲滿（打錢）、📦 補給、👑 首領。<br>上方地圖是這個位面走到哪。' }] },
+    battle: { n: '彈射與瞄準', s: [{ el: bodyRect, t: '按住自己的棋子（藍圈），往<b>反方向</b>拉，放開就彈出去。' },
+      { el: bodyRect, t: '拉越長越大力，<b>95% 以上＝全力</b>（速度 +15%）。<br><b>虛線</b>是預演路線（含反彈），<b>白線</b>是被撞棋子的去向。' }] },
+    moves: { n: '動數與復活', s: [{ el: '#bhud', t: `<b>動數</b>：雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈 -1。<b>對方先歸零就贏</b>；擊倒首領直接贏。` },
+      { el: '#bhud', t: `<b>被打倒</b>會在出生點滿血復活，但該方動數 <b>-${C.deathCost}</b>。打倒敵人＝削它的動數。` }] },
+    turns: { n: '先手與輪流', s: () => [{ el: '#bhud', t: '<b>輪流</b>：每場隨機決定先手，雙方交替各彈 1 隻；每隻都動過才進下一輪。<br>敵方瞄準時點空白處可快轉。' }]
+      .concat(tutSeen.moves ? [] : (tutSeen.moves = 1, saveTut(), TUT.moves.s))
+      .concat([{ el: '#cv', t: '🛟 <b>泳圈柱</b>：撞到加速、攻擊 +20%。🌵 <b>尖刺柱</b>：撞到受傷（敵我都會）。' },
+        { el: '#uxSpeed', t: '切 1x／2x 播放速度。<b>短按</b>任何棋子看能力、血量、狀態。' }]) },
+    down: { n: '被打倒', s: [{ el: '#bhud', t: `有棋子被打倒了：它會在出生點滿血復活，但那一方動數 <b>-${C.deathCost}</b>。自己別亂送。` }] },
+    ult: { n: '大招 ⚡', s: [{ el: '#bUlt', t: `<b>⚡大招</b>：能量滿的棋子會發光。先按「⚡大招」，再拉射發光的棋子；再按一次取消。<br><span class="lbl">${ultCharge}</span>` }] },
+    sweet: { n: '甜蜜點 🎯', s: () => { const o = abUnit(a => a.type === 'sweetSpot'), a = o ? o.ab : { lo: 0.6, hi: 0.7 };
+      return [{ el: abOf(a => a.type === 'sweetSpot'), t: `<b>🎯 甜蜜點</b>：${o ? o.name : '拉弓手'}的力道停在 <b>${pct(a.lo)}～${pct(a.hi)}</b> 最強，不是越大力越好。力道條上的綠色區塊就是甜蜜點。` }]; } },
+    tap: { n: '飛行中點擊 👆', s: () => { const o = abUnit(a => !!a.tap), k = o && o.ab.tap;
+      return [{ el: abOf(a => !!a.tap), t: `<b>👆 飛行中點擊</b>：${o ? o.name : '這類角色'}彈出去後，飛行途中點畫面${k === 'split' ? '，會朝你點的位置分出幻影' : k === 'boom' ? '任一處就當場引爆' : '可以觸發能力'}。<br>畫面下方出現「👆」提示時點。` }]; } },
+    result: { n: '結算', s: [{ el: '#modalBox', t: '<b>結算</b>：贏了回血，輸了依敵方剩餘動數扣小隊血。金幣＝收入＋利息＋連勝敗。按「繼續」。' }] },
+    net: { n: '連線對戰', s: [{ el: '#netBox', t: '<b>連線對戰</b>：一人按「建立房間」拿到 4 碼房號，另一人輸入房號加入，兩人都按「準備」就開打。<br>出戰的是你單人局目前的隊伍；每發限時 30 秒，沒出手由 AI 代打。' }] },
+    lg: { n: '連線自走棋', s: [{ el: '#lgBox', t: `<b>連線自走棋</b>：${LG.minPlayers || 2}～${LG.maxPlayers || 4} 人各自經營商店，${LG.shopSec || 45} 秒後兩兩對戰（人數單數時有人打幽靈）。<br>輸了扣血，歸零淘汰；${LG.maxRounds || 15} 回合後依血量排名。` }] }
   };
-  function tutor(key, steps) {
-    if (tutSeen.skip || tutSeen[key] || tutOn) return false;
-    tutSeen[key] = 1; saveTut(); tutOn = true; ui.aim = null; drag = null;
+  function tutor(key, force, after) {
+    const T = TUT[key]; if (!T) return false;
+    if (!force && (tutSeen.skip || tutSeen[key])) return false;
+    if (tutOn) { if (!force && !tutQ.includes(key)) tutQ.push(key); return true; }
+    if (!force) { tutSeen[key] = 1; saveTut(); }
+    const steps = typeof T.s === 'function' ? T.s() : T.s;
+    tutOn = true; ui.aim = null; drag = null; coach(null);
     let k = 0;
-    const box = $('uxBubble'), ring = $('uxRing');
-    const end = () => { tutOn = false; $('uxTut').classList.add('hidden'); last = performance.now(); };
+    const box = $('uxBubble'), ring = $('uxRing'), wrap = $('uxTut');
+    const end = () => { tutOn = false; wrap.classList.add('hidden'); last = performance.now(); const nx = tutQ.shift(); if (nx) setTimeout(() => tutor(nx), 80); else if (after) after(); };
     const stepK = () => {
       const st = steps[k], el = typeof st.el === 'function' ? st.el() : st.el ? document.querySelector(st.el) : null;
-      const r = el ? (el.getBoundingClientRect ? el.getBoundingClientRect() : el) : null, H = innerHeight;
-      if (r && r.width) Object.assign(ring.style, { display: 'block', left: r.left - 4 + 'px', top: r.top - 4 + 'px', width: r.width + 8 + 'px', height: r.height + 8 + 'px' });
-      else Object.assign(ring.style, { display: 'block', left: '50%', top: '50%', width: '0px', height: '0px' });
-      box.innerHTML = `<div class="n">新手教學 ${k + 1}/${steps.length}</div>${st.t}<div class="bt"><button id="uxTutSkip">跳過教學</button><button id="uxTutNext" class="go">${k === steps.length - 1 ? '知道了' : '下一步'}</button></div>`;
-      const below = r && r.width && (r.top + r.height / 2) < H / 2;
-      const has = r && r.width, room = has && !below && r.top < 190; // 上方放不下就貼底
-      box.style.top = below ? Math.min(H - 190, r.top + r.height + 14) + 'px' : ''; box.style.bottom = below ? '' : (room ? 10 : has ? H - r.top + 14 : H / 2 - 80) + 'px';
+      const r0 = el ? (el.getBoundingClientRect ? el.getBoundingClientRect() : el) : null, r = r0 && r0.width && st.pos !== 'top' ? r0 : null, H = innerHeight;
+      if (r) Object.assign(ring.style, { display: 'block', left: r.left - 4 + 'px', top: r.top - 4 + 'px', width: r.width + 8 + 'px', height: r.height + 8 + 'px' });
+      else ring.style.display = 'none';
+      wrap.classList.toggle('dim', !r);
+      box.innerHTML = `<div class="n">📘 ${T.n}${steps.length > 1 ? `　${k + 1}/${steps.length}` : ''}</div><div class="tx">${st.t}</div><div class="bt"><button id="uxTutSkip">${force ? '關閉' : '跳過教學'}</button><button id="uxTutNext" class="go">${k === steps.length - 1 ? '知道了' : '下一步'}</button></div>`;
+      const below = r && (r.top + r.height / 2) < H / 2, room = r && !below && r.top < 200; // 目標在上半：泡泡放下方；下半：放上方，上方放不下就貼底
+      box.style.top = st.pos === 'top' ? 'calc(env(safe-area-inset-top) + 12px)' : below ? Math.min(H - 200, r.top + r.height + 14) + 'px' : '';
+      box.style.bottom = st.pos === 'top' || below ? '' : (room ? 12 : r ? H - r.top + 14 : H / 2 - 80) + 'px';
       $('uxTutNext').onclick = () => { if (++k >= steps.length) end(); else stepK(); };
-      $('uxTutSkip').onclick = () => { tutSeen.skip = 1; saveTut(); end(); };
+      $('uxTutSkip').onclick = () => { if (!force) { tutSeen.skip = 1; saveTut(); tutQ.length = 0; } end(); };
+      $('uxTutNext').focus({ preventScroll: true });
     };
-    $('uxTut').classList.remove('hidden'); stepK();
+    wrap.classList.remove('hidden'); stepK();
     return true;
   }
-  const tutShop = () => { if (screen === 'shop' && $('modal').classList.contains('hidden')) tutor('shop', TUT.shop); };
-  const tutBattle = () => { if (screen === 'battle' && battle && battle.phase === 'aim' && battle.turn === 0 && !paused) tutor('battle', TUT.battle); };
-  const tutResult = () => tutor('result', TUT.result);
+  const tutShop = () => { if (screen === 'shop' && $('modal').classList.contains('hidden')) tutor('shop'); };
+  const tutBattle = () => { if (screen === 'battle' && battle && mode !== 'guide' && !paused) { tutor('battle'); tutor('turns'); } };
+  const tutResult = () => tutor('result');
+  const tutPending = type => { if ($('modal').classList.contains('hidden')) return; if (type === 'opener' || type === 'env' || type === 'strategy') tutor('env'); else if (type === 'path') tutor('path'); };
+  // 商店情境提示：第一次快升星、第一次羈絆啟動
+  (function () { const base = renderShop; renderShop = function () { base(); if (run && !tutSeen.skip) setTimeout(tutShopCtx, 0); }; })();
+  function tutShopCtx() {
+    if (screen !== 'shop' || tutOn || pd || !tutSeen.shop || !$('modal').classList.contains('hidden')) return;
+    if (!tutSeen.star && document.querySelector('#shopRow .ux-own.up')) return tutor('star');
+    if (!tutSeen.traits && document.querySelector('#traits .tr.act')) tutor('traits');
+  }
+  // 戰鬥情境提示（每幀檢查，輪到我方瞄準時才跳）：有人被打倒、大招第一次能用、隊上第一次有甜蜜點／飛行中點擊角色
+  function tutTick() {
+    if (mode === 'guide') return guideTick();
+    coach(null);
+    if (tutOn || paused || tutSeen.skip || !battle || battle.phase !== 'aim' || battle.turn !== 0 || drag != null || !$('modal').classList.contains('hidden')) return;
+    if (!tutSeen.turns && mode === 'run') return; // 先講完輪流規則，再跳情境提示
+    if (!tutSeen.down && battle.deaths && battle.deaths[0] + battle.deaths[1] > 0) return tutor('down');
+    if (!tutSeen.ult && !$('bUlt').classList.contains('hidden')) return tutor('ult');
+    if (!tutSeen.sweet && abUnit(a => a.type === 'sweetSpot')) return tutor('sweet');
+    if (!tutSeen.tap && abUnit(a => !!a.tap)) tutor('tap');
+  }
+  // 連線大廳：第一次進去時說明
+  addEventListener('load', () => ['net', 'lg'].forEach(id => { const el = $(id); if (el) new MutationObserver(() => { if (!el.classList.contains('hidden')) setTimeout(() => { if (!el.classList.contains('hidden')) tutor(id); }, 250); }).observe(el, { attributes: true, attributeFilter: ['class'] }); }));
+
+  // ---- 練習關 ----：第一場戰鬥前（或從教學選單）打 2 個不會動的木樁，手指示範拉射；不影響進度、不存檔
+  const GUIDE = { me: ['ironball', 'curler'], foe: ['shield', 'shield'], hp: 0.3 };
+  let guideNext = null, guideShots = 0, coachEl = null, coachKey = '';
+  const guideWanted = () => !tutSeen.skip && !tutSeen.guide && mode !== 'guide';
+  function guideOffer(next) {
+    tutSeen.guide = 1; saveTut();
+    modal('<h2>🎯 練習關</h2>正式開打前，先花 30 秒練習彈射：<br>2 個不會動的木樁，撞倒就過關。<div class="lbl">不影響這局進度</div>',
+      [{ t: '開始練習', cls: 'go', f: () => guideStart(next) }, { t: '跳過練習', f: () => next && next() }, { t: '跳過教學（不再提示）', f: () => { tutSeen.skip = 1; saveTut(); next && next(); } }]);
+  }
+  function guideStart(next) {
+    guideNext = next || null; guideShots = 0;
+    const mk = (id, i) => ({ id, star: 1, items: [], weapon: null, uid: 'g' + i });
+    const b = FA.battle.create({ pFront: GUIDE.me.map(mk), pBack: [], eFront: GUIDE.foe.map(mk), eBack: [], rules: [], env: {}, eNoShots: true, first: 0, seed: 20261127 });
+    b.bodies.forEach(o => { if (o.team === 1) { o.maxHp = o.hp = Math.round(o.maxHp * GUIDE.hp); o.atk = 0; } });
+    mode = 'guide'; battle = b; bst = newStats(); V.reset(); ai = null; ui.aim = null; hideBInfo(); paused = false; $('modal').classList.add('hidden'); show('battle'); V.resize();
+    V.banner = { txt: '🎯 練習關', life: 1.2 };
+  }
+  function guideTick() {
+    const b = battle;
+    if (!b || tutOn || paused || b.phase !== 'aim' || b.turn !== 0 || !$('modal').classList.contains('hidden')) return coach(null);
+    if (guideShots >= 1 && !tutSeen.moves && !tutSeen.skip) return tutor('moves');
+    tutSeen.battle = 1;
+    const o = myBody(x => FA.battle.avail(b, 0).includes(x));
+    if (drag != null) return coach('拉越長越大力，<b>95% 以上＝全力</b>。<br><b>虛線</b>＝預演路線（含反彈），<b>白線</b>＝被撞棋子的去向。');
+    coach(guideShots ? '繼續！把木樁<b>全部撞倒</b>就過關。' : '按住<b>藍圈</b>棋子，往<b>反方向</b>拉，放開就彈出去。', o);
+  }
+  // 非阻擋的提示列＋手指拉射示範（往離最近敵人的反方向拉）
+  function coach(html, o) {
+    if (!html) { if (coachEl && !coachEl.classList.contains('hidden')) coachEl.classList.add('hidden'); return; }
+    if (!coachEl) { coachEl = document.createElement('div'); coachEl.id = 'uxCoach'; coachEl.innerHTML = '<div class="cb" role="status" aria-live="polite"></div><div class="fg" aria-hidden="true">👆</div>'; document.body.appendChild(coachEl); }
+    coachEl.classList.remove('hidden');
+    if (coachKey !== html) { coachKey = html; coachEl.firstChild.innerHTML = html; }
+    const fg = coachEl.lastChild;
+    if (!o) { fg.classList.add('hidden'); return; }
+    const p = scrOf(o), foe = battle.bodies.filter(x => x.alive && x.team === 1).sort((a, c) => Math.hypot(a.x - o.x, a.y - o.y) - Math.hypot(c.x - o.x, c.y - o.y))[0];
+    let dx = 0, dy = 1; if (foe) { const q = scrOf(foe), d = Math.hypot(p.x - q.x, p.y - q.y) || 1; dx = (p.x - q.x) / d; dy = (p.y - q.y) / d; }
+    fg.classList.remove('hidden'); fg.style.left = p.x + 'px'; fg.style.top = p.y + 'px';
+    fg.style.setProperty('--dx', Math.round(dx * 90) + 'px'); fg.style.setProperty('--dy', Math.round(dy * 90) + 'px');
+  }
+  function guideOver(b) {
+    const won = b.winner === 0; coach(null);
+    setTimeout(() => {
+      battle = null; mode = 'run'; bst = null; hideBInfo();
+      const next = guideNext; guideNext = null;
+      modal(`<h2 class="res-h ${won ? 'win' : 'lose'}">${won ? '🎯 練習完成' : '練習結束'}</h2><p>正式戰鬥敵人也會出手：雙方輪流彈，<b>先把對方動數打光就贏</b>。</p>`,
+        [{ t: next ? '開始正式戰鬥' : '回標題', cls: 'go', f: () => next ? next() : toTitle() }]);
+    }, 700);
+  }
+  // 標題「📘 教學」：章節列表（✓＝看過）、練習關、重置
+  function tutMenu() {
+    $('modalBox').className = 'box';
+    $('modalBox').innerHTML = `<h2>📘 教學</h2><div class="lbl">提示平常只在第一次用到時出現。點章節重看。</div><div class="tutlist">${Object.keys(TUT).map(k => `<button data-tk="${k}">${tutSeen[k] ? '✓ ' : ''}${TUT[k].n}</button>`).join('')}</div>` +
+      `<button data-tg="1" class="go">🎯 玩練習關</button><button data-treset="1">重置提示${tutSeen.skip ? '（目前已全部跳過）' : ''}</button><button data-tx="1">關閉</button>`;
+    $('modal').classList.remove('hidden');
+    $('modalBox').onclick = e => {
+      const t = e.target.closest('button'); if (!t) return;
+      if (t.dataset.tk) { $('modal').classList.add('hidden'); tutor(t.dataset.tk, true, tutMenu); }
+      else if (t.dataset.tg) { $('modal').classList.add('hidden'); guideStart(null); }
+      else if (t.dataset.treset) { tutSeen = {}; saveTut(); tutMenu(); $('modalBox').querySelector('.lbl').textContent = '已重置：之後進商店、戰鬥、大廳時會再提示一次。'; }
+      else $('modal').classList.add('hidden');
+    };
+  }
 
   // ---- 經濟擴充 ----：商店上方的輪崗／二手市場／人脈進階／進化提示、商店道具格（冶金爐）按鈕、經濟事件提示
   // 以包裝 renderShop 的方式插入，不改原本的商店渲染
@@ -771,15 +880,11 @@
   })();
 
   // ---------- 標題 ----------
-  function toTitle() { battle = null; $('modal').classList.add('hidden'); show('title'); $('btnCont').classList.toggle('hidden', !load()); }
+  function toTitle() { if (mode === 'guide') { mode = 'run'; coach(null); } battle = null; $('modal').classList.add('hidden'); show('title'); $('btnCont').classList.toggle('hidden', !load()); }
   $('btnCodex').onclick = () => codex();
-  const setBtns = () => { $('btnSound').textContent = FA.sound.on ? '🔊 音效開' : '🔇 音效關'; $('btnMusic').textContent = FA.sound.musicOn ? '🎵 音樂開' : '🎵 音樂關'; $('btnMusic').classList.toggle('off', !FA.sound.musicOn); $('uxVib').textContent = FA.settings.vibrate ? '📳 震動開' : '📴 震動關'; };
+  const setBtns = () => { speedBtn(); if (FA.settingsUI) FA.settingsUI.refresh(); }; // 音效／音樂／震動開關移到 ⚙ 設定（src/ui/settings.js）
   const toggleVib = () => { FA.settings.vibrate = !FA.settings.vibrate; saveSet(); setBtns(); vib(30); };
-  $('btnSound').onclick = () => { FA.sound.init(); FA.sound.toggle(); setBtns(); };
-  $('btnMusic').onclick = () => { FA.sound.init(); FA.sound.toggleMusic(); setBtns(); };
-  $('uxVib').onclick = toggleVib;
-  $('uxTutBtn').onclick = () => { tutSeen = {}; saveTut(); tutor('intro', TUT.intro.concat([{ t: '教學已重置：之後進入商店、戰鬥、結算時會再提示一次。' }])); };
-  setBtns();
+  $('uxTutBtn').onclick = tutMenu;
   $('selAsc').innerHTML = RD.ascensions.map((a, i) => `<option value="${i}">${a.name}：${a.desc}</option>`).join('');
   const seed = () => (Date.now() ^ (Math.random() * 1e9)) | 0, asc = () => +$('selAsc').value;
   const confirmNew = go => load() ? modal('<h2>開新局？</h2>目前進度會被覆蓋', [{ t: '開新局', cls: 'go', f: go }, { t: '取消' }]) : go();
@@ -796,8 +901,9 @@
     if (battle) { show('battle'); V.reset(); V.resize(); paused = false; pause(); } else { show('shop'); renderShop(); flow(); }
   };
   toTitle();
-  setTimeout(() => tutor('intro', TUT.intro), 300);
-  FA.debug = () => ({ run, battle, bst }); // 測試／除錯用
+  setTimeout(() => { const intro = () => tutor('intro'); if (!(FA.a2hs && FA.a2hs(intro))) intro(); }, 300);
+  FA.debug = () => ({ run, battle, bst, mode }); // 測試／除錯用
+  FA.ui = { modal, toTitle, clearSave, tutor, tutMenu, guide: () => guideStart(null), resetTut: () => { tutSeen = {}; saveTut(); }, setBtns };
   // ---- 連線自走棋 ----：src/league.js 借用商店畫面。host = { save(run), ready(), quit(), title(), fightText(), locked(), decorate() }
   FA.shopHost = {
     open(r, host) { lgHost = host; hs = null; mode = 'league'; run = r; battle = null; sel = null; $('modal').classList.add('hidden'); show('shop'); renderShop(); flow(); },

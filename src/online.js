@@ -97,7 +97,7 @@
         <button id="netBack">返回</button>`;
       $('netBack').onclick = toTitle; return;
     }
-    if (!ensureDb()) { box.innerHTML = `<h2>🌐 連線對戰</h2><p class="netwarn">Firebase 載入失敗，請確認網路後重開。</p><button id="netBack">返回</button>`; $('netBack').onclick = toTitle; return; }
+    if (!ensureDb()) { box.innerHTML = `<h2>🌐 連線對戰</h2><p class="netwarn">連線元件載入失敗：請確認網路，再重新開啟遊戲。</p><button id="netBack">返回</button>`; $('netBack').onclick = toTitle; return; }
     const e = err ? `<p class="netwarn">${esc(err)}</p>` : '';
     if (!R.code) {
       const t = myTeam();
@@ -139,30 +139,30 @@
           { v: 1, createdAt: TS, hostId: pid, state: 'lobby', players: { [pid]: newPlayer(0, t.code) } }, null, false).catch(() => null);
         if (res && res.committed) { lobbyBusy = false; return enterRoom(code, false); }
       }
-      err = '建立房間失敗，請再試一次';
-    } catch (e) { err = '建立房間失敗：' + (e.message || e); }
+      err = '建立房間失敗：連線不穩，請稍後再試';
+    } catch (e) { err = '建立房間失敗：請檢查網路後再試（' + (e.message || e) + '）'; }
     lobbyBusy = false; renderLobby();
   }
   async function joinRoom(code) {
-    if (!/^\d{4}$/.test(code)) { err = '房號是 4 位數字'; return renderLobby(); }
+    if (!/^\d{4}$/.test(code)) { err = '房號是 4 位數字，例如 0427'; return renderLobby(); }
     lobbyBusy = true; err = ''; renderLobby();
     try {
       const ref = db.ref('rooms/' + code), v = (await ref.once('value')).val();
-      if (!v || !v.players || Date.now() - (v.createdAt || 0) > ROOM_TTL) throw new Error('找不到房間 ' + code);
+      if (!v || !v.players || Date.now() - (v.createdAt || 0) > ROOM_TTL) throw new Error(`找不到房號 ${code}：請確認號碼，或房間已過期，請朋友重開一間`);
       if (v.players[pid]) { lobbyBusy = false; return enterRoom(code, true); } // 同一支手機回來
       const t = myTeam(); if (t.err) throw new Error(t.err);
       const pref = ref.child('players'); let warm; await new Promise(r => { warm = () => r(); pref.on('value', warm); }); // 先等快取載入，transaction 才不會拿到 null
       let why = '';
       const res = await pref.transaction(ps => {
-        if (!ps) { why = '找不到房間'; return null; } // 本地還是空的：回 null 讓伺服器比對，有資料會用真值重跑
-        const n = Object.keys(ps).length; if (n >= Math.min(NEED, MAXP)) { why = '房間已滿'; return undefined; }
+        if (!ps) { why = '找不到這個房間，請確認房號'; return null; } // 本地還是空的：回 null 讓伺服器比對，有資料會用真值重跑
+        const n = Object.keys(ps).length; if (n >= Math.min(NEED, MAXP)) { why = `房間已滿（最多 ${Math.min(NEED, MAXP)} 人），請朋友另開一間`; return undefined; }
         const used = Object.values(ps).map(p => p.seat); let seat = 0; while (used.includes(seat)) seat++;
         ps[pid] = newPlayer(seat, t.code); return ps;
       }, null, false);
       pref.off('value', warm);
       if (!res.committed || !res.snapshot.val() || !res.snapshot.val()[pid]) throw new Error(why || '加入失敗');
       lobbyBusy = false; return enterRoom(code, false);
-    } catch (e) { err = e.message || String(e); }
+    } catch (e) { const m = e.message || String(e); err = /[\u4e00-\u9fff]/.test(m) ? m : '連線失敗：請檢查網路後再試（' + m + '）'; }
     lobbyBusy = false; renderLobby();
   }
   async function rejoin(code) { // 記住的房號：房間還在且自己還在名單裡就自動接回

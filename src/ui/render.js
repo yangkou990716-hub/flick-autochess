@@ -279,6 +279,7 @@
     if (V.edge && (V.edge.life -= dt) <= 0) V.edge = null;
     V.shrinkT = Math.max(0, V.shrinkT - dt);
     V.shake *= Math.pow(0.02, dt); V.chainShow -= dt; V.chainPulse = Math.max(0, V.chainPulse - dt * 4); V.screenFlash = Math.max(0, V.screenFlash - dt);
+    if (FA.settings && FA.settings.reduceMotion) { V.shake = 0; V.screenFlash = 0; } // 設定：減少動態效果
     if (V.banner) { V.banner.life -= dt; if (V.banner.life <= 0) V.banner = null; }
   };
 
@@ -606,14 +607,15 @@
       const o = aimO = b.bodies[ui.aim.idx], k = ui.aim.angle.toFixed(3) + '|' + ui.aim.power.toFixed(3) + '|' + ui.aim.idx;
       if (!ui.pred || ui.predKey !== k) { ui.pred = FA.battle.predict(b, ui.aim.idx, ui.aim.angle, ui.aim.power); ui.predKey = k; }
       const pr = ui.pred, col = ui.aim.enemy ? '#ff7a7a' : '#ffe066';
+      const shortAim = !ui.aim.enemy && FA.settings && FA.settings.aim === 'short'; // 設定：瞄準線「短」＝只畫到第一次碰撞前、不畫被撞去向
       if (pr) {
         const line = (arr, a0, a1) => { ctx.beginPath(); for (let i = a0; i <= a1 && i < arr.length; i++) { const p = arr[i]; i === a0 ? ctx.moveTo(CX + p[0] * S, CY + p[1] * S) : ctx.lineTo(CX + p[0] * S, CY + p[1] * S); } ctx.stroke(); };
         ctx.lineCap = 'round';
         ctx.strokeStyle = col + '40'; ctx.lineWidth = 8; line(pr.pts, 0, pr.cut);
         ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.setLineDash([8, 7]); ctx.lineDashOffset = -t * 40; line(pr.pts, 0, pr.cut); ctx.setLineDash([]); ctx.lineDashOffset = 0;
         const cp = pr.pts[pr.cut]; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(CX + cp[0] * S, CY + cp[1] * S, pr.r * S, 0, TAU); ctx.stroke();
-        ctx.globalAlpha = 0.5; ctx.setLineDash([3, 5]); line(pr.pts, pr.cut, pr.pts.length - 1); ctx.setLineDash([]);
-        if (pr.hit && pr.hit.length > 1) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; line(pr.hit, 0, pr.hit.length - 1); const e = pr.hit[pr.hit.length - 1]; ctx.beginPath(); ctx.arc(CX + e[0] * S, CY + e[1] * S, 4, 0, TAU); ctx.fillStyle = '#fff'; ctx.fill(); }
+        if (!shortAim) { ctx.globalAlpha = 0.5; ctx.setLineDash([3, 5]); line(pr.pts, pr.cut, pr.pts.length - 1); ctx.setLineDash([]); }
+        if (!shortAim && pr.hit && pr.hit.length > 1) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; line(pr.hit, 0, pr.hit.length - 1); const e = pr.hit[pr.hit.length - 1]; ctx.beginPath(); ctx.arc(CX + e[0] * S, CY + e[1] * S, 4, 0, TAU); ctx.fillStyle = '#fff'; ctx.fill(); }
         ctx.globalAlpha = 1; ctx.lineCap = 'butt';
       }
       if (!ui.aim.enemy) { // 拉弓線
