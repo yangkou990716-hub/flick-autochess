@@ -25,9 +25,17 @@
     return { counts, active };
   }
 
+  // 所有欄位先列齊（固定順序），讓每個棋子物件形狀一致，物理迴圈才快
+  function blankBody(team) {
+    return { i: 0, id: '', name: '', team, alive: true, temp: false, boss: false, star: 1, traits: [], color: '', x: 0, y: 0, vx: 0, vy: 0, r: 20, m: 1,
+      hp: 1, maxHp: 1, atk: 0, baseAtk: 0, shield: 0, speed: 1, bounces: 0, wallAdd: 0, wallHits: 0, stunned: false, chained: false, hitCount: 0, hurt: 0,
+      lifesteal: 0, blastR: 0, blastMult: 0, blastMul: 0, pullMul: 0, poisonMul: 0, zapMult: 0, link: null, weapon: null, ab: null, split: null, poison: null,
+      pierceLeft: 0, boomUsed: false, burnUsed: false, splitDone: false, healed: false, relaunched: false, fricMul: 1, exposed: 0, exposeAmp: 0, fx: {} };
+  }
+
   function makeBody(inst, team, sideMods, traitsActive, env) {
     const cfg = C(), rm = env.radiusMul || 1;
-    const base = { team, alive: true, x: 0, y: 0, vx: 0, vy: 0, wallHits: 0, stunned: false, chained: false, hitCount: 0, shield: 0, lifesteal: 0, blastR: 0, blastMult: 0, blastMul: 0, pullMul: 0, wallAdd: 0, fx: {} };
+    const base = blankBody(team);
     if (inst.boss) {
       const B = D().enemies.bosses[inst.plane - 1][inst.variant || 0], sc = 1 + (inst.threat || 0);
       return Object.assign(base, { id: 'boss', name: B.name, boss: true, star: 1, traits: [], color: B.color, r: B.r * rm, m: B.mass,
@@ -47,11 +55,13 @@
       link: U.link ? U.link.with : null, weapon: inst.weapon || null });
     b.shield = hp * (mods.shieldPct || 0);
     if (inst.weapon) b.fx = Object.assign({}, D().weapons[inst.weapon].fx);
+    if (b.fx.glide) b.fricMul *= b.fx.glide;
     if (U.ability && U.role !== 'back') {
       b.ab = Object.assign({}, U.ability); delete b.ab.desc;
       if (b.ab.type === 'bigBounce') { b.wallAdd += b.ab.per; b.bounces += b.ab.extra; }
       if (b.ab.type === 'pierce') b.pierceLeft = b.ab.n;
       if (b.ab.type === 'vamp') b.lifesteal += b.ab.val;
+      if (b.ab.type === 'glide') b.fricMul *= b.ab.mul;
     }
     return b;
   }
@@ -68,7 +78,7 @@
     const bodies = front.filter(Boolean).map(u => makeBody(u.boss ? Object.assign({}, u, { threat: ext.threat }) : u, team, sideMods, tt.active, env));
     const side = { traits: tt.active, counts: tt.counts, turnHeal: 0, turnShield: 0, zap: 0, gravity: 0,
       shotsAdd: ext.shots || 0, chainAll: !!ext.chainAll, echo: ext.echo || null, blastGold: ext.blastGold || 0,
-      cannon: [], revive: ext.revive || 0, revivePct: 0.4, openFreeze: ext.openFreeze || 0, stormZap: ext.stormZap || 0, stormDmg: 0 };
+      cannon: [], mark: 0, markAmp: 0, revive: ext.revive || 0, revivePct: 0.4, openFreeze: ext.openFreeze || 0, stormZap: ext.stormZap || 0, stormDmg: 0 };
     bodies.forEach(b => { if (b.zapMult) side.zap += b.atk * b.zapMult; });
     if (bodies.length) side.stormDmg = bodies.reduce((s, b) => s + b.atk, 0) / bodies.length * 0.8;
     back.filter(Boolean).forEach(u => {
@@ -80,6 +90,7 @@
       if (bk.type === 'zap') side.zap += U.atk * k * bk.mult;
       if (bk.type === 'gravity') side.gravity += bk.pull * (1 + 0.3 * (u.star - 1));
       if (bk.type === 'cannon') side.cannon.push({ dmg: U.atk * k * bk.mult, r: bk.r });
+      if (bk.type === 'mark') { side.mark = Math.max(side.mark, bk.turns); side.markAmp = Math.max(side.markAmp, bk.amp + 0.05 * (u.star - 1)); }
       if (bk.type === 'revive') { side.revive += 1; side.revivePct = Math.max(side.revivePct, bk.pct + 0.1 * (u.star - 1)); }
     });
     return { bodies, side };
@@ -140,7 +151,9 @@
       if (!x.alive || x.team !== b.turn) return;
       if (s.turnHeal) x.hp = Math.min(x.maxHp, x.hp + s.turnHeal);
       if (s.turnShield) x.shield += s.turnShield;
+      if (x.exposed > 0) x.exposed--;
     });
+    if (s.mark) { const f = alive(b, foe); if (f.length) expose(b, rng.pick(b.rng, f), s.mark, s.markAmp); }
     if (s.zap) {
       const foes = alive(b, foe);
       if (foes.length) { const t = rng.pick(b.rng, foes); b.events.push({ t: 'zap', x: t.x, y: t.y }); dealDamage(b, t, s.zap, null, 'zap'); }
@@ -169,7 +182,7 @@
     const sp = power * cfg.maxLaunch * x.speed * (full ? 1 + cfg.fullPowerBonus : 1);
     if (full) b.events.push({ t: 'fullpower', x: x.x, y: x.y });
     x.vx = Math.cos(angle) * sp; x.vy = Math.sin(angle) * sp;
-    b.bodies.forEach(y => { y.wallHits = 0; y.boomUsed = false; y.burnUsed = false; y.splitDone = false; y.healed = false; if (y.ab && y.ab.type === 'pierce') y.pierceLeft = y.ab.n; });
+    b.bodies.forEach(y => { y.wallHits = 0; y.boomUsed = false; y.burnUsed = false; y.splitDone = false; y.healed = false; y.relaunched = false; if (y.ab && y.ab.type === 'pierce') y.pierceLeft = y.ab.n; });
     b.zones.forEach(z => z.hit = {});
     b.phase = 'moving'; b.mover = idx; b.simT = 0; b.chain = 0; b.hits = 0; b.pending = []; b.ghost = {}; b.echoUsed = false; b.stopDone = false;
     b.events.push({ t: 'launch', i: idx });
@@ -180,7 +193,8 @@
   function dealDamage(b, tgt, amt, src, kind) {
     if (!tgt.alive || tgt.temp || amt <= 0) return 0;
     if (kind === 'hit' && tgt.ab && tgt.ab.type === 'guard') amt *= 1 - tgt.ab.red;
-    const pierceShield = src && kind === 'hit' && src.fx && src.fx.shieldPierce;
+    if (tgt.exposed > 0) amt *= 1 + tgt.exposeAmp;
+    const pierceShield = src && kind === 'hit' && ((src.fx && src.fx.shieldPierce) || (src.ab && src.ab.type === 'armorBreak'));
     if (tgt.shield > 0 && !pierceShield) {
       const f = kind === 'blast' ? 1.5 : 1, ab = Math.min(tgt.shield, amt / f);
       tgt.shield -= ab; amt -= ab * f;
@@ -242,11 +256,18 @@
     if (!tgt.poison || tgt.poison.dmg < dmg) tgt.poison = { dmg, turns }; else tgt.poison.turns = Math.max(tgt.poison.turns, turns);
     b.events.push({ t: 'poison', x: tgt.x, y: tgt.y });
   }
+  // 破甲：受到的傷害 +amp，持續 turns 個（被破甲方的）回合
+  function expose(b, tgt, turns, amp) {
+    if (!tgt.alive || tgt.temp) return;
+    tgt.exposeAmp = Math.max(tgt.exposed > 0 ? tgt.exposeAmp : 0, amp); tgt.exposed = Math.max(tgt.exposed, turns);
+    b.events.push({ t: 'expose', x: tgt.x, y: tgt.y });
+  }
   function bolt(b, from, n, dmg, r, src) {
     const cand = b.bodies.filter(o => o.alive && !o.temp && o.team === from.team && o !== from).map(o => [o, Math.hypot(o.x - from.x, o.y - from.y)]).filter(a => a[1] < r).sort((a, c) => a[1] - c[1]).slice(0, n);
     cand.forEach(([o]) => { b.events.push({ t: 'bolt', x1: from.x, y1: from.y, x2: o.x, y2: o.y }); dealDamage(b, o, dmg, src, 'zap'); });
   }
 
+  const hyp = (x, y) => Math.sqrt(x * x + y * y);
   function atkOf(o) { return o.ab && o.ab.type === 'rage' ? o.baseAtk * (1 + o.ab.max * (1 - o.hp / o.maxHp)) : o.atk; }
 
   function onHit(b, src, tgt, speed) {
@@ -264,6 +285,8 @@
     const ph = (ab && ab.type === 'poisonHit' && ab) || src.fx.poisonHit;
     if (ph && tgt.alive) poison(b, tgt, atk * ph.mult * (1 + (src.poisonMul || 0)), ph.turns);
     if (tgt.alive && ((ab && ab.type === 'freezeHit') || (src.fx.freezeEvery && src.hitCount % src.fx.freezeEvery === 0)) && !tgt.boss) { tgt.stunned = true; b.events.push({ t: 'freeze', x: tgt.x, y: tgt.y }); }
+    const ex = (ab && ab.type === 'armorBreak' && ab) || src.fx.exposeHit;
+    if (ex && tgt.alive) { if (ab && ab.type === 'armorBreak' && tgt.shield > 0) { tgt.shield = 0; b.events.push({ t: 'shieldbreak', x: tgt.x, y: tgt.y }); } expose(b, tgt, ex.turns, ex.amp); }
     const ch = (ab && ab.type === 'chainHit' && ab) || src.fx.chainHit;
     if (ch) bolt(b, tgt, ch.n, atk * ch.mult, ch.r, src);
     if (tgt.alive && tgt.ab && tgt.ab.type === 'barrelBoom' && !tgt.boomUsed) { tgt.boomUsed = true; explode(b, tgt.x, tgt.y, tgt.ab.r, atkOf(tgt) * tgt.ab.mult, tgt.team, tgt, false); }
@@ -295,9 +318,9 @@
     const n = o.ab.n, sp = Math.hypot(o.vx, o.vy), ang = Math.atan2(o.vy, o.vx);
     for (let k = 0; k < n; k++) {
       const a = ang + (k - (n - 1) / 2 + (n === 1 ? 0 : 0)) * 0.5 + 0.25;
-      b.bodies.push({ id: o.id, name: '', temp: true, team: o.team, alive: true, star: 1, traits: o.traits, color: o.color, r: o.r * 0.6, m: o.m * 0.5,
+      b.bodies.push(Object.assign(blankBody(o.team), { id: o.id, name: '', temp: true, team: o.team, alive: true, star: 1, traits: o.traits, color: o.color, r: o.r * 0.6, m: o.m * 0.5,
         hp: 1, maxHp: 1, atk: o.atk * 0.5, baseAtk: o.atk * 0.5, shield: 0, bounces: o.bounces, wallAdd: o.wallAdd, wallHits: o.wallHits, speed: 1,
-        x: o.x - Math.cos(a) * 4, y: o.y - Math.sin(a) * 4, vx: Math.cos(a) * sp * 0.9, vy: Math.sin(a) * sp * 0.9, fx: {}, lifesteal: 0, blastR: 0, blastMult: 0, blastMul: o.blastMul, pullMul: 0, hitCount: 0, i: b.bodies.length });
+        x: o.x - Math.cos(a) * 4, y: o.y - Math.sin(a) * 4, vx: Math.cos(a) * sp * 0.9, vy: Math.sin(a) * sp * 0.9, fx: {}, lifesteal: 0, blastR: 0, blastMult: 0, blastMul: o.blastMul, pullMul: 0, hitCount: 0, i: b.bodies.length }));
     }
     b.events.push({ t: 'split', x: o.x, y: o.y });
   }
@@ -310,9 +333,12 @@
     for (let i = 0; i < bs.length; i++) {
       const o = bs[i]; if (!o.alive) continue;
       o.x += o.vx * dt; o.y += o.vy * dt;
-      const sp = Math.hypot(o.vx, o.vy);
-      if (sp > 0) { const ns = Math.max(0, sp * fr - ld); o.vx *= ns / sp; o.vy *= ns / sp; }
-      const d = Math.hypot(o.x, o.y), lim = b.R - o.r;
+      const sp = hyp(o.vx, o.vy);
+      if (sp > 0) {
+        const ns = o.fricMul === 1 ? Math.max(0, sp * fr - ld) : Math.max(0, sp * Math.pow(fr, o.fricMul) - ld * o.fricMul);
+        o.vx *= ns / sp; o.vy *= ns / sp;
+      }
+      const d = hyp(o.x, o.y), lim = b.R - o.r;
       if (d > lim) {
         const nx = o.x / d, ny = o.y / d, vn = o.vx * nx + o.vy * ny;
         o.x = nx * lim; o.y = ny * lim;
@@ -322,16 +348,16 @@
           if (vn > 80) {
             o.wallHits++; b.events.push({ t: 'wall', x: o.x, y: o.y });
             if (b.rules.includes('spikes') && o.team === 0) dealDamage(b, o, o.maxHp * 0.06, null, 'spike');
-            if (o.ab && o.ab.type === 'boomerang') { const k = Math.min(1 + o.ab.boost, 1700 / (Math.hypot(o.vx, o.vy) || 1)); o.vx *= k; o.vy *= k; }
+            if (o.ab && o.ab.type === 'boomerang') { const k = Math.min(1 + o.ab.boost, 1700 / (hyp(o.vx, o.vy) || 1)); o.vx *= k; o.vy *= k; }
             if (o.ab && o.ab.type === 'split' && !o.splitDone && i === b.mover) { o.splitDone = true; spawnShards(b, o); }
           }
         }
       }
     }
     // 火焰地板
-    b.zones.forEach(z => bs.forEach(o => {
+    if (b.zones.length) b.zones.forEach(z => bs.forEach(o => {
       if (z.left <= 0 || !o.alive || o.temp || o.team === z.team || z.hit[o.i]) return;
-      if (Math.hypot(o.x - z.x, o.y - z.y) >= z.r + o.r) return;
+      if (hyp(o.x - z.x, o.y - z.y) >= z.r + o.r) return;
       z.hit[o.i] = 1;
       if (z.kind === 'mine') { z.left = 0; explode(b, z.x, z.y, z.br, z.dmg, z.team, null, false); }
       else if (z.kind === 'pool') poison(b, o, z.pDmg, z.turns);
@@ -394,6 +420,21 @@
       if (!b.stopDone && mv && mv.alive && mv.ab && mv.ab.type === 'mineDrop') {
         b.stopDone = true; b.zones.push({ kind: 'mine', x: mv.x, y: mv.y, r: 18, br: mv.ab.r, dmg: atkOf(mv) * mv.ab.mult * (1 + (mv.blastMul || 0)), team: mv.team, left: 6, hit: {} });
       }
+      if (mv && mv.alive && mv.ab && mv.ab.type === 'relaunch' && !mv.relaunched) {
+        mv.relaunched = true; let best = null, bd = 1e9;
+        bs.forEach(o => { if (o.alive && !o.temp && o.team !== mv.team) { const d = hyp(o.x - mv.x, o.y - mv.y); if (d < bd) { bd = d; best = o; } } });
+        if (best) { const ang = Math.atan2(best.y - mv.y, best.x - mv.x), v = mv.ab.speed * mv.speed; mv.vx = Math.cos(ang) * v; mv.vy = Math.sin(ang) * v; b.events.push({ t: 'boost', x: mv.x, y: mv.y }); return false; }
+      }
+      if (!b.stopDone && mv && mv.alive && mv.ab && mv.ab.type === 'quakeStop') {
+        b.stopDone = true; b.events.push({ t: 'boom', x: mv.x, y: mv.y, r: mv.ab.r, n: 0 });
+        const dmg = atkOf(mv) * mv.ab.mult;
+        bs.forEach(o => {
+          if (!o.alive || o.temp || o.team === mv.team) return;
+          const dx = o.x - mv.x, dy = o.y - mv.y, d = hyp(dx, dy) || 1; if (d > mv.ab.r + o.r) return;
+          const k = mv.ab.push / Math.sqrt(o.m); o.vx += dx / d * k; o.vy += dy / d * k; dealDamage(b, o, dmg, mv, 'blast');
+        });
+        return false;
+      }
       if (!b.stopDone && mv && mv.alive && mv.ab && mv.ab.type === 'magnetStop') {
         b.stopDone = true; pull(b, mv.x, mv.y, mv.ab.r, mv.ab.pull * (1 + mv.pullMul), mv.team, null, atkOf(mv) * mv.ab.mult, mv); return false;
       }
@@ -452,5 +493,5 @@
 
   function runShot(b) { let k = 0; while (!step(b) && k++ < 2500); }
 
-  FA.battle = { create, launch, step, endShot, runShot, predict, startTurn, alive, hpSum, traitTiers, dealDamage, canMove, addMods, atkOf };
+  FA.battle = { create, launch, step, endShot, runShot, predict, startTurn, alive, hpSum, traitTiers, dealDamage, canMove, addMods, atkOf, expose };
 })(globalThis);
