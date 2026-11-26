@@ -43,6 +43,27 @@
 .ux-stats b{display:block;font-size:20px;color:#ffe066}
 .ux-res{font-size:13.5px;line-height:1.6}
 </style>
+<style id="net-style">
+/* 連線對戰（src/online.js） */
+#net{align-items:center;justify-content:center}
+.netbox{width:min(92vw,360px);display:flex;flex-direction:column;gap:10px;text-align:center}
+.netbox h2{margin:0}.netcode{font-size:34px;letter-spacing:6px;color:#ffc531}
+.nethint{font-size:13px;color:#bbb;line-height:1.55;margin:0}
+.netwarn{color:#ff8a7a;font-weight:bold;margin:0}
+.netrow{display:flex;gap:8px;align-items:center;justify-content:center}
+.netrow input,#netName{font:inherit;flex:1;min-width:0;padding:9px;border-radius:10px;border:1px solid #4a4670;background:#14121f;color:#fff;user-select:text;-webkit-user-select:text}
+#netCode{font-size:20px;letter-spacing:4px;text-align:center}
+.netbox button.big{width:100%}
+.netplayers{display:flex;flex-direction:column;gap:6px}
+.netp{background:#221f36;border:1px solid #3a3658;border-radius:10px;padding:9px 11px;display:flex;justify-content:space-between;gap:8px;font-size:15px}
+.netp.me{border-color:#5cf}.netp.wait{color:#888;justify-content:center}.netp span{font-size:13px;color:#ccc}
+#netb{padding:0}
+#netcv{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.nethud{right:56px;font-size:13px;line-height:1.45}
+.neton{color:#7cf05a}.netoff{color:#ff8a7a;font-weight:bold}
+.netover{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(88vw,330px);background:linear-gradient(180deg,#2a2645,#1c192f);border:1px solid #5a548f;border-radius:14px;padding:16px;text-align:center;z-index:5;box-shadow:0 10px 30px #000a}
+.netover h2{margin:0 0 8px}.netover button{width:100%;margin-top:8px}
+</style>
 </head>
 <body>
 <div id="app">
@@ -103,5 +124,9 @@
 <script src="src/ui/sprites.js"></script>
 <script src="src/ui/render.js"></script>
 <script src="src/main.js"></script>
+<script src="vendor/firebase-app-compat.js"></script>
+<script src="vendor/firebase-database-compat.js"></script>
+<script src="data/netconfig.js"></script>
+<script src="src/online.js"></script>
 </body>
 </html>
