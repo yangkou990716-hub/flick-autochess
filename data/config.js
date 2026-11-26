@@ -39,7 +39,7 @@
     // ---- 經濟擴充 ----：商店道具格（每節點 chance 機率出現 1 格，pool：道具 id → 價格）
     shopCons: { chance: 0.1, pool: { furnace: 3 } },
     shopSize: 5, benchSize: 6, starMult: [1, 1.8, 3.2], maxItems: 3, maxFront: 7,
-    lossDamage: { base: 3, perEnemy: 2, perStage: 0.4 }, // 沒殺光敵人就算輸：基礎 + 每隻存活敵人 + 關卡
+    lossDamage: { base: 3, perEnemy: 2, perStage: 0.4 }, // 舊公式；落敗扣血改依敵方剩餘動數（見 run.endBattle）
     dropChance: 0.35
   };
 })(globalThis);

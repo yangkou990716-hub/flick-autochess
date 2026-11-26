@@ -4,7 +4,7 @@
   const FA = g.FA = g.FA || {}; FA.DATA = FA.DATA || {};
   // ---- 羈絆抽獎 ----（C6-1：在觸發時機用戰鬥的可重現亂數抽獎；2 階只開前兩種）
   // on：wall 撞牆（該羈絆角色）／boom 我方爆炸／pull 我方吸附；pool：[獎項, 權重, 數值]
-  // 獎項：none 沒中／dmg 本發傷害 +值／stack 本發撞牆加成多 1 層／shot 本隊多 1 發（每場 1 次）／gold +1 金（每場上限，只有玩家）
+  // 獎項：none 沒中／dmg 本發傷害 +值／stack 本發撞牆加成多 1 層／shot 本隊多 1 動（每場 1 次）／gold +1 金（每場上限，只有玩家）
   const LOT = {
     bounce2: { on: 'wall', pool: [['none', 60], ['dmg', 40, 0.06]] },
     bounce4: { on: 'wall', pool: [['none', 44], ['dmg', 26, 0.08], ['stack', 16], ['shot', 7], ['gold', 7]] },
@@ -14,7 +14,7 @@
     magnet2: { on: 'pull', pool: [['none', 55], ['dmg', 45, 0.06]] },
     magnet4: { on: 'pull', pool: [['none', 40], ['dmg', 28, 0.08], ['stack', 16], ['shot', 8], ['gold', 8]] }
   };
-  FA.DATA.lotteryRules = { perShot: 2, goldCap: 2, shotCap: 1, name: { none: '沒中', dmg: '本發傷害', stack: '撞牆加成多 1 層', shot: '大獎！多 1 發', gold: '特別獎 +1 金' }, onName: { wall: '撞牆', boom: '爆炸', pull: '吸附' } };
+  FA.DATA.lotteryRules = { perShot: 2, goldCap: 2, shotCap: 1, name: { none: '沒中', dmg: '本發傷害', stack: '撞牆加成多 1 層', shot: '大獎！多 1 動', gold: '特別獎 +1 金' }, onName: { wall: '撞牆', boom: '爆炸', pull: '吸附' } };
   FA.DATA.traits = {
     blast: { name: '爆破', color: '#ff6b3d', tiers: [{ n: 2, mods: { blastMul: 0.1 }, lottery: LOT.blast2 }, { n: 4, mods: { blastMul: 0.2 }, lottery: LOT.blast4 }, { n: 6, mods: { blastMul: 0.3 }, lottery: LOT.blast6 }] },
     magnet: { name: '磁力', color: '#6b8cff', tiers: [{ n: 2, mods: { pullMul: 0.3, atkPct: 0.1 }, lottery: LOT.magnet2 }, { n: 4, mods: { pullMul: 0.7, atkPct: 0.12 }, lottery: LOT.magnet4 }] },
@@ -39,13 +39,13 @@
     heal: { name: '聖光衝刺', desc: '速度 ×1.2，碰到的隊友回復 40% 生命' }
   };
   // ---- 陣營 ----（C6-2 第二條軸：經濟／規則加成，和流派的戰鬥數值分開；計數同流派：前台＋後台、同角色算一次）
-  // fx：drop 戰後掉基礎裝備機率 / gold 戰後金幣 / shots 每場多幾發 / firstMul 每場第一發沒先撞牆時的碰撞傷害倍率
+  // fx：drop 戰後掉基礎裝備機率 / gold 戰後金幣 / shots 每場多幾發（1 發＝2 動） / firstMul 每場第一發沒先撞牆時的碰撞傷害倍率
   //     rerollOff 商店刷新費 -值 / nodeReroll 每節點免費刷新 / lossRed 戰敗扣血 -值 / winHeal 勝利多回血
   FA.DATA.factions = {
     workshop: { name: '工坊', icon: '🔧', color: '#ffb74d', members: ['spark', 'barrel', 'ironball', 'turret', 'mine', 'detonator', 'drill'],
       tiers: [{ n: 3, fx: { drop: 0.25 }, desc: '每場戰鬥後 25% 機率得 1 件基礎裝備' }, { n: 5, fx: { drop: 0.5, gold: 1 }, desc: '每場戰鬥後 50% 機率得 1 件基礎裝備，並 +1 金' }] },
     circus: { name: '馬戲團', icon: '🎪', color: '#f06292', members: ['feather', 'boomer', 'spring', 'splitter', 'thunder', 'curler'],
-      tiers: [{ n: 3, fx: { shots: 1, firstMul: 0.8 }, desc: '每場多 1 發；但第一發要先撞牆，否則碰撞傷害 -20%' }, { n: 5, fx: { shots: 2, firstMul: 0.8 }, desc: '每場多 2 發；但第一發要先撞牆，否則碰撞傷害 -20%' }] },
+      tiers: [{ n: 3, fx: { shots: 1, firstMul: 0.8 }, desc: '每場多 2 動；但第一發要先撞牆，否則碰撞傷害 -20%' }, { n: 5, fx: { shots: 2, firstMul: 0.8 }, desc: '每場多 4 動；但第一發要先撞牆，否則碰撞傷害 -20%' }] },
     lab: { name: '研究所', icon: '🧪', color: '#4dd0e1', members: ['magnet', 'jelly', 'tesla', 'icy', 'blackhole', 'shroom', 'comet'],
       tiers: [{ n: 3, fx: { rerollOff: 1 }, desc: '商店刷新費 -1' }, { n: 5, fx: { rerollOff: 1, nodeReroll: 1 }, desc: '商店刷新費 -1，每個節點 +1 次免費刷新' }] },
     guard: { name: '衛隊', icon: '🛡', color: '#aed581', members: ['shield', 'medic', 'captain', 'berserker', 'vampire', 'angel', 'bullet', 'quake'],

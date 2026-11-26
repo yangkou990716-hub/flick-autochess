@@ -214,7 +214,7 @@
         const LR = FA.DATA.lotteryRules, big = e.prize === 'shot' || e.prize === 'gold', none = e.prize === 'none';
         const txt = '🎰 ' + (e.prize === 'dmg' ? `傷害+${Math.round(e.val * 100)}%` : (e.prize === 'stack' ? '小獎！' : '') + LR.name[e.prize]);
         V.texts.push({ x: e.x, y: e.y - 30, txt, life: none ? 0.7 : 1.4, max: none ? 0.7 : 1.4, col: none ? '#9a97b0' : big ? '#ffd54f' : '#b2ff59', size: none ? 11 : big ? 19 : 14, tier: big ? 2 : 1, vy: 28 });
-        if (big) { SND('combo'); ring(e.x, e.y, 70, '#ffd54f', 0.45, { w: 4 }); sparks(e.x, e.y, '#ffd54f', 16, 360); if (e.prize === 'shot') V.banner = { txt: '🎰 大獎！多 1 發', life: 1.2, max: 1.2, col: '#ffd54f' }; }
+        if (big) { SND('combo'); ring(e.x, e.y, 70, '#ffd54f', 0.45, { w: 4 }); sparks(e.x, e.y, '#ffd54f', 16, 360); if (e.prize === 'shot') V.banner = { txt: '🎰 大獎！多 1 動', life: 1.2, max: 1.2, col: '#ffd54f' }; }
         else if (!none) sparks(e.x, e.y, '#b2ff59', 6, 220);
       }
       // ---- 次元撲滿 ----

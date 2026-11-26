@@ -30,7 +30,7 @@
       aff_p1: { name: '第一位面強化', desc: '第一位面敵人生命 +20%、速度 +10%', tier: 'soft', fx: { plane: 1, hpPct: 0.2, speedPct: 0.1 } },
       aff_p2: { name: '第二位面強化', desc: '第二位面敵人生命 +25%、速度 +15%', tier: 'soft', fx: { plane: 2, hpPct: 0.25, speedPct: 0.15 } },
       aff_p3: { name: '第三位面強化', desc: '第三位面敵人生命 +30%、速度 +20%', tier: 'soft', fx: { plane: 3, hpPct: 0.3, speedPct: 0.2 } },
-      aff_boss: { name: '首領強化', desc: '首領生命 +30%，首領戰敵方多 1 發', tier: 'hard', fx: { boss: { hpPct: 0.3, shots: 1 } } },
+      aff_boss: { name: '首領強化', desc: '首領生命 +30%，首領戰敵方多 2 動', tier: 'hard', fx: { boss: { hpPct: 0.3, shots: 1 } } },
       aff_minion: { name: '嘍囉強化', desc: '非首領敵人生命 +20%、重量 +15%', tier: 'soft', fx: { minion: { hpPct: 0.2, massPct: 0.15 } } },
       aff_quake: { name: '沉重腳步', desc: '我方被敵人撞到的角色，下一發力道上限 -30%', tier: 'hard', fx: { hitSlow: 0.3 } },
       aff_trauma: { name: '永久創傷', desc: '我方損失的生命有 30% 變成本場最大生命下降（最多 -40%）', tier: 'hard', fx: { trauma: 0.3, cap: 0.4 } },

@@ -104,7 +104,7 @@
       g_fixed: { tier: 'gold', name: '固定理財', desc: '每個節點 +2 經驗', fx: { perNode: { xp: 2, n: 99 } } },
       g_silverinv: { tier: 'gold', name: '白銀投資', desc: '立刻選 1 張白銀策略，3 個節點後再選 1 張', fx: { pickNow: 'silver', future: { after: 3, tier: 'silver' } } },
       g_futures: { tier: 'gold', name: '彩虹期貨', desc: '5 個節點後選 1 張稜彩策略', fx: { future: { after: 5, tier: 'prism' } } },
-      g_shot: { tier: 'gold', name: '多一發', desc: '每場我方多 1 次彈射', fx: { shots: 1 } },
+      g_shot: { tier: 'gold', name: '多兩動', desc: '每場我方多 2 動', fx: { shots: 1 } },
       g_blastfund: { tier: 'gold', name: '爆破分紅', desc: '我方每次爆炸 +1 金，每場最多 3 金', fx: { blastGold: 3 } },
       g_streak: { tier: 'gold', name: '連勝紅利', desc: '連勝／連敗獎勵每次 +1；開場凍住 1 隻敵人', fx: { streakAdd: 1, openFreeze: 1 } },
       g_angel: { tier: 'gold', name: '守護', desc: '每場第一隻陣亡的隊友以 40% 生命復活', fx: { revive: 1 } },
