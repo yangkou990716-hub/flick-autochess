@@ -460,6 +460,7 @@
     state: () => ({ code: R.code, host: R.hostId, pid, mySeat, gen, applied, phase: B && B.phase, turn: B && B.turn, winner: B && B.winner, hash: B && hashB(B), moves: B && B.moves.slice(), resyncs, state: R.state, players: R.players, myTurn: !!myTurn(), result: R.result, building }),
     shoot, myTurn, hash: () => B && hashB(B), battle: () => B,
     autoShoot() { if (!myTurn()) return false; const c = FA.ai.choose(B, mySeat, D.enemies.difficulty(AI_LV), { s: (applied * 131 + 7) | 0 }); return c ? shoot(c.idx, c.angle, c.power, c.ult) : false; },
-    create: createRoom, join: joinRoom, ready: setReady, leave: leaveRoom, setName: n => { mem.name = n; saveMem(); }
+    create: createRoom, join: joinRoom, ready: setReady, leave: leaveRoom, setName: n => { mem.name = n; saveMem(); },
+    util: { hashB, flipB, flipEv, ensureDb: () => ensureDb() && { db, fb, TS }, configured, mem, saveMem, MOCK } // src/league.js 共用
   };
 })();
