@@ -312,7 +312,7 @@
     if (battle.phase === 'aim' && battle.turn === 1 && !tap.body) { if (!ai) ai = { t: 0, c: null }; ai.ff = true; } // 敵方瞄準：點空白快轉
     if (battle.phase !== 'aim' || battle.turn !== 0) return;
     let best = null, bd = 1e9;
-    battle.bodies.forEach(o => { if (o.alive && !o.temp && o.team === 0 && !o.stunned) { const d = Math.hypot(o.x - w.x, o.y - w.y); if (d < o.r + 22 && d < bd) { bd = d; best = o; } } });
+    battle.bodies.forEach(o => { if (o.alive && !o.temp && o.team === 0 && FA.battle.avail(battle, 0).includes(o)) { const d = Math.hypot(o.x - w.x, o.y - w.y); if (d < o.r + 22 && d < bd) { bd = d; best = o; } } });
     if (best) { drag = best.i; cv.setPointerCapture(e.pointerId); }
   });
   cv.addEventListener('pointermove', e => {
@@ -358,8 +358,8 @@
     if (mode === 'duel') run.enemy = { name: '對戰：' + duelName };
     const env = run.env && mode !== 'duel' ? '🌐' + RD.envs[run.env].name : '';
     $('bhud').innerHTML = `位面${run.plane}｜${run.enemy.name}${b.rules.length ? '｜' + b.rules.map(r => D.enemies.ruleText[r]).join('、') : ''}　${env}<br>` +
-      `<span style="color:#5cf">我方 ${hp(0)}　剩 ${b.shots[0]} 彈</span>　<span style="color:#f77">敵方 ${hp(1)}　剩 ${b.shots[1]} 彈</span>`;
-    ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！剩 ${b.shots[0]} 彈` : b.phase === 'over' ? (b.winner === 0 ? '全滅敵人！' : '沒殺光…') : b.phase === 'aim' ? (b.turn === 0 ? '你的回合：按住棋子往後拉（殺光才算贏）' : '敵方瞄準中…') : '';
+      `${b.round > b.maxRounds ? `<b style="color:#ffb74d">加時</b>` : `第 ${b.round}/${b.maxRounds} 輪`}　<span style="color:#5cf">我方 ${hp(0)}（${b.round > b.maxRounds ? '剩 ' + b.shots[0] + ' 發' : '未動 ' + b.shots[0]}）</span>　<span style="color:#f77">敵方 ${hp(1)}（${b.round > b.maxRounds ? '剩 ' + b.shots[1] + ' 發' : '未動 ' + b.shots[1]}）</span>`;
+    ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！第 ${Math.min(b.round, b.maxRounds)}/${b.maxRounds} 輪` : b.phase === 'over' ? (b.winner === 0 ? '全滅敵人！' : '沒殺光…') : b.phase === 'aim' ? (b.turn === 0 ? '你的回合：按住棋子往後拉（殺光才算贏）' : '敵方瞄準中…') : '';
     ui.msgCol = b.turn === 0 ? '#ffe066' : '#f99';
   }
 

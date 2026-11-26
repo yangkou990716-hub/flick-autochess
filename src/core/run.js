@@ -274,7 +274,7 @@
     if (!front.length) return null;
     const eExt = en.reward ? { mods: { hpPct: (RD().piggy.hpBase + RD().piggy.hpPerStage * r.stage) / D().units.piggy.hp - 1 } } : { threat: r.threat };
     return FA.battle.create({ pFront: front, pBack: r.back.slice(0, lv(r).back), eFront: en.front, eBack: en.back, rules: en.rules, env: efx(r),
-      pExt: Object.assign(battleExt(s), en.boss ? { shots: (battleExt(s).shots || 0) + C().bossShotsAdd } : {}), eExt, eNoShots: !!en.reward,
+      pExt: battleExt(s), eExt, eNoShots: !!en.reward, extraRounds: en.boss ? C().bossRoundsAdd : 0,
       seed: Math.floor(R().next(r.rng) * 2 ** 31) });
   }
 

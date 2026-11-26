@@ -83,6 +83,7 @@
       else if (e.t === 'over') SND(e.winner === 0 ? 'win' : 'lose');
       else if (e.t === 'fullpower') { SND('full'); V.texts.push({ x: e.x, y: e.y - 42, txt: '全力！', life: 1, max: 1, col: '#ff5', size: 24, tier: 2, vy: 30 }); ring(e.x, e.y, 70, '#ffe066', 0.35, { w: 5 }); sparks(e.x, e.y, '#ffe066', 14, 380); V.shake = Math.max(V.shake, 6); }
       else if (e.t === 'shrink') V.banner = { txt: '場地縮小！', life: 1.2, max: 1.2, col: '#ff8a8a' };
+      else if (e.t === 'round') V.banner = { txt: e.extra ? '加時！' : `第 ${e.n} 輪`, life: 1.0, max: 1.0 };
       else if (e.t === 'skip') V.banner = { txt: (e.team === 0 ? '我方' : '敵方') + '全員暈眩，跳過', life: 1.2, max: 1.2 };
     }
     b.events = [];
@@ -279,7 +280,7 @@
         if (dead[o.i] < 0.55 && SP && !o.temp) SP.draw(ctx, o, x, y, r, t, dead[o.i] / 0.55);
         return;
       }
-      const sel = b.phase === 'aim' && b.turn === 0 && o.team === 0 && !o.stunned && !o.temp;
+      const sel = b.phase === 'aim' && b.turn === 0 && o.team === 0 && !o.temp && FA.battle.avail(b, 0).includes(o);
       if (sel && aimO !== o) { // 可彈提示：旋轉虛線圈
         ctx.strokeStyle = '#ffe066aa'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.lineDashOffset = -t * 20; ctx.beginPath(); ctx.arc(x, y, r + 6 + Math.sin(t * 5) * 1.5, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
       }

@@ -28,7 +28,7 @@
   // 所有欄位先列齊（固定順序），讓每個棋子物件形狀一致，物理迴圈才快
   function blankBody(team) {
     return { i: 0, id: '', name: '', team, alive: true, temp: false, boss: false, star: 1, traits: [], color: '', x: 0, y: 0, vx: 0, vy: 0, r: 20, m: 1,
-      hp: 1, maxHp: 1, atk: 0, baseAtk: 0, shield: 0, speed: 1, bounces: 0, wallAdd: 0, wallHits: 0, stunned: false, chained: false, hitCount: 0, hurt: 0,
+      hp: 1, maxHp: 1, atk: 0, baseAtk: 0, shield: 0, speed: 1, bounces: 0, wallAdd: 0, wallHits: 0, stunned: false, acted: false, chained: false, hitCount: 0, hurt: 0,
       lifesteal: 0, blastR: 0, blastMult: 0, blastMul: 0, pullMul: 0, poisonMul: 0, zapMult: 0, link: null, weapon: null, ab: null, split: null, poison: null,
       pierceLeft: 0, boomUsed: false, burnUsed: false, splitDone: false, healed: false, relaunched: false, fricMul: 1, exposed: 0, exposeAmp: 0, fx: {} };
   }
@@ -115,8 +115,8 @@
     const bodies = p.bodies.concat(e.bodies);
     bodies.forEach((b, i) => b.i = i);
     const T = cfg.turnsEach;
-    if (o.eNoShots) e.side.shotsAdd = -T;
-    const bt = { R, R0: R, rules: o.rules || [], env, bodies, sides: [p.side, e.side], turn: 0, shots: [T + p.side.shotsAdd, T + e.side.shotsAdd],
+    if (o.eNoShots) e.side.noAct = true;
+    const bt = { R, R0: R, rules: o.rules || [], env, bodies, sides: [p.side, e.side], turn: 0, shots: [0, 0], round: 1, maxRounds: (cfg.roundsEach || 2) + (o.extraRounds || 0), bonus: [p.side.shotsAdd, e.side.noAct ? 0 : e.side.shotsAdd],
       phase: 'aim', winner: null, rng: { s: o.seed | 0 }, events: [], simT: 0, mover: -1, chain: 0, hits: 0, pending: [], comboUsed: {},
       shotCount: 0, zones: [], ghost: {}, echoUsed: false, gold: 0, stopDone: false };
     relax(bt);
@@ -169,14 +169,38 @@
     if (b.env.storm) { const a = rng.range(b.rng, 0, 6.283), rr = rng.range(b.rng, 0, b.R * 0.5), x = Math.cos(a) * rr, y = Math.sin(a) * rr; b.events.push({ t: 'pull', x, y, r: b.R * 0.8 }); shift(b, null, x, y, b.env.storm * 0.1); }
     if (b.turn === 0 && b.shotCount > 0 && b.rules.includes('shrink')) { b.R = Math.max(170, b.R - 14); relax(b); b.events.push({ t: 'shrink' }); }
     if (!alive(b, foe).length || !alive(b, b.turn).length) return checkEnd(b);
-    if (!canMove(b, b.turn)) { b.events.push({ t: 'skip', team: b.turn }); endShot(b); }
+    refreshShots(b);
+    if (!canMove(b, b.turn)) return nextTurn(b, b.turn);
   }
 
-  function canMove(b, team) { return b.bodies.some(x => x.alive && !x.temp && x.team === team && !x.stunned); }
+  // ---- 輪流行動：一輪內每隻都動一次才換下一輪；輪數用完後才用加時（bonus）發數 ----
+  function avail(b, team) {
+    if (b.sides[team].noAct) return [];
+    const extra = b.round > b.maxRounds;
+    if (extra && !(b.bonus[team] > 0)) return [];
+    return b.bodies.filter(x => x.alive && !x.temp && x.team === team && !x.stunned && (extra || !x.acted));
+  }
+  function refreshShots(b) { b.shots = [0, 1].map(t => b.round > b.maxRounds ? Math.max(0, b.bonus[t]) : avail(b, t).length); }
+  function endRound(b) {
+    b.bodies.forEach(o => { if (o.stunned && !o.acted) o.stunned = false; o.acted = false; });
+    b.round++;
+    b.events.push({ t: 'round', n: b.round, extra: b.round > b.maxRounds });
+  }
+  function nextTurn(b, last) {
+    for (let g = 0; g < 4; g++) {
+      const order = last == null ? [0, 1] : [1 - last, last];
+      const t = order.find(k => avail(b, k).length);
+      if (t != null) { b.turn = t; return startTurn(b); }
+      if (b.round <= b.maxRounds) { endRound(b); last = null; continue; }
+      refreshShots(b); return finish(b, 1); // 輪數與加時都用完還沒殺光
+    }
+    finish(b, 1);
+  }
+  function canMove(b, team) { return avail(b, team).length > 0; }
 
   function launch(b, idx, angle, power) {
     const x = b.bodies[idx], cfg = C();
-    if (!x || !x.alive || x.temp || x.team !== b.turn || x.stunned || b.phase !== 'aim') return false;
+    if (!x || !x.alive || x.temp || x.team !== b.turn || b.phase !== 'aim' || !avail(b, b.turn).includes(x)) return false;
     power = Math.max(0, Math.min(1, power));
     const full = power >= cfg.fullPowerAt;
     const sp = power * cfg.maxLaunch * x.speed * (full ? 1 + cfg.fullPowerBonus : 1);
@@ -318,7 +342,7 @@
     const n = o.ab.n, sp = Math.hypot(o.vx, o.vy), ang = Math.atan2(o.vy, o.vx);
     for (let k = 0; k < n; k++) {
       const a = ang + (k - (n - 1) / 2 + (n === 1 ? 0 : 0)) * 0.5 + 0.25;
-      b.bodies.push(Object.assign(blankBody(o.team), { id: o.id, name: '', temp: true, team: o.team, alive: true, star: 1, traits: o.traits, color: o.color, r: o.r * 0.6, m: o.m * 0.5,
+      b.bodies.push(Object.assign(blankBody(o.team), { id: o.id, name: '', temp: true, acted: true, team: o.team, alive: true, star: 1, traits: o.traits, color: o.color, r: o.r * 0.6, m: o.m * 0.5,
         hp: 1, maxHp: 1, atk: o.atk * 0.5, baseAtk: o.atk * 0.5, shield: 0, bounces: o.bounces, wallAdd: o.wallAdd, wallHits: o.wallHits, speed: 1,
         x: o.x - Math.cos(a) * 4, y: o.y - Math.sin(a) * 4, vx: Math.cos(a) * sp * 0.9, vy: Math.sin(a) * sp * 0.9, fx: {}, lifesteal: 0, blastR: 0, blastMult: 0, blastMul: o.blastMul, pullMul: 0, hitCount: 0, i: b.bodies.length }));
     }
@@ -450,21 +474,20 @@
   function checkEnd(b) {
     if (!alive(b, 1).length) { finish(b, 0); return true; }
     if (!alive(b, 0).length) { finish(b, 1); return true; }
-    if (!b.shots[0] && !b.shots[1]) { finish(b, 1); return true; } // 沒殺光不算贏
     return false;
   }
 
   function endShot(b) {
     const t = b.turn;
     b.shotCount++;
-    b.shots[t] = Math.max(0, b.shots[t] - 1);
+    const mv = b.bodies[b.mover];
+    if (b.round > b.maxRounds) b.bonus[t] = Math.max(0, b.bonus[t] - 1); else if (mv) mv.acted = true;
     if (b.bodies.some(o => o.temp)) { b.bodies = b.bodies.filter(o => !o.temp); b.bodies.forEach((o, i) => o.i = i); }
     b.zones.forEach(z => z.left--); b.zones = b.zones.filter(z => z.left > 0);
-    b.bodies.forEach(o => { if (o.team === t) o.stunned = false; o.wallHits = 0; });
+    b.bodies.forEach(o => { if (o.team === t && b.round > b.maxRounds) o.stunned = false; o.wallHits = 0; });
     b.phase = 'aim'; b.mover = -1;
     if (checkEnd(b)) return;
-    b.turn = b.shots[1 - t] ? 1 - t : t;
-    startTurn(b);
+    nextTurn(b, t);
   }
 
   function finish(b, w) { if (b.phase === 'over') return; b.phase = 'over'; b.winner = w; b.events.push({ t: 'over', winner: w }); }
@@ -493,5 +516,5 @@
 
   function runShot(b) { let k = 0; while (!step(b) && k++ < 2500); }
 
-  FA.battle = { create, launch, step, endShot, runShot, predict, startTurn, alive, hpSum, traitTiers, dealDamage, canMove, addMods, atkOf, expose };
+  FA.battle = { avail, create, launch, step, endShot, runShot, predict, startTurn, alive, hpSum, traitTiers, dealDamage, canMove, addMods, atkOf, expose };
 })(globalThis);

@@ -78,7 +78,7 @@
   }
 
   function choose(b, team, diff, r) {
-    const mine = b.bodies.filter(o => o.alive && !o.temp && o.team === team && !o.stunned);
+    const mine = FA.battle.avail(b, team);
     const allies = b.bodies.filter(o => o.alive && !o.temp && o.team === team);
     const foes = b.bodies.filter(o => o.alive && !o.temp && o.team !== team);
     if (!mine.length) return null;
