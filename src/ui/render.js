@@ -6,7 +6,7 @@
   const TAU = Math.PI * 2, FONT = '-apple-system,"PingFang TC","Noto Sans TC",sans-serif';
   const V = FA.view = { trails: {}, bolts: [], parts: [], texts: [], rings: [], flashes: [], decals: [], walls: [], fx: [], ripples: [], shake: 0, hitstop: 0, banner: null, cutin: null, edge: null, shrinkT: 0, chainShow: 0, chainN: 0, chainPulse: 0, screenFlash: 0 };
   let cv, ctx, W, H, dpr, S, CX, CY, bgCache = null, lastB = null, causA = null, pillarCache = {};
-  const dead = {}, hpLag = {}, spawnIn = {}, ghosts = {}, ripT = {}, pHit = {}, emitT = {};
+  const dead = {}, hpLag = {}, spawnIn = {}, ghosts = {}, ripT = {}, pHit = {}, emitT = {}, vis = {}; // vis：棋子的視覺變形（壓扁回彈、跳起高度），不影響物理
   const BGP = 12; // 背景快取外擴（震動時不露邊）
   // 9 種大招的配色／圖示
   const ULT = {
@@ -32,11 +32,12 @@
   V.reset = () => {
     V.trails = {}; V.bolts = []; V.parts = []; V.texts = []; V.rings = []; V.flashes = []; V.decals = []; V.walls = []; V.fx = []; V.ripples = [];
     V.shake = 0; V.hitstop = 0; V.banner = null; V.cutin = null; V.edge = null; V.shrinkT = 0; V.chainN = 0; V.chainShow = 0; V.chainPulse = 0; V.screenFlash = 0;
-    [dead, hpLag, spawnIn, ghosts, ripT, pHit, emitT].forEach(o => { for (const k in o) delete o[k]; });
+    [dead, hpLag, spawnIn, ghosts, ripT, pHit, emitT, vis].forEach(o => { for (const k in o) delete o[k]; });
   };
   // 測試用：己方可彈棋子的螢幕座標
   V._own = () => { const b = lastB; if (!b) return null; const o = b.bodies.find(q => q.alive && !q.temp && q.team === 0 && !q.stunned); return o ? [CX + o.x * S, CY + o.y * S] : null; };
   Object.defineProperty(V, '_lastB', { get: () => lastB });
+  V._vis = vis; // 測試用：視覺變形狀態
 
   // ---- 粒子 ----
   const MAXP = 520;
@@ -505,6 +506,28 @@
     ctx.beginPath(); ctx.moveTo(x1, y1); const n = 7; for (let k = 1; k < n; k++) { const f = k / n; ctx.lineTo(x1 + (x2 - x1) * f + r() * jit, y1 + (y2 - y1) * f + r() * jit); } ctx.lineTo(x2, y2);
   }
 
+  // ---- 2.5D 視覺變形 ----：由速度變化推回碰撞法線（Δv 方向），彈簧回彈；起步沿速度拉長並小跳；停下微彈
+  let shadowC = null;
+  function shadowSprite() {
+    if (shadowC) return shadowC; const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(4,10,24,0.85)'); gr.addColorStop(0.5, 'rgba(4,10,24,0.5)'); gr.addColorStop(1, 'rgba(4,10,24,0)'); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return shadowC = c;
+  }
+  function deform(o, dt) {
+    const vx = o.vx || 0, vy = o.vy || 0, sp = Math.hypot(vx, vy);
+    let v = vis[o.i]; if (!v) v = vis[o.i] = { pvx: vx, pvy: vy, q: 0, qv: 0, ang: 0, z: 0, zv: 0, mv: false };
+    if (!dt) return v;
+    const dvx = vx - v.pvx, dvy = vy - v.pvy, dv = Math.hypot(dvx, dvy), ps = Math.hypot(v.pvx, v.pvy);
+    if (dv > 140) {
+      if (ps < 40 && sp > 150) { v.ang = Math.atan2(vy, vx); v.q = -0.24; v.qv = 0; v.zv = Math.min(160, 40 + sp * 0.12); } // 起步：拉長＋小跳
+      else { v.ang = Math.atan2(dvy, dvx); v.q = Math.min(0.32, Math.max(v.q, dv / 1600)); v.qv = 0; } // 撞擊：沿法線壓扁
+    }
+    if (sp > 60) v.mv = true; else if (sp < 8 && v.mv) { v.mv = false; if (Math.abs(v.q) < 0.06) { v.ang = Math.atan2(v.pvy, v.pvx) || 0; v.q = 0.08; v.qv = 0; } } // 停下微彈
+    const h = Math.min(dt, 1 / 30), w = 26, zeta = 0.3;
+    v.qv += (-w * w * v.q - 2 * zeta * w * v.qv) * h; v.q += v.qv * h; if (Math.abs(v.q) < 0.002 && Math.abs(v.qv) < 0.05) v.q = v.qv = 0;
+    if (v.z > 0 || v.zv > 0) { v.zv -= 1100 * h; v.z += v.zv * h; if (v.z <= 0) { v.z = 0; if (v.zv < -120) { v.zv = -v.zv * 0.28; v.q = Math.max(v.q, 0.08); v.ang = Math.PI / 2; } else v.zv = 0; } }
+    v.pvx = vx; v.pvy = vy; return v;
+  }
+
   // 簡易棋子（sprites.js 未載入時）
   function plainBody(o, x, y, r) {
     ctx.fillStyle = o.color; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = o.team === 0 ? '#5cf' : '#f55'; ctx.stroke();
@@ -574,8 +597,13 @@
     });
     ctx.lineCap = 'butt';
 
-    // 棋子：先畫陰影
-    b.bodies.forEach(o => { if (!o.alive) return; const x = CX + o.x * S, y = CY + o.y * S, r = o.r * S; ctx.fillStyle = '#0000004d'; ctx.beginPath(); ctx.ellipse(x + r * 0.1, y + r * 0.85, r * 0.95, r * 0.32, 0, 0, TAU); ctx.fill(); });
+    // 棋子：先更新視覺變形，再畫地面投影（跳越高影子越小越淡、越偏；速度越快影子沿速度拉長）
+    const shC = shadowSprite();
+    b.bodies.forEach(o => { if (!o.alive) return; const v = deform(o, dt), x = CX + o.x * S, y = CY + o.y * S, r = o.r * S, z = v.z * S, k = 1 / (1 + z / (r * 1.1)), sp = Math.hypot(o.vx, o.vy);
+      ctx.save(); ctx.translate(x + r * 0.26 + z * 0.4, y + r * 0.92 + z * 0.55);
+      if (sp > 60) { const a = Math.atan2(o.vy * 0.36, o.vx), st = Math.min(0.3, sp / 3500); ctx.rotate(a); ctx.scale(1 + st, 1 - st * 0.3); ctx.rotate(-a); }
+      const w = r * 1.18 * k * (1 + Math.max(0, v.q) * 0.5), h = r * 0.46 * k; ctx.globalAlpha = 0.8 * k; ctx.drawImage(shC, -w, -h, w * 2, h * 2); ctx.restore(); });
+    ctx.globalAlpha = 1;
     const SP = FA.sprites;
     b.bodies.forEach(o => {
       if (o.hurt > 0) o.hurt -= dt * 3;
@@ -603,7 +631,13 @@
       if (full) { const g = ctx.createRadialGradient(x, y, r * 0.8, x, y, r * (1.8 + pul * 0.3)); g.addColorStop(0, `rgba(${ecol},${0.3 + pul * 0.3})`); g.addColorStop(1, `rgba(${ecol},0)`); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * (1.8 + pul * 0.3), 0, TAU); ctx.fill(); }
       if (o.ultOn === 'phase' && SP) { const tr = V.trails[o.i] || []; ctx.save(); for (let j = tr.length - 3, n = 0; j >= 0 && n < 3; j -= 3, n++) { ctx.globalAlpha = 0.28 - n * 0.08; SP.draw(ctx, o, CX + tr[j][0] * S, CY + tr[j][1] * S, r, t); } ctx.restore(); ctx.globalAlpha = 1; }
       if (o.ultOn) ultAura(o, x, y, r, t, dt);
-      if (SP) SP.draw(ctx, o, x, y, r, t); else plainBody(o, x, y, r);
+      if (SP) { // 2.5D：跳起位移＋速度拉伸＋碰撞壓扁回彈（只是畫面，碰撞判定不變）
+        const v = vis[o.i] || { q: 0, z: 0, ang: 0 }, lift = Math.min(r * 0.3, v.z * S);
+        ctx.save(); ctx.translate(x, y - lift);
+        if (sp0 > 60) { const a = Math.atan2(o.vy, o.vx), k = Math.min(0.09, sp0 / 10000); ctx.rotate(a); ctx.scale(1 + k, 1 - k * 0.7); ctx.rotate(-a); }
+        if (Math.abs(v.q) > 0.004) { ctx.rotate(v.ang); ctx.scale(1 - v.q, 1 + v.q * 0.65); ctx.rotate(-v.ang); }
+        SP.draw(ctx, o, 0, 0, r, t); ctx.restore();
+      } else plainBody(o, x, y, r);
       if (si) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = si / 0.7; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); ctx.restore(); }
       if (!o.temp && !o.boss || o.boss) { // 能量環
         ctx.lineWidth = 2.5; ctx.strokeStyle = '#0008'; ctx.beginPath(); ctx.arc(x, y, r + 3, 0, TAU); ctx.stroke();
@@ -622,7 +656,7 @@
         ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, sr - 2, Math.PI * 1.15 + Math.sin(t * 2) * 0.2, Math.PI * 1.5 + Math.sin(t * 2) * 0.2); ctx.stroke();
       }
       if (o.temp) return;
-      if (o.weapon && FA.DATA.weapons[o.weapon]) { ctx.font = `12px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillText(FA.DATA.weapons[o.weapon].icon, x + r * .95, y + r * .2); }
+      if (o.weapon && FA.DATA.weapons[o.weapon]) { if (SP && SP.badge) SP.badge(ctx, FA.DATA.weapons[o.weapon].icon, x + r * 0.9, y - r * 0.05, 7.5); else { ctx.font = `12px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillText(FA.DATA.weapons[o.weapon].icon, x + r * .95, y + r * .2); } }
       if (o.stunned) { ctx.font = `13px ${FONT}`; ctx.textAlign = 'center'; ctx.fillText('❄', x + Math.sin(t * 4) * 8, y - r * 1.45 - 6); }
       if (o.poison) { outText('☠' + o.poison.turns, x - r * 1.05, y - r * 0.6, 10, '#c5ef8a', 3); }
       // 血條（含延遲白條）
