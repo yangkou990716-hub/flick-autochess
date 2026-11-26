@@ -38,7 +38,15 @@
   function backText(U) {
     const b = U.back; if (!b) return '';
     return { atkPct: `${b.trait ? D.traits[b.trait].name + '角色' : '前台'}攻擊+${pct(b.val)}`, shield: `每回合前台護盾+${b.val}`, heal: `每回合前台回血+${b.val}`,
-      zap: `每回合電擊隨機敵人（${pct(b.mult)}攻擊）`, gravity: '每回合把敵人往中間吸', cannon: `每回合炮擊隨機敵人（${pct(b.mult)}攻擊爆炸）`, revive: `第一隻陣亡的隊友以 ${pct(b.pct)} 生命復活`, mark: `每回合標記 1 名敵人，受傷 +${pct(b.amp || 0)}（${b.turns || 0} 回合）` }[b.type];
+      zap: `每回合電擊隨機敵人（${pct(b.mult)}攻擊）`, gravity: '每回合把敵人往中間吸', cannon: `每回合炮擊隨機敵人（${pct(b.mult)}攻擊爆炸）`, revive: `第一隻被打倒的隊友當場以 ${pct(b.pct)} 生命撐住（不扣動數）`, mark: `每回合標記 1 名敵人，受傷 +${pct(b.amp || 0)}（${b.turns || 0} 回合）` }[b.type];
+  }
+  // ---- 大招 ----：角色的大招（units.ult 覆蓋，否則看第一個羈絆）
+  const UC = C.ult || { max: 100, gainLaunch: 25, gainHit: 15, gainHurt: 10 };
+  const ultKey = id => { const U = D.units[id]; return (U && U.ult) || (D.traitUlt || {})[U && U.traits[0]] || 'nova'; };
+  const ultCharge = `彈射 +${UC.gainLaunch}、撞到敵人 +${UC.gainHit}、被撞 +${UC.gainHurt}，滿 ${UC.max} 可發動`;
+  function ultLine(key, energy) {
+    const X = (D.ults || {})[key] || { name: '大招', desc: '' }, bar = energy == null ? '' : `　<span style="color:${energy >= UC.max ? '#ffd54f' : '#9df'}">能量 ${Math.floor(Math.min(UC.max, energy))}/${UC.max}${energy >= UC.max ? '（已滿，發光中）' : ''}</span>`;
+    return `<span class="k">⚡大招「${X.name}」：</span>${X.desc}${bar}<br>`;
   }
   function unitInfo(u) {
     const U = D.units[u.id], m = C.starMult[u.star - 1];
@@ -47,6 +55,7 @@
     s += `生命 ${Math.round(U.hp * m)}｜攻擊 ${Math.round(U.atk * m)}｜速度 ${U.speed}｜重量 ${U.mass}｜大小 ${U.r}<br>`;
     if (U.ability && U.role !== 'back') s += `<span class="k">${U.role === 'both' ? '前台' : '能力'}：</span>${U.ability.desc}<br>`;
     if (U.back && U.role !== 'front') s += `<span class="k">後台：</span>${backText(U)}<br>`;
+    if (U.role !== 'back') s += ultLine(ultKey(u.id), u.energy);
     if (U.link) s += `<span class="k">聯動：</span>撞到${D.units[U.link.with].name} →「${U.link.combo.name}」<br>`;
     if (u.weapon) s += weaponText(u.weapon) + '<br>';
     if (u.items.length) s += u.items.map(itemText).join('<br>') + '<br>';
@@ -76,7 +85,7 @@
     if (!run) return;
     if (hs) {
       const me = hs.players[hs.cur];
-      if (run.over && !me.done) { me.done = true; save(); return modal(`<h2>${me.name}：${run.over === 'win' ? '🏆 通關！' : '☠ 全滅'}</h2>打到第 ${run.plane} 位面・第 ${run.stage} 個節點`, [{ t: '繼續', cls: 'go', f: flow }]); }
+      if (run.over && !me.done) { me.done = true; save(); return modal(`<h2>${me.name}：${run.over === 'win' ? '🏆 通關！' : '☠ 小隊血量歸零'}</h2>打到第 ${run.plane} 位面・第 ${run.stage} 個節點`, [{ t: '繼續', cls: 'go', f: flow }]); }
       if (!run.pending && (run.over || run.stage !== me.seen)) {
         me.seen = run.stage;
         const alive = hs.players.filter(p => !p.run.over);
@@ -91,7 +100,7 @@
       }
     } else if (run.over) {
       const won = run.over === 'win'; clearSave();
-      return modal(`<h2>${won ? '🏆 通關！' : '☠ 小隊全滅'}</h2>難度 ${RD.ascensions[run.asc || 0].name}・打到第 ${run.plane} 位面・第 ${run.stage} 個節點<br>投資策略 ${run.strats.length} 張`, [{ t: '回標題', f: toTitle }]);
+      return modal(`<h2>${won ? '🏆 通關！' : '☠ 小隊血量歸零'}</h2>難度 ${RD.ascensions[run.asc || 0].name}・打到第 ${run.plane} 位面・第 ${run.stage} 個節點<br>投資策略 ${run.strats.length} 張`, [{ t: '回標題', f: toTitle }]);
     }
     const p = run.pending;
     if (p) {
@@ -123,7 +132,7 @@
     const nx = C.levels[run.level]; $('tLv').textContent = `Lv${run.level}${nx ? ` (${run.xp}/${nx.xp})` : ''}`;
     const env = run.env ? RD.envs[run.env] : null, s = RUN.sfx(run), e = RUN.efx(run);
     $('enemyInfo').innerHTML = `${env ? `🌐${env.name}：${env.desc}` : ''}　利息 +${Math.min(C.interestMax + s.interestAdd + (e.interestAdd || 0), Math.floor(run.gold / C.interestPer))}` +
-      (boss ? `　<b>首領：${RUN.bossInfo(run).name}</b>` : '') + (run.streak ? `　${run.streak > 0 ? '連勝' : '連敗'} ${Math.abs(run.streak)}` : '') + (run.threat ? `　<span style="color:#f88">敵強化 +${pct(run.threat)}</span>` : '');
+      (boss ? `　<b>首領：${RUN.bossInfo(run).name}</b>` : '') + (run.streak ? `　${run.streak > 0 ? '連勝' : '連敗'} ${Math.abs(run.streak)}` : '') + (run.threat ? `　<span style="color:#f88">敵強化 ${run.threat > 0 ? "+" : ""}${pct(run.threat)}</span>` : '');
     $('enemyInfo').innerHTML += affixChips(); // ---- 敵人詞綴 ----
     $('strats').innerHTML = run.strats.map(id => { const S = RD.strategies[id], T = RD.tiers[S.tier]; return `<span class="st-chip" style="border-color:${T.color};color:${T.color}" data-st="${id}">${S.name}</span>`; }).join('');
     const onTeam = run.front.slice(0, lv.front).concat(run.back.slice(0, lv.back)).filter(Boolean).map(u => u.id);
@@ -153,7 +162,7 @@
     else if (sel && sel.trait) { const T = D.traits[sel.trait]; info = `<b>${T.name}</b>（只加給${T.name}角色）<br>` + T.tiers.map(tierLine).join('<br>'); }
     else if (sel && sel.fa) info = facInfo(sel.fa);
     else if (sel && sel.st) { const S = RD.strategies[sel.st]; info = `<b>${S.name}</b>（${RD.tiers[S.tier].name}）<br>${S.desc}`; }
-    else info = '<span class="lbl">殺光敵人才算贏，贏 +2 血；🛡＝鎖血免死。點商店卡片購買；點角色查看／移動；3 隻同星自動升星。佈好陣按「前進」選路線。</span>';
+    else info = `<span class="lbl">雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈 -1、被打倒 -${C.deathCost}，對方動數先歸零就贏；擊倒首領直接贏。贏 +${C.winHeal} 血、輸了扣血；🛡＝鎖血免死。點商店卡片購買；點角色查看／移動；3 隻同星自動升星。佈好陣按「前進」選路線。</span>`;
     $('info').innerHTML = info;
     $('shopRow').innerHTML = run.shop.map((id, i) => {
       if (!id) return `<div class="card empty"></div>`;
@@ -295,7 +304,7 @@
       (D.units[id].faction ? '<br>' + facInfo(D.units[id].faction) : '');
     const btns = shopCard ? [{ t: `購買 ${RUN.unitCost(run, id)}💰`, cls: 'go', f: () => { if (!RUN.buy(run, src.buy)) flash('金幣或空位不足'); else FA.sound.play('coin'); renderShop(); save(); } }, { t: '關閉' }]
       : [{ t: `賣出 +${RUN.sellPrice(u, run)}`, f: () => { RUN.sell(run, src); renderShop(); save(); } }, { t: '關閉', cls: 'go' }];
-    modal(`<div class="ux-detail">${unitInfo(u)}${prog}<br>${tr}</div>`, btns);
+    modal(`<div class="ux-detail">${unitInfo(u)}${D.units[id].role !== 'back' ? `<span class="lbl">大招能量戰鬥中累積：${ultCharge}</span><br>` : ''}${prog}<br>${tr}</div>`, btns);
   }
 
   // ---- 道具 ----
@@ -373,7 +382,7 @@
       } }, { t: '取消' }]);
   };
   $('bQuit').onclick = () => { save(); toTitle(); };
-  $('bUlt').onclick = () => { ui.ultArmed = !ui.ultArmed; };
+  $('bUlt').onclick = () => { ui.ultArmed = !ui.ultArmed; vib(ui.ultArmed ? 25 : 8); if (ui.ultArmed) V.banner = { txt: '⚡ 彈發光的棋子放大招', life: 1, max: 1, col: '#ffd54f' }; };
   function startFight() {
     mode = 'run';
     const b = RUN.startBattle(run); if (!b) { run.node = null; show('shop'); renderShop(); return flash('前台至少要放 1 隻'); }
@@ -412,7 +421,7 @@
     const tp = tap; tap = null;
     const isTap = tp && Math.hypot(e.clientX - tp.x, e.clientY - tp.y) < 12 && performance.now() - tp.t < 500;
     if (drag != null) {
-      if (!isTap && ui.aim && ui.aim.power > 0.1) { FA.battle.launch(battle, ui.aim.idx, ui.aim.angle, ui.aim.power, ui.ultArmed); ui.ultArmed = false; hideBInfo(); }
+      if (!isTap && ui.aim && ui.aim.power > 0.1) { const bo = battle.bodies[ui.aim.idx], useUlt = !!ui.ultArmed && bo && bo.energy >= UC.max; FA.battle.launch(battle, ui.aim.idx, ui.aim.angle, ui.aim.power, useUlt); if (useUlt) ui.ultArmed = false; hideBInfo(); }
       ui.aim = null; drag = null;
     }
     if (isTap && tp.body && battle) showBInfo(tp.body);
@@ -431,6 +440,7 @@
     if (o.poison) st.push(`<span style="color:#9ccc65">☠ 中毒：每回合 ${Math.round(o.poison.dmg)} 傷害，剩 ${o.poison.turns} 回合</span>`);
     if (st.length) h += st.join('　') + '<br>';
     if (U && U.ability && U.role !== 'back') h += `<span class="k">能力：</span>${U.ability.desc}<br>`;
+    if (o.ultType) h += ultLine(o.ultType, o.energy || 0);
     if (U && U.traits.length) h += `<span class="k">羈絆：</span>${U.traits.map(t => D.traits[t].name).join('・')}　速度 ${U.speed}｜重量 ${U.mass}<br>`;
     if (B) h += `<span class="k">首領：</span>${B.rules.map(r => D.enemies.ruleText[r]).join('、')}${B.split ? '、半血分裂' : ''}${B.zap ? '、每回合電擊' : ''}<br>`;
     if (o.weapon && D.weapons[o.weapon]) h += weaponText(o.weapon);
@@ -443,17 +453,29 @@
     const b = battle, hp = t => Math.round(FA.battle.hpSum(b, t));
     if (mode === 'duel') run.enemy = { name: '對戰：' + duelName };
     const env = run.env && mode !== 'duel' ? '🌐' + RD.envs[run.env].name : '';
-    $('bhud').innerHTML = `位面${run.plane}｜${run.enemy.name}${b.rules.length ? '｜' + b.rules.map(r => D.enemies.ruleText[r]).join('、') : ''}　${env}<br>` +
-      `第 ${b.round} 輪　<span style="color:#5cf">我方動數 ${Math.max(0, b.moves[0])}/${b.movesMax[0]}</span>　<span style="color:#f77">敵方動數 ${Math.max(0, b.moves[1])}/${b.movesMax[1]}</span>`;
-    if (b.affix && mode !== 'duel') $('bhud').innerHTML += `<br><span style="color:#f8a;font-size:12px">☠ ${b.affix.ids.map(id => D.enemies.affixes[id].name).join('・')}</span>`; // ---- 敵人詞綴 ----
-    ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！剩 ${Math.max(0, b.moves[0])} 動` : b.phase === 'over' ? (b.winner === 0 ? '勝利！' : '落敗…') : b.phase === 'aim' ? (b.turn === 0 ? '你的回合：按住棋子往後拉（對方動數歸零就贏）' : '敵方瞄準中…') : '';
-    const ready = b.phase === 'aim' && b.turn === 0 && FA.battle.avail(b, 0).some(o => o.energy >= C.ult.max);
-    $('bUlt').classList.toggle('hidden', !ready); $('bUlt').classList.toggle('on', !!ui.ultArmed);
-    $('bUlt').textContent = ui.ultArmed ? '⚡ 大招就緒（彈發光的棋子）' : '⚡ 大招';
+    $('bhud').innerHTML = `<div class="ux-hl">位面${run.plane}｜${run.enemy.name}${b.rules.length ? '｜' + b.rules.map(r => D.enemies.ruleText[r]).join('、') : ''}　${env}</div>` + movesHUD(b);
+    if (b.affix && mode !== 'duel') $('bhud').innerHTML += `<div style="color:#f8a;font-size:12px">☠ ${b.affix.ids.map(id => D.enemies.affixes[id].name).join('・')}</div>`; // ---- 敵人詞綴 ----
+    const ready = b.phase === 'aim' && b.turn === 0 && FA.battle.avail(b, 0).some(o => o.energy >= UC.max);
     if (!ready) ui.ultArmed = false;
+    ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！剩 ${Math.max(0, b.moves[0])} 動` : b.phase === 'over' ? (b.winner === 0 ? '勝利！' : '落敗…')
+      : b.phase === 'aim' ? (b.turn === 0 ? (ui.ultArmed ? '⚡ 拉射發光的棋子放大招（再按大招取消）' : '你的回合：按住棋子往後拉') : '敵方瞄準中…（點空白快轉）') : '';
+    const bu = $('bUlt'); bu.classList.toggle('hidden', !ready); bu.classList.toggle('on', !!ui.ultArmed);
+    const uh = ui.ultArmed ? '⚡ 大招待命<small>彈發光的棋子・再按取消</small>' : '⚡ 大招<small>能量滿的棋子會發光</small>';
+    if (bu.innerHTML !== uh) bu.innerHTML = uh;
     ui.msgCol = b.turn === 0 ? '#ffe066' : '#f99';
   }
 
+  // 動數條：我方藍、敵方紅（剩餘/總數）＋第幾輪、本輪我方還沒動幾隻
+  function movesHUD(b) {
+    const bar = (t, col, lbl) => {
+      const mx = b.movesMax[t] || 0, n = Math.max(0, b.moves[t]);
+      if (!mx) return `<div class="ux-mv"><span class="l">${lbl}</span><span class="ux-mvb"></span><span class="n">—</span></div>`;
+      return `<div class="ux-mv${b.turn === t && b.phase !== 'over' ? ' cur' : ''}"><span class="l" style="color:${col}">${lbl}</span><span class="ux-mvb"><i style="width:${Math.round(n / mx * 100)}%;background:${col}"></i></span><span class="n">${n}/${mx}</span></div>`;
+    };
+    const left = FA.battle.avail(b, 0).length;
+    return `<div class="ux-mvs">${bar(0, '#4ea0ff', '我方')}${bar(1, '#ff5a5a', '敵方')}</div>` +
+      `<div class="ux-rd">第 ${b.round} 輪・本輪我方未動 <b>${left}</b> 隻${b.deaths && b.deaths[0] ? `・我方被打倒 ${b.deaths[0]}` : ''}</div>`;
+  }
   function enemyThink(dt) {
     if (!ai) ai = { t: 0, c: null };
     ai.t += dt;
@@ -474,14 +496,14 @@
     const b = battle;
     setTimeout(() => {
       FA.sound.play(b.winner === 0 ? 'win' : 'lose'); hideBInfo();
-      const stats = statsHTML(); bst = null;
-      if (mode === 'duel') { battle = null; mode = 'run'; save(); modal(`<h2>${b.winner === 0 ? '🎉 你贏了' : '💥 你輸了'}</h2>對手：${duelName}${stats}`, [{ t: '回商店', cls: 'go', f: () => { show('shop'); renderShop(); } }]); return tutResult(); }
+      const stats = movesRes(b) + statsHTML(); bst = null;
+      if (mode === 'duel') { battle = null; mode = 'run'; save(); modal(`<h2>${b.winner === 0 ? '🎉 你贏了' : '💥 你輸了'}</h2>對手：${duelName}<div class="lbl">${endReason(b)}</div>${stats}`, [{ t: '回商店', cls: 'go', f: () => { show('shop'); renderShop(); } }]); return tutResult(); }
       const res = RUN.endBattle(run, b); battle = null; save();
       const loot = res.drops.map(itemText).concat(res.weapons.map(weaponText)).concat((res.cons || []).map(k => CS[k] ? CS[k].icon + CS[k].name : '')); // ---- 道具 ----
       const gold = `<div class="ux-res">💰 收入 ${res.income}＋利息 ${res.interest}${res.streakBonus ? `＋連${run.streak > 0 ? '勝' : '敗'} ${res.streakBonus}` : ''}${res.gold ? `＋戰利 ${res.gold}` : ''}　→ 共 ${run.gold} 金</div>`;
       if (res.node === 'reward') modal(`<h2>🐷 撲滿 ${res.pigs} 隻</h2>${stats}<div class="ux-res">+${res.gold} 金${res.drops.length ? '<br>全破獎勵：' + res.drops.map(itemText).concat((res.cons || []).map(k => CS[k] ? CS[k].icon + CS[k].name : '')).join('<br>') : (res.cons || []).length ? '<br>全破獎勵：' + res.cons.map(k => CS[k].icon + CS[k].name).join('、') : ''}</div>${gold}`, [{ t: '繼續', cls: 'go', f: flow }]);
-      else modal(`<h2>${res.win ? '🎉 全滅敵人' : '💥 沒殺光'}</h2>${stats}<div class="ux-res">` +
-        (res.win ? `❤ 小隊 ${res.heal ? '+' + res.heal : '±0'}（${run.hp}）` : `<b style="color:#f88">❤ 小隊 -${res.dmg}（剩 ${run.hp}）</b>`) + '</div>' +
+      else modal(`<h2>${res.win ? '🎉 勝利' : '💥 落敗'}</h2><div class="lbl">${endReason(b)}</div>${stats}<div class="ux-res">` +
+        (res.win ? `❤ 小隊 ${res.heal ? '+' + res.heal : '±0'}（${run.hp}）` : `<b style="color:#f88">❤ 小隊 -${res.dmg}（剩 ${run.hp}）</b><br><span class="lbl">${lossText(b, res)}</span>`) + '</div>' +
         (res.saved ? '<b style="color:#ffe066">🛡 鎖血免死觸發！剩 1 血</b><br>' : '') + (res.retry ? '<b style="color:#ffb74d">👑 終局首領還在！整頓後再挑戰</b><br>' : '') + (res.flawless ? '<b style="color:#f8a5c2">🐷 完勝！招財豬加碼</b><br>' : '') + gold +
         (loot.length ? '<div class="ux-res">🎁 獲得：<br>' + loot.join('<br>') + '</div>' : ''),
         [{ t: '繼續', cls: 'go', f: flow }]);
@@ -489,6 +511,22 @@
     }, 900 / (FA.settings.speed > 1 ? 2 : 1));
   }
 
+  // 結算：雙方剩餘動數、我方被打倒次數、勝負原因、落敗扣血說明
+  const bossDown = b => b.bodies.some(o => o.boss && o.team === 1 && !o.alive);
+  function endReason(b) {
+    if (b.winner === 0) return bossDown(b) ? '👑 擊倒首領，直接獲勝' : '敵方動數先歸零';
+    return Math.max(0, b.moves[0]) <= 0 ? '我方動數先歸零' : '我方全部倒下';
+  }
+  function movesRes(b) {
+    if (!b.moves) return '';
+    const n = t => Math.max(0, b.moves[t]);
+    return `<div class="ux-stats"><div><b style="color:#4ea0ff">${n(0)}/${b.movesMax[0]}</b>我方剩餘動數</div><div><b style="color:#ff5a5a">${b.movesMax[1] ? n(1) + '/' + b.movesMax[1] : '—'}</b>敵方剩餘動數</div></div>` +
+      `<div class="lbl">我方被打倒 ${(b.deaths || [0])[0]} 次（每次 -${C.deathCost} 動）・敵方被打倒 ${(b.deaths || [0, 0])[1]} 次</div>`;
+  }
+  function lossText(b, res) {
+    const L = C.lossDamage, left = b.moves ? Math.ceil(Math.max(0, b.moves[1]) / C.deathCost) : 0;
+    return `落敗扣血＝基礎 ${L.base}＋敵方剩 ${Math.max(0, b.moves[1])} 動（每 ${C.deathCost} 動 +${L.perEnemy}，共 +${left * L.perEnemy}）＋關卡加成${res.node === 'boss' ? '＋首領 4' : ''}${RD.ascensions[run.asc || 0].lossAdd ? '＋難度' : ''}`;
+  }
   // 戰鬥統計：V.consume 會清空 battle.events，所以每次呼叫前先掃
   const newStats = () => ({ dealt: 0, taken: 0, maxHit: 0, maxShot: 0, shot: 0, shotTeam: 0, kills: 0, lost: 0 });
   function track(b) {
@@ -504,8 +542,8 @@
   const consume = b => { track(b); V.consume(b); };
   function statsHTML() {
     const s = bst || newStats(), r = Math.round;
-    return `<div class="ux-stats"><div><b>${r(s.maxHit)}</b>最高單擊傷害</div><div><b>${r(s.maxShot)}</b>單發最高總傷</div><div><b>${s.kills}</b>擊殺</div><div><b>${r(s.dealt)}</b>總輸出</div></div>` +
-      `<div class="lbl">承受 ${r(s.taken)} 傷害・我方陣亡 ${s.lost}</div>`;
+    return `<div class="ux-stats"><div><b>${r(s.maxHit)}</b>最高單擊傷害</div><div><b>${r(s.maxShot)}</b>單發最高總傷</div><div><b>${s.kills}</b>擊倒敵人</div><div><b>${r(s.dealt)}</b>總輸出</div></div>` +
+      `<div class="lbl">承受 ${r(s.taken)} 傷害</div>`;
   }
   const speedBtn = () => { const b = $('uxSpeed'); b.textContent = (FA.settings.speed || 1) + 'x'; b.classList.toggle('on', FA.settings.speed > 1); };
   $('uxSpeed').onclick = () => { FA.settings.speed = FA.settings.speed > 1 ? 1 : 2; saveSet(); speedBtn(); };
@@ -578,11 +616,14 @@
     武器: () => Object.keys(D.weapons).map(id => `<div class="choice">${weaponText(id)}</div>`).join(''),
     策略: () => ['silver', 'gold', 'prism'].map(t => Object.values(RD.strategies).filter(S => S.tier === t).map(S => `<div class="choice"><span class="tier" style="color:${RD.tiers[t].color}">${RD.tiers[t].name}</span><b>${S.name}</b><br>${S.desc}</div>`).join('')).join(''),
     環境: () => '<div class="lbl">投資環境：開局選一次，整局都生效</div>' + Object.values(RD.envs).map(E => `<div class="choice"><b>🌐${E.name}</b><br>${E.desc}</div>`).join('') + '<h3>開局詞綴</h3>' + Object.values(RD.openers).map(E => `<div class="choice"><b>${E.name}</b><br>${E.desc}</div>`).join(''),
-    節點: () => Object.values(RD.nodeInfo).map(N => `<div class="choice"><b>${N.icon} ${N.name}</b><br>${N.desc}</div>`).join('') + '<div class="lbl">投資策略：開局 1 次、位面 1、2 首領後各 1 次，部分策略會延後再給（期貨）。黃金讓敵人 +6%、稜彩 +20% 且多 1 隻。</div>' +
+    節點: () => `<div class="choice"><b>⚔ 戰鬥規則</b><br>・直式場地，雙方輪流：一輪內交替出手，每隻都動過一次才換下一輪<br>・雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈一次 -1<br>・被打倒在出生點滿血復活，但該方動數再 -${C.deathCost}<br>・<b>對方動數先歸零就贏</b>；擊倒首領直接獲勝<br>・🛟泳圈柱：加速且本發攻擊 +20%；🌵尖刺柱：撞到受傷<br>・⚡大招：${ultCharge}（見「大招」分頁）<br>・落敗扣小隊血：基礎 ${C.lossDamage.base}＋敵方每剩 ${C.deathCost} 動 +${C.lossDamage.perEnemy}＋關卡加成（首領 +4）</div>` + Object.values(RD.nodeInfo).map(N => `<div class="choice"><b>${N.icon} ${N.name}</b><br>${N.desc}</div>`).join('') + '<div class="lbl">投資策略：開局 1 次、位面 1、2 首領後各 1 次，部分策略會延後再給（期貨）。黃金讓敵人 +6%、稜彩 +20% 且多 1 隻。</div>' +
       '<h3>補給內容</h3>' + Object.values(RD.supplies).map(E => `<div class="choice"><b>${E.name}</b>：${E.desc}</div>`).join(''),
     詞綴: () => '<div class="lbl">敵人詞綴：A2 起開局依難度抽（A2 1 個溫和、A3 1、A4 2、A5 3），整局生效，第一場戰鬥前可免費重骰 1 次</div>' + Object.keys(D.enemies.affixes).map(affixCard).join(''), // ---- 敵人詞綴 ----
     首領: () => D.enemies.bosses.map((L, i) => L.map(B => `<div class="choice"><b>位面${i + 1}：${B.name}</b><br>生命 ${B.hp}｜攻擊 ${B.atk}<br>${B.rules.map(r => D.enemies.ruleText[r]).join('、')}${B.split ? '、半血分裂' : ''}${B.ability ? '、' + ({ magnetStop: '停下吸附', freezeHit: '撞到冰凍', poisonHit: '撞到下毒', chainHit: '連鎖閃電' }[B.ability.type] || '') : ''}${B.zap ? '、每回合電擊' : ''}</div>`).join('')).join('')
   };
+  CODEX.大招 = () => `<div class="lbl">能量：${ultCharge}。能量滿的棋子會發光，按「⚡大招」再彈它發動；再按一次取消。大招依角色第一個羈絆決定（少數角色專屬）。</div>` +
+    Object.keys(D.ults || {}).map(k => { const X = D.ults[k], tr = Object.keys(D.traitUlt || {}).filter(t => D.traitUlt[t] === k).map(t => D.traits[t].name), us = Object.keys(D.units).filter(id => D.units[id].role !== 'back' && !D.units[id].noShop && ultKey(id) === k).map(id => D.units[id].name);
+      return `<div class="choice"><b>⚡ ${X.name}</b>${tr.length ? `<span class="tier">${tr.join('・')}羈絆</span>` : '<span class="tier">專屬</span>'}<br>${X.desc}${us.length ? `<br><span class="lbl">角色：${us.join('、')}</span>` : ''}</div>`; }).join('');
   CODEX.道具 = () => Object.values(CS).map(X => `<div class="choice"><b>${X.icon}${X.name}</b>${X.reusable ? '（可重複使用）' : ''}<br>${X.desc}</div>`).join('') + '<div class="lbl">取得：補給、遭遇、撲滿全破、首領、戰鬥掉落；開局送扳手（A0–A2 精密、A3 起普通）；第二位面開頭送冶金爐</div>'; // ---- 道具 ----
   function codex(tab) {
     tab = tab || '角色';
@@ -614,9 +655,13 @@
     battle: [{ el: bodyRect, t: '① <b>你的回合</b>：按住自己的棋子（藍框），往<b>反方向</b>拉，放開就彈射出去。' },
       { el: bodyRect, t: '② 拉越長力道越大，棋子上方有<b>力道條</b>；拉到 95% 以上是「<b>全力</b>」，速度 +15%。' },
       { el: bodyRect, t: '③ 拉的時候會出現<b>瞄準預演線</b>：虛線是你的路徑（含反彈），白線是被撞棋子的去向。' },
-      { el: '#bhud', t: '④ 雙方輪流，彈數有限。要把敵人<b>全部殺光</b>才算贏；沒殺光會扣小隊血量。' },
-      { el: '#uxSpeed', t: '⑤ 這裡切 <b>1x／2x</b> 播放速度。敵方瞄準時點空白處可快轉；<b>短按</b>任何棋子看能力、血量、中毒/冰凍狀態。' }],
-    result: [{ el: '#modalBox', t: '<b>結算</b>：勝負、本場最高傷害與擊殺、小隊血量變化、金幣（收入＋利息＋連勝敗）和戰利品。按「繼續」回到路線／商店。' }]
+      { el: '#bhud', t: `④ <b>輪流</b>：一輪內雙方交替出手，每隻棋子都動過一次才進下一輪。上方顯示第幾輪、本輪我方還沒動幾隻。` },
+      { el: '#bhud', t: `⑤ <b>總動數</b>：雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈一次 -1，<span style="color:#4ea0ff">藍條</span>是我方、<span style="color:#ff5a5a">紅條</span>是敵方。<b>對方動數先歸零就贏</b>；擊倒首領直接獲勝。` },
+      { el: '#bhud', t: `⑥ <b>被打倒</b>不會消失：在出生點滿血復活，但該方動數再 <b>-${C.deathCost}</b>。所以打倒敵人＝削它的動數，自己也別亂送。落敗會依敵方剩餘動數扣小隊血量。` },
+      { el: '#cv', t: '⑦ <b>障礙柱</b>：🛟<b>泳圈柱</b>撞到會加速，本發攻擊 +20%；🌵<b>尖刺柱</b>撞到會受傷（敵我都會）。善用反彈繞過去！' },
+      { el: '#bUlt', t: `⑧ <b>大招</b>：${ultCharge}。<b>能量滿的棋子會發光</b>，右下出現「⚡大招」按鈕：先按它，再拉射發光的棋子；想取消就再按一次。每隻大招依羈絆不同，短按棋子可看。` },
+      { el: '#uxSpeed', t: '⑨ 這裡切 <b>1x／2x</b> 播放速度。敵方瞄準時點空白處可快轉；<b>短按</b>任何棋子看能力、血量、中毒/冰凍狀態。' }],
+    result: [{ el: '#modalBox', t: '<b>結算</b>：勝負、雙方剩餘動數、我方被打倒次數、本場最高傷害、小隊血量變化（落敗依敵方剩餘動數扣血）、金幣（收入＋利息＋連勝敗）和戰利品。按「繼續」回到路線／商店。' }]
   };
   function tutor(key, steps) {
     if (tutSeen.skip || tutSeen[key] || tutOn) return false;
@@ -664,6 +709,7 @@
   $('btnCont').onclick = () => {
     const s = load(); if (!s) return;
     hs = s.hs || null; run = hs ? hs.players[hs.cur].run : s.run; battle = s.battle; mode = s.mode || 'run'; sel = null; bst = s.bst || (battle ? newStats() : null);
+    if (battle && !Array.isArray(battle.moves)) { battle = null; bst = null; if (mode === 'duel') mode = 'run'; else run.node = null; save(); setTimeout(() => flash('舊版存檔的戰鬥已放棄，回到商店'), 50); } // 舊規則戰鬥（無總動數）無法續打
     if (battle) { show('battle'); V.reset(); V.resize(); paused = false; pause(); } else { show('shop'); renderShop(); flow(); }
   };
   toTitle();
