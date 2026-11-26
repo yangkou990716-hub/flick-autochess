@@ -79,7 +79,7 @@
     const bodies = front.filter(Boolean).map(u => makeBody(u.boss ? Object.assign({}, u, { threat: ext.threat }) : u, team, sideMods, tt.active, env));
     const side = { traits: tt.active, counts: tt.counts, turnHeal: 0, turnShield: 0, zap: 0, gravity: 0,
       shotsAdd: ext.shots || 0, chainAll: !!ext.chainAll, echo: ext.echo || null, blastGold: ext.blastGold || 0,
-      cannon: [], mark: 0, markAmp: 0, revive: ext.revive || 0, revivePct: 0.4, openFreeze: ext.openFreeze || 0, stormZap: ext.stormZap || 0, stormDmg: 0 };
+      cannon: [], dmgTaken: ext.dmgTaken || 0, lowStarDmg: ext.lowStarDmg || 0, mark: 0, markAmp: 0, revive: ext.revive || 0, revivePct: 0.4, openFreeze: ext.openFreeze || 0, stormZap: ext.stormZap || 0, stormDmg: 0 };
     bodies.forEach(b => { if (b.zapMult) side.zap += b.atk * b.zapMult; });
     if (bodies.length) side.stormDmg = bodies.reduce((s, b) => s + b.atk, 0) / bodies.length * 0.8;
     bondSide(side, all, tt);
@@ -236,6 +236,7 @@
   // ---- 傷害 ----
   function dealDamage(b, tgt, amt, src, kind) {
     if (!tgt.alive || tgt.temp || amt <= 0) return 0;
+    { const ts = b.sides[tgt.team]; if (ts.dmgTaken) amt *= 1 + ts.dmgTaken; if (kind === 'hit' && src && !src.temp && src.star > tgt.star && b.sides[src.team].lowStarDmg) amt *= 1 + b.sides[src.team].lowStarDmg; } // ---- 經濟擴充：擴張的代價／星級壓制 ----
     amt *= bondDmgMul(b, tgt, src, kind);
     if (kind === 'hit' && tgt.ab && tgt.ab.type === 'guard') amt *= 1 - tgt.ab.red;
     if (b.affix && kind === 'hit') amt = affixDmgMul(b, tgt, amt, src); // ---- 敵人詞綴 ----
