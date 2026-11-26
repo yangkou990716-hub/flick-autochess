@@ -10,6 +10,7 @@ os.makedirs(OUT, exist_ok=True)
 BASE = 'http://localhost:8851/index.html?netmock=1&who='
 errors = []
 
+PAGES = []
 def st(p): return p.evaluate('FA.online.state()')
 
 def wait(cond, timeout=60, msg=''):
@@ -18,7 +19,7 @@ def wait(cond, timeout=60, msg=''):
         v = cond()
         if v: return v
         time.sleep(0.15)
-    raise AssertionError('逾時：' + msg)
+    raise AssertionError('逾時：' + msg + ' ' + str([{k: v for k, v in st(x).items() if k in ('phase','building','applied','gen','turn')} for x in PAGES]) + str(errors[:3]))
 
 def setup_run(p, k):
     # 開單人局，直接把前台塞好，回標題
@@ -33,7 +34,7 @@ def setup_run(p, k):
 def open_page(ctx, who):
     p = ctx.new_page()
     p.on('console', lambda m, w=who: (m.type == 'error') and errors.append(f'{w}: {m.text}'))
-    p.on('pageerror', lambda e, w=who: errors.append(f'{w} pageerror: {e}'))
+    p.on('pageerror', lambda e, w=who: errors.append(f'{w} pageerror: {e} {e.stack}'))
     p.goto(BASE + who)
     p.wait_for_function('window.FA && FA.online && FA.netMock')
     return p
@@ -61,7 +62,7 @@ with sync_playwright() as pw:
     a = open_page(ctx, 'A')
     a.evaluate('localStorage.clear(); localStorage.setItem("fa_tut", JSON.stringify({skip:1}))')
     a.reload(); a.wait_for_function('window.FA && FA.online && FA.netMock')
-    b = open_page(ctx, 'B')
+    b = open_page(ctx, 'B'); PAGES[:] = [a, b]
     setup_run(a, 1); setup_run(b, 4)
     a.evaluate('FA.online.setName("阿明")'); b.evaluate('FA.online.setName("小華")')
 

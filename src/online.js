@@ -148,16 +148,16 @@
       if (!v || !v.players || Date.now() - (v.createdAt || 0) > ROOM_TTL) throw new Error('找不到房間 ' + code);
       if (v.players[pid]) { lobbyBusy = false; return enterRoom(code, true); } // 同一支手機回來
       const t = myTeam(); if (t.err) throw new Error(t.err);
-      const pref = ref.child('players'), warm = () => { }; pref.on('value', warm); // 先載入快取，transaction 才不會拿到 null
+      const pref = ref.child('players'); let warm; await new Promise(r => { warm = () => r(); pref.on('value', warm); }); // 先等快取載入，transaction 才不會拿到 null
       let why = '';
       const res = await pref.transaction(ps => {
-        if (!ps) { why = '找不到房間'; return undefined; }
+        if (!ps) { why = '找不到房間'; return null; } // 本地還是空的：回 null 讓伺服器比對，有資料會用真值重跑
         const n = Object.keys(ps).length; if (n >= Math.min(NEED, MAXP)) { why = '房間已滿'; return undefined; }
         const used = Object.values(ps).map(p => p.seat); let seat = 0; while (used.includes(seat)) seat++;
         ps[pid] = newPlayer(seat, t.code); return ps;
       }, null, false);
       pref.off('value', warm);
-      if (!res.committed) throw new Error(why || '加入失敗');
+      if (!res.committed || !res.snapshot.val() || !res.snapshot.val()[pid]) throw new Error(why || '加入失敗');
       lobbyBusy = false; return enterRoom(code, false);
     } catch (e) { err = e.message || String(e); }
     lobbyBusy = false; renderLobby();
@@ -344,7 +344,7 @@
   const flipEv = e => { const o = Object.assign({}, e); ['x', 'y', 'x1', 'y1', 'x2', 'y2'].forEach(k => { if (typeof o[k] === 'number') o[k] = -o[k]; }); if (typeof o.team === 'number') o.team = 1 - o.team; if (typeof o.winner === 'number') o.winner = 1 - o.winner; return o; };
   function consumeEv() {
     if (!B || !B.events.length) return;
-    if (flip()) { V.consume({ events: B.events.map(flipEv) }); B.events = []; } else V.consume(B);
+    if (flip()) { V.consume(Object.assign({}, B, { events: B.events.map(flipEv), pillars: (B.pillars || []).map(flipEv) })); B.events = []; } else V.consume(B); // 翻轉視角：事件和柱子座標一起翻，其他欄位（bodies、mover）照用
   }
   let vb = null;
 
