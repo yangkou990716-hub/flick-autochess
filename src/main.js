@@ -105,6 +105,7 @@
       };
       return;
     }
+    if (affixIntro()) return; // ---- 敵人詞綴 ----
     show('shop'); renderShop(); setTimeout(tutShop, 30);
   }
 
@@ -117,6 +118,7 @@
     const env = run.env ? RD.envs[run.env] : null, s = RUN.sfx(run), e = RUN.efx(run);
     $('enemyInfo').innerHTML = `${env ? `🌐${env.name}：${env.desc}` : ''}　利息 +${Math.min(C.interestMax + s.interestAdd + (e.interestAdd || 0), Math.floor(run.gold / C.interestPer))}` +
       (boss ? `　<b>首領：${RUN.bossInfo(run).name}</b>` : '') + (run.streak ? `　${run.streak > 0 ? '連勝' : '連敗'} ${Math.abs(run.streak)}` : '') + (run.threat ? `　<span style="color:#f88">敵強化 +${pct(run.threat)}</span>` : '');
+    $('enemyInfo').innerHTML += affixChips(); // ---- 敵人詞綴 ----
     $('strats').innerHTML = run.strats.map(id => { const S = RD.strategies[id], T = RD.tiers[S.tier]; return `<span class="st-chip" style="border-color:${T.color};color:${T.color}" data-st="${id}">${S.name}</span>`; }).join('');
     const onTeam = run.front.slice(0, lv.front).concat(run.back.slice(0, lv.back)).filter(Boolean).map(u => u.id);
     const tt = FA.battle.traitTiers(onTeam);
@@ -413,6 +415,7 @@
     if (U && U.traits.length) h += `<span class="k">羈絆：</span>${U.traits.map(t => D.traits[t].name).join('・')}　速度 ${U.speed}｜重量 ${U.mass}<br>`;
     if (B) h += `<span class="k">首領：</span>${B.rules.map(r => D.enemies.ruleText[r]).join('、')}${B.split ? '、半血分裂' : ''}${B.zap ? '、每回合電擊' : ''}<br>`;
     if (o.weapon && D.weapons[o.weapon]) h += weaponText(o.weapon);
+    if (o.aff && o.aff.q && battle.affix) h += `<span style="color:#fb8">🦶 沉重腳步：下一發力道上限 ${pct(1 - battle.affix.hitSlow)}</span><br>`; // ---- 敵人詞綴 ----
     $('uxBinfo').innerHTML = h; $('uxBinfo').classList.remove('hidden'); binfoT = 4;
   }
   function hideBInfo() { $('uxBinfo').classList.add('hidden'); binfoT = 0; }
@@ -423,6 +426,7 @@
     const env = run.env && mode !== 'duel' ? '🌐' + RD.envs[run.env].name : '';
     $('bhud').innerHTML = `位面${run.plane}｜${run.enemy.name}${b.rules.length ? '｜' + b.rules.map(r => D.enemies.ruleText[r]).join('、') : ''}　${env}<br>` +
       `${b.round > b.maxRounds ? `<b style="color:#ffb74d">加時</b>` : `第 ${b.round}/${b.maxRounds} 輪`}　<span style="color:#5cf">我方 ${hp(0)}（${b.round > b.maxRounds ? '剩 ' + b.shots[0] + ' 發' : '未動 ' + b.shots[0]}）</span>　<span style="color:#f77">敵方 ${hp(1)}（${b.round > b.maxRounds ? '剩 ' + b.shots[1] + ' 發' : '未動 ' + b.shots[1]}）</span>`;
+    if (b.affix && mode !== 'duel') $('bhud').innerHTML += `<br><span style="color:#f8a;font-size:12px">☠ ${b.affix.ids.map(id => D.enemies.affixes[id].name).join('・')}</span>`; // ---- 敵人詞綴 ----
     ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！第 ${Math.min(b.round, b.maxRounds)}/${b.maxRounds} 輪` : b.phase === 'over' ? (b.winner === 0 ? '全滅敵人！' : '沒殺光…') : b.phase === 'aim' ? (b.turn === 0 ? '你的回合：按住棋子往後拉（殺光才算贏）' : '敵方瞄準中…') : '';
     ui.msgCol = b.turn === 0 ? '#ffe066' : '#f99';
   }
@@ -521,6 +525,26 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) { save(); pause(); } });
   addEventListener('pagehide', save);
 
+  // ---- 敵人詞綴 ----
+  const affixCard = id => { const X = D.enemies.affixes[id]; return `<div class="choice"><span class="tier" style="color:${X.tier === 'hard' ? '#ff6b6b' : '#ffb74d'}">${X.tier === 'hard' ? '兇猛' : '溫和'}</span><b>☠ ${X.name}</b><br>${X.desc}</div>`; };
+  function affixChips() {
+    if (!run || !run.affixes || !run.affixes.length) return '';
+    return '<br>' + run.affixes.map(id => `<span class="st-chip" style="border-color:#f77;color:#f99" data-af="${id}">☠${D.enemies.affixes[id].name}</span>`).join('');
+  }
+  // 本局詞綴卡片：intro=第一次進商店（確定後不再自動跳）；也可點詞綴 chip 查看
+  function affixModal(intro) {
+    const canRe = run.affixRerolls > 0 && run.stage === 0;
+    const btns = [];
+    if (canRe) btns.push({ t: `🎲 重骰（剩 ${run.affixRerolls} 次）`, f: () => { RUN.rerollAffixes(run); save(); renderShop(); affixModal(intro); } });
+    btns.push({ t: intro ? '確定' : '關閉', cls: 'go', f: () => { if (intro) { run.affixSeen = true; save(); flow(); } } });
+    modal(`<h2>☠ 本局敵人詞綴</h2><div class="lbl">難度 ${RD.ascensions[run.asc || 0].name}・整局生效${canRe ? '・第一場戰鬥前可免費重骰 1 次' : ''}</div><div class="choices">${run.affixes.map(affixCard).join('')}</div>`, btns);
+  }
+  function affixIntro() {
+    if (!run || run.affixSeen !== false || !run.affixes || !run.affixes.length) return false;
+    show('shop'); renderShop(); affixModal(true); return true;
+  }
+  $('enemyInfo').addEventListener('click', e => { if (e.target.closest('[data-af]') && run) affixModal(false); });
+
   // ---------- 圖鑑 ----------
   const CODEX = {
     角色: () => Object.keys(D.units).sort((a, b) => D.units[a].cost - D.units[b].cost).map(id => `<div class="choice">${unitInfo({ id, star: 1, items: [], weapon: null })}</div>`).join(''),
@@ -531,6 +555,7 @@
     環境: () => '<div class="lbl">投資環境：開局選一次，整局都生效</div>' + Object.values(RD.envs).map(E => `<div class="choice"><b>🌐${E.name}</b><br>${E.desc}</div>`).join('') + '<h3>開局詞綴</h3>' + Object.values(RD.openers).map(E => `<div class="choice"><b>${E.name}</b><br>${E.desc}</div>`).join(''),
     節點: () => Object.values(RD.nodeInfo).map(N => `<div class="choice"><b>${N.icon} ${N.name}</b><br>${N.desc}</div>`).join('') + '<div class="lbl">投資策略：開局 1 次、位面 1、2 首領後各 1 次，部分策略會延後再給（期貨）。黃金讓敵人 +6%、稜彩 +20% 且多 1 隻。</div>' +
       '<h3>補給內容</h3>' + Object.values(RD.supplies).map(E => `<div class="choice"><b>${E.name}</b>：${E.desc}</div>`).join(''),
+    詞綴: () => '<div class="lbl">敵人詞綴：A2 起開局依難度抽（A2 1 個溫和、A3 1、A4 2、A5 3），整局生效，第一場戰鬥前可免費重骰 1 次</div>' + Object.keys(D.enemies.affixes).map(affixCard).join(''), // ---- 敵人詞綴 ----
     首領: () => D.enemies.bosses.map((L, i) => L.map(B => `<div class="choice"><b>位面${i + 1}：${B.name}</b><br>生命 ${B.hp}｜攻擊 ${B.atk}<br>${B.rules.map(r => D.enemies.ruleText[r]).join('、')}${B.split ? '、半血分裂' : ''}${B.ability ? '、' + ({ magnetStop: '停下吸附', freezeHit: '撞到冰凍', poisonHit: '撞到下毒', chainHit: '連鎖閃電' }[B.ability.type] || '') : ''}${B.zap ? '、每回合電擊' : ''}</div>`).join('')).join('')
   };
   CODEX.道具 = () => Object.values(CS).map(X => `<div class="choice"><b>${X.icon}${X.name}</b>${X.reusable ? '（可重複使用）' : ''}<br>${X.desc}</div>`).join('') + '<div class="lbl">取得：補給、遭遇、撲滿全破、首領、戰鬥掉落；開局送扳手（A0–A2 精密、A3 起普通）；第二位面開頭送冶金爐</div>'; // ---- 道具 ----
