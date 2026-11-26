@@ -17,7 +17,11 @@
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } };
   const clearSave = () => { try { localStorage.removeItem(KEY); } catch (e) { } };
 
-  function show(id) { screen = id; ['title', 'shop', 'battle'].forEach(s => $(s).classList.toggle('hidden', s !== id)); }
+  function show(id) { screen = id; ['title', 'shop', 'battle'].forEach(s => $(s).classList.toggle('hidden', s !== id)); bgm(); }
+  // 背景音樂跟著畫面：首領戰看場上有沒有首領
+  const bgm = () => FA.sound.music(screen === 'battle' ? (battle && battle.bodies.some(o => o.boss) ? 'boss' : 'battle') : screen);
+  const unitN = () => ['front', 'back', 'bench'].reduce((a, z) => a + run[z].filter(Boolean).length, 0);
+  const buySnd = n0 => FA.sound.play(unitN() < n0 + 1 ? 'starup' : 'buy'); // 買完隻數沒 +1＝合成升星
   function modal(html, btns) {
     $('modalBox').innerHTML = html + btns.map((b, i) => `<button data-m="${i}" class="${b.cls || ''}">${b.t}</button>`).join('');
     $('modal').classList.remove('hidden');
@@ -114,6 +118,7 @@
         if (e.target.dataset.back) { run.pending = null; $('modal').classList.add('hidden'); save(); renderShop(); return; }
         const t = e.target.closest('[data-c]'); if (!t) return;
         $('modal').classList.add('hidden');
+        FA.sound.play(p.type === 'strategy' ? 'strategy' : 'click');
         const r = RUN.choose(run, +t.dataset.c); save();
         if (r === 'battle') return startFight();
         flow();
@@ -204,8 +209,8 @@
   $('shop').addEventListener('click', e => {
     const t = e.target.closest('[data-z],[data-it],[data-wp],[data-b],[data-tr],[data-fa],[data-st],[data-cs],#bSell'); if (!t) return;
     if (consClick(t)) return; // ---- 道具 ----
-    if (t.id === 'bSell') { RUN.sell(run, sel); sel = null; }
-    else if (t.dataset.b != null) { if (!RUN.buy(run, +t.dataset.b)) return flash('金幣或空位不足'); FA.sound.play('coin'); }
+    if (t.id === 'bSell') { RUN.sell(run, sel); sel = null; FA.sound.play('sell'); }
+    else if (t.dataset.b != null) { const n0 = unitN(); if (!RUN.buy(run, +t.dataset.b)) return flash('金幣或空位不足'); buySnd(n0); }
     else if (t.dataset.it != null) { const i = +t.dataset.it; sel = sel && sel.item === i ? null : { item: i }; }
     else if (t.dataset.wp != null) { const i = +t.dataset.wp; sel = sel && sel.wp === i ? null : { wp: i }; }
     else if (t.dataset.tr) sel = { trait: t.dataset.tr };
@@ -283,14 +288,14 @@
     if (src.cs != null) { if (tg.loc || tg.item != null) applyCons(src.cs, tg.loc || { item: tg.item }); return; } // ---- 道具 ----
     if (src.buy != null) {
       if (!tg.loc) return;
-      const uid = run.uid;
+      const uid = run.uid, n0 = unitN();
       if (!RUN.buy(run, src.buy)) { renderShop(); return flash('金幣或空位不足'); }
-      FA.sound.play('coin');
+      buySnd(n0);
       let from = null; ['front', 'back', 'bench'].forEach(z => run[z].forEach((u, i) => { if (u && u.uid === uid) from = { zone: z, i }; }));
       if (from && !(from.zone === tg.loc.zone && from.i === tg.loc.i)) RUN.move(run, from, tg.loc);
       renderShop(); save(); if (!from) flash('升星！'); return;
     }
-    if (tg.sell) { RUN.sell(run, src); FA.sound.play('coin'); }
+    if (tg.sell) { RUN.sell(run, src); FA.sound.play('sell'); }
     else if (!(src.zone === tg.loc.zone && src.i === tg.loc.i) && !RUN.move(run, src, tg.loc)) { renderShop(); return flash('該格尚未解鎖'); }
     renderShop(); save();
   }
@@ -302,7 +307,7 @@
     const prog = `<span class="k">升星：</span>1星 ${c[0]}/3　2星 ${c[1]}/3${c[2] ? `　3星 ×${c[2]}` : ''}`;
     const tr = D.units[id].traits.map(t => { const T = D.traits[t]; return `<span class="k">${T.name}：</span>` + T.tiers.map(x => `${x.n}隻 ${modsText(x.mods)}${x.lottery ? '（🎰抽獎）' : ''}`).join('；'); }).join('<br>') +
       (D.units[id].faction ? '<br>' + facInfo(D.units[id].faction) : '');
-    const btns = shopCard ? [{ t: `購買 ${RUN.unitCost(run, id)}💰`, cls: 'go', f: () => { if (!RUN.buy(run, src.buy)) flash('金幣或空位不足'); else FA.sound.play('coin'); renderShop(); save(); } }, { t: '關閉' }]
+    const btns = shopCard ? [{ t: `購買 ${RUN.unitCost(run, id)}💰`, cls: 'go', f: () => { const n0 = unitN(); if (!RUN.buy(run, src.buy)) flash('金幣或空位不足'); else buySnd(n0); renderShop(); save(); } }, { t: '關閉' }]
       : [{ t: `賣出 +${RUN.sellPrice(u, run)}`, f: () => { RUN.sell(run, src); renderShop(); save(); } }, { t: '關閉', cls: 'go' }];
     modal(`<div class="ux-detail">${unitInfo(u)}${D.units[id].role !== 'back' ? `<span class="lbl">大招能量戰鬥中累積：${ultCharge}</span><br>` : ''}${prog}<br>${tr}</div>`, btns);
   }
@@ -359,9 +364,9 @@
       `<span class="tier" style="color:${cc}">${U.cost} 費</span><b>${U.name}</b>${c[0] || c[1] ? `　<span class="lbl">已有 ${c[0]}${c[1] ? '＋★★' + c[1] : ''}</span>` : ''}<br>${U.traits.map(t => D.traits[t].name).join('・')}　${{ front: '前台', back: '後台', both: '兩用' }[U.role]}<br>帶：${itemText(o.it)}</div></div>`;
   }
   function carrierBtn(p) { const c = RUN.carrierRerollCost(); return p.rerolls > 0 ? `<button data-reroll="1" ${run.gold < c ? 'disabled' : ''}>重骰 ${c}💰（剩 ${p.rerolls} 次，現有 ${run.gold}）</button>` : ''; }
-  $('bReroll').onclick = () => { RUN.reroll(run); renderShop(); save(); };
+  $('bReroll').onclick = () => { if (RUN.reroll(run)) FA.sound.play('reroll'); renderShop(); save(); };
   $('bLock').onclick = () => { run.locked = !run.locked; renderShop(); save(); };
-  $('bXp').onclick = () => { RUN.buyXp(run); renderShop(); save(); };
+  $('bXp').onclick = () => { const lv = run.level; if (RUN.buyXp(run)) FA.sound.play(run.level > lv ? 'starup' : 'coin'); renderShop(); save(); };
   $('bFight').onclick = () => {
     if (!run.front.slice(0, RUN.lv(run).front).some(Boolean)) return flash('前台至少要放 1 隻');
     sel = null; RUN.advance(run); save(); flow();
@@ -388,7 +393,7 @@
     const b = RUN.startBattle(run); if (!b) { run.node = null; show('shop'); renderShop(); return flash('前台至少要放 1 隻'); }
     battle = b; bst = newStats(); V.reset(); ai = null; ui.aim = null; hideBInfo(); show('battle'); V.resize(); save();
     setTimeout(tutBattle, 60);
-    if (run.enemy.boss) V.banner = { txt: '首領：' + run.enemy.name, life: 1.6 };
+    if (run.enemy.boss) { V.banner = { txt: '首領：' + run.enemy.name, life: 1.6 }; FA.sound.play('boss'); }
     else if (run.enemy.reward) V.banner = { txt: '次元撲滿會逃跑！每掉 1/4 血 +' + (RD.piggy.goldPerQuarter || 1) + ' 金', life: 1.6 };
     else if (run.node === 'encounter') V.banner = { txt: '遭遇・' + RD.encounter[run.encLv].name, life: 1.2 };
   }
@@ -463,6 +468,7 @@
     const uh = ui.ultArmed ? '⚡ 大招待命<small>彈發光的棋子・再按取消</small>' : '⚡ 大招<small>能量滿的棋子會發光</small>';
     if (bu.innerHTML !== uh) bu.innerHTML = uh;
     ui.msgCol = b.turn === 0 ? '#ffe066' : '#f99';
+    FA.sound.edge('turn', b.phase === 'aim' && b.turn === 0 && !tutOn && !paused);
   }
 
   // 動數條：我方藍、敵方紅（剩餘/總數）＋第幾輪、本輪我方還沒動幾隻
@@ -495,7 +501,7 @@
     if (battle.phase !== 'over') return;
     const b = battle;
     setTimeout(() => {
-      FA.sound.play(b.winner === 0 ? 'win' : 'lose'); hideBInfo();
+      FA.sound.music(b.winner === 0 ? 'win' : 'lose'); hideBInfo(); // 勝負短音效由 render.js 的 over 事件播
       const stats = movesRes(b) + statsHTML(); bst = null;
       if (mode === 'duel') { battle = null; mode = 'run'; save(); modal(`<h2>${b.winner === 0 ? '🎉 你贏了' : '💥 你輸了'}</h2>對手：${duelName}<div class="lbl">${endReason(b)}</div>${stats}`, [{ t: '回商店', cls: 'go', f: () => { show('shop'); renderShop(); } }]); return tutResult(); }
       const res = RUN.endBattle(run, b); battle = null; save();
@@ -578,7 +584,7 @@
   function pause() {
     if (screen !== 'battle' || paused) return;
     paused = true; ui.aim = null; drag = null; save();
-    modal('<h2>⏸ 暫停</h2>', [{ t: '繼續', cls: 'go', f: () => { paused = false; last = performance.now(); } }, { t: `音效：${FA.sound.on ? '開' : '關'}`, f: () => { FA.sound.toggle(); setBtns(); paused = false; pause(); } },
+    modal('<h2>⏸ 暫停</h2>', [{ t: '繼續', cls: 'go', f: () => { paused = false; last = performance.now(); } }, { t: `音效：${FA.sound.on ? '開' : '關'}`, f: () => { FA.sound.toggle(); setBtns(); paused = false; pause(); } }, { t: `音樂：${FA.sound.musicOn ? '開' : '關'}`, f: () => { FA.sound.toggleMusic(); setBtns(); paused = false; pause(); } },
       { t: `震動：${FA.settings.vibrate ? '開' : '關'}`, f: () => { toggleVib(); paused = false; pause(); } }, { t: `播放速度：${FA.settings.speed > 1 ? '2x' : '1x'}`, f: () => { $('uxSpeed').click(); paused = false; pause(); } },
       { t: '回標題（進度已存）', f: () => { paused = false; toTitle(); } }]);
   }
@@ -715,9 +721,10 @@
   // ---------- 標題 ----------
   function toTitle() { battle = null; $('modal').classList.add('hidden'); show('title'); $('btnCont').classList.toggle('hidden', !load()); }
   $('btnCodex').onclick = () => codex();
-  const setBtns = () => { $('btnSound').textContent = FA.sound.on ? '🔊 音效開' : '🔇 音效關'; $('uxVib').textContent = FA.settings.vibrate ? '📳 震動開' : '📴 震動關'; };
+  const setBtns = () => { $('btnSound').textContent = FA.sound.on ? '🔊 音效開' : '🔇 音效關'; $('btnMusic').textContent = FA.sound.musicOn ? '🎵 音樂開' : '🎵 音樂關'; $('btnMusic').classList.toggle('off', !FA.sound.musicOn); $('uxVib').textContent = FA.settings.vibrate ? '📳 震動開' : '📴 震動關'; };
   const toggleVib = () => { FA.settings.vibrate = !FA.settings.vibrate; saveSet(); setBtns(); vib(30); };
   $('btnSound').onclick = () => { FA.sound.init(); FA.sound.toggle(); setBtns(); };
+  $('btnMusic').onclick = () => { FA.sound.init(); FA.sound.toggleMusic(); setBtns(); };
   $('uxVib').onclick = toggleVib;
   $('uxTutBtn').onclick = () => { tutSeen = {}; saveTut(); tutor('intro', TUT.intro.concat([{ t: '教學已重置：之後進入商店、戰鬥、結算時會再提示一次。' }])); };
   setBtns();

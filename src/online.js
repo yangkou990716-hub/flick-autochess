@@ -68,6 +68,7 @@
     if (id !== 'title') ['shop', 'battle'].forEach(s => $(s).classList.add('hidden'));
     if (id === 'netb') { V.init($('netcv')); V.reset(); V.resize(); startLoop(); }
     else if (loopOn) { loopOn = false; V.init($('cv')); V.resize(); }
+    FA.sound && FA.sound.music(id === 'netb' ? 'battle' : 'title');
   }
 
   // 目前單人局的隊伍（優先用記憶體裡的局，沒有就讀存檔）
@@ -393,12 +394,13 @@
     ui.msg = b.phase === 'over' ? (b.winner === mySeat ? '勝利！' : '落敗…') : b.phase !== 'aim' ? '' :
       b.turn === mySeat ? (writing || mv(applied) ? '傳送中…' : '輪到你：按住棋子往後拉' + (TURN_LIMIT - turnT < 10 ? `（${Math.max(0, Math.ceil(TURN_LIMIT - turnT))} 秒後自動出手）` : '')) : opOff ? `${bv.names[b.turn]} 離線，AI 代打中…` : `輪到 ${bv.names[b.turn]}…`;
     ui.msgCol = b.turn === mySeat ? '#ffe066' : '#f99';
+    FA.sound && FA.sound.edge('turn', b.phase === 'aim' && b.turn === mySeat);
     const ready = myTurn() && BT.avail(b, mySeat).some(o => o.energy >= C.ult.max);
     if (!ready) ui.ultArmed = false;
     $('netUlt').classList.toggle('hidden', !ready); $('netUlt').classList.toggle('on', !!ui.ultArmed);
     $('netUlt').textContent = ui.ultArmed ? '⚡ 大招就緒（彈發光的棋子）' : '⚡ 大招';
   }
-  function showOver() { if (!B || B.phase !== 'over') return; overShown = true; renderOver(); }
+  function showOver() { if (!B || B.phase !== 'over') return; overShown = true; if (FA.sound && mySeat >= 0) FA.sound.music(B.winner === mySeat ? 'win' : 'lose'); renderOver(); }
   function renderOver() {
     if (!B || B.phase !== 'over' || !R.battle) return;
     const bv = R.battle, win = B.winner === mySeat, ps = R.battle.seats.map(id => R.players[id]);

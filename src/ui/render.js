@@ -2,7 +2,7 @@
 // 角色外觀在 src/ui/sprites.js（FA.sprites），沒載入時退回簡易圓形
 (function (g) {
   const FA = g.FA = g.FA || {};
-  const SND = n => FA.sound && FA.sound.play(n);
+  const SND = (n, k) => n && FA.sound && FA.sound.play(n, k);
   const TAU = Math.PI * 2, FONT = '-apple-system,"PingFang TC","Noto Sans TC",sans-serif';
   const V = FA.view = { trails: {}, bolts: [], parts: [], texts: [], rings: [], flashes: [], decals: [], walls: [], fx: [], ripples: [], shake: 0, hitstop: 0, banner: null, cutin: null, edge: null, shrinkT: 0, chainShow: 0, chainN: 0, chainPulse: 0, screenFlash: 0 };
   let cv, ctx, W, H, dpr, S, CX, CY, bgCache = null, lastB = null, causA = null, pillarCache = {};
@@ -153,7 +153,7 @@
   // ---- 消化戰鬥事件 ----
   V.consume = b => {
     for (const e of b.events) {
-      if (e.t === 'dmg') { SND(e.kind === 'hit' ? 'hit' : e.kind === 'poison' ? 'poison' : 'bump');
+      if (e.t === 'dmg') { SND(e.kind === 'hit' ? (e.amt >= 45 ? 'hit' : 'hitS') : e.kind === 'poison' ? 'poison' : e.kind === 'spike' ? null : 'bump');
         const tier = dmgText(e), col = e.team === 0 ? '#7cf' : '#f87';
         burst(e.x, e.y, col, [4, 7, 12, 18][tier], [130, 170, 240, 300][tier]);
         if (e.kind === 'hit') { V.flashes.push({ x: e.x, y: e.y, r: 14 + tier * 8, life: 0.12, max: 0.12, col: '#ffffff' }); sparks(e.x, e.y, '#fff2b0', 3 + tier * 3, 260 + tier * 60); }
@@ -179,17 +179,18 @@
       else if (e.t === 'poison') { SND('poison'); burst(e.x, e.y, '#9ccc65', 8, 110, { k: 'bubble', life: 0.8, max: 0.8, drag: 0.92 }); }
       else if (e.t === 'bolt') { SND('zap'); V.bolts.push({ x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, life: 0.28, seed: Math.random() * 1000 }); sparks(e.x2, e.y2, '#fff59d', 6, 260); }
       else if (e.t === 'heal') { SND('heal'); V.texts.push({ x: e.x, y: e.y - 22, txt: '+治療', life: 0.9, max: 0.9, col: '#7f7', size: 14, tier: 1, vy: 35 }); burst(e.x, e.y, '#7f7', 10, 120, { k: 'plus', vy: -60, drag: 0.94 }); }
-      else if (e.t === 'revive') { SND('heal'); V.banner = { txt: '復活！', life: 1.1, max: 1.1, col: '#fff3c4' }; burst(e.x, e.y, '#fff3c4', 30, 300, { add: true }); ring(e.x, e.y, 90, '#fff3c4', 0.6); }
-      else if (e.t === 'ult') { SND('combo');
+      else if (e.t === 'revive') { SND('revive'); V.banner = { txt: '復活！', life: 1.1, max: 1.1, col: '#fff3c4' }; burst(e.x, e.y, '#fff3c4', 30, 300, { add: true }); ring(e.x, e.y, 90, '#fff3c4', 0.6); }
+      else if (e.t === 'ult') {
         const mv = b.bodies[b.mover], o = mv && mv.ultOn && mv.team === e.team ? mv : b.bodies.find(q => q.ultOn && q.team === e.team), type = o ? o.ultOn : 'nova';
+        SND('ult_' + type);
         V.cutin = { name: e.name, team: e.team, type, x: e.x, y: e.y, life: 1.15, max: 1.15 };
         V.shake = Math.max(V.shake, 10); V.hitstop = Math.max(V.hitstop, 0.5); vib(35); ultBurst(b, o || { team: e.team }, type, e.x, e.y);
       }
       else if (e.t === 'ring') { sparks(e.x, e.y, '#7fd3ff', 10, 320); V.texts.push({ x: e.x, y: e.y - 22, txt: '加速！攻擊+20%', life: 0.8, max: 0.8, col: '#7fd3ff', size: 13, tier: 1, vy: 35 }); }
-      else if (e.t === 'movecost') { const own = e.team === 0, col = own ? '#ff5a5a' : '#5dff9a';
+      else if (e.t === 'movecost') { const own = e.team === 0, col = own ? '#ff5a5a' : '#5dff9a'; SND(own ? 'moveLose' : 'moveGain');
         V.texts.push({ x: e.x, y: e.y - 34, txt: `💀 動數 -${e.n}`, life: 1.7, max: 1.7, col, size: 24, tier: 2, vy: 22, pill: col });
         ring(e.x, e.y, 70, col, 0.5, { w: 5, nofill: true }); V.edge = { col: own ? '255,60,60' : '80,255,150', life: 0.7, max: 0.7 }; V.shake = Math.max(V.shake, 8); }
-      else if (e.t === 'respawn') { const o = b.bodies.find(q => q.alive && q.sx === e.x && q.sy === e.y);
+      else if (e.t === 'respawn') { SND('revive'); const o = b.bodies.find(q => q.alive && q.sx === e.x && q.sy === e.y);
         if (o) { spawnIn[o.i] = 0.7; delete dead[o.i]; hpLag[o.i] = 1; V.trails[o.i] = []; delete ghosts[o.i]; }
         fx({ k: 'beam', x: e.x, y: e.y, r: (o ? o.r : 26) * 1.1, life: 1, max: 1, rgb: e.team === 0 ? '90,210,255' : '255,110,110' });
         ring(e.x, e.y, 60, e.team === 0 ? '#7cf' : '#f87', 0.5, { w: 4, dl: 0.25 }); sparks(e.x, e.y, '#fff', 10, 260); ripple(e.x, e.y, 50, 0.9, 0.7);
@@ -198,14 +199,14 @@
       else if (e.t === 'death') { SND('death'); burst(e.x, e.y, e.color, 26, 380); sparks(e.x, e.y, '#fff', 12, 480); ring(e.x, e.y, 80, e.team === 0 ? '#7cf' : '#f87', 0.45, { w: 5 }); V.flashes.push({ x: e.x, y: e.y, r: 50, life: 0.15, max: 0.15, col: '#ffffff' }); V.hitstop = 0.1; V.shake = 14; vib(30); }
       else if (e.t === 'combo') { SND('combo'); V.texts.push({ x: e.x, y: e.y - 34, txt: '聯動！' + e.name, life: 1.5, max: 1.5, col: '#ffe066', size: 22, tier: 2, vy: 25 }); ring(e.x, e.y, 120, '#ffe066', 0.5, { w: 5 }); sparks(e.x, e.y, '#ffe066', 20, 420); V.hitstop = 0.12; V.shake = 12; V.screenFlash = 0.15; }
       else if (e.t === 'shieldbreak') { ring(e.x, e.y, 40, '#8ef', 0.3); burst(e.x, e.y, '#bff', 10, 220, { k: 'shard' }); }
-      else if (e.t === 'wall') { SND('wall');
+      else if (e.t === 'wall') { SND(e.kind === 'ring' ? 'ring' : e.kind === 'spike' ? 'spike' : 'wall');
         if (e.kind === 'ring' || e.kind === 'spike') { const k = nearPillar(b, e.x, e.y); if (k >= 0) pHit[k] = 0.6; if (e.kind === 'spike') { sparks(e.x, e.y, '#ff6a7a', 9, 300); ring(e.x, e.y, 34, '#ff3d5a', 0.3, { w: 3, nofill: true }); } else ripple(e.x, e.y, 40, 0.6, 0.7); }
         else { sparks(e.x, e.y, '#e0dcff', 5, 200); V.walls.push({ x: e.x, y: e.y, life: 0.4, max: 0.4 }); if (V.walls.length > 12) V.walls.shift(); ripple(e.x, e.y, 30, 0.5, 0.5); }
         const mv = b.bodies[b.mover]; if (mv && mv.ultOn === 'ricochet') { sparks(e.x, e.y, '#ff8ae6', 12, 420); ring(e.x, e.y, 50, '#ff4dd2', 0.3, { w: 4, nofill: true }); textPush(e.x, e.y - 16, '反彈 ×' + (mv.wallHits || 1), '#ff8ae6', 15 + Math.min(10, mv.wallHits || 1), 0.7, { tier: 2 }); } }
-      else if (e.t === 'bump') { if (e.s > 150) { sparks(e.x, e.y, '#fff', Math.min(10, e.s / 70 | 0), 120 + e.s * 0.4); ring(e.x, e.y, 18 + Math.min(40, e.s / 15), '#ffffff', 0.18, { w: 2, nofill: true }); } if (e.s > 300) V.shake = Math.max(V.shake, 4); }
+      else if (e.t === 'bump') { SND('imp', e.s); if (e.s > 150) { sparks(e.x, e.y, '#fff', Math.min(10, e.s / 70 | 0), 120 + e.s * 0.4); ring(e.x, e.y, 18 + Math.min(40, e.s / 15), '#ffffff', 0.18, { w: 2, nofill: true }); } if (e.s > 300) V.shake = Math.max(V.shake, 4); }
       else if (e.t === 'zap') { SND('zap'); ring(e.x, e.y, 40, '#ffe066', 0.3); burst(e.x, e.y, '#ffe066', 10, 220, { add: true }); V.bolts.push({ x1: e.x, y1: e.y - 160, x2: e.x, y2: e.y, life: 0.22, seed: Math.random() * 1000 }); }
-      else if (e.t === 'split' || e.t === 'stick' || e.t === 'pierce') V.texts.push({ x: e.x, y: e.y - 22, txt: { split: '分裂！', stick: '黏住！', pierce: '穿透！' }[e.t], life: 0.8, max: 0.8, col: '#cff', size: 14, tier: 1, vy: 35 });
-      else if (e.t === 'bossSplit') { V.banner = { txt: '首領分裂了！', life: 1.4, max: 1.4, col: '#ff8fb0' }; V.shake = 16; burst(e.x, e.y, '#c9a', 40, 400); ring(e.x, e.y, 140, '#ff4d6d', 0.5, { w: 6 }); }
+      else if (e.t === 'split' || e.t === 'stick' || e.t === 'pierce') { if (e.t === 'pierce') SND('imp', 400); V.texts.push({ x: e.x, y: e.y - 22, txt: { split: '分裂！', stick: '黏住！', pierce: '穿透！' }[e.t], life: 0.8, max: 0.8, col: '#cff', size: 14, tier: 1, vy: 35 }); }
+      else if (e.t === 'bossSplit') { SND('boss'); V.banner = { txt: '首領分裂了！', life: 1.4, max: 1.4, col: '#ff8fb0' }; V.shake = 16; burst(e.x, e.y, '#c9a', 40, 400); ring(e.x, e.y, 140, '#ff4d6d', 0.5, { w: 6 }); }
       else if (e.t === 'expose') { V.texts.push({ x: e.x, y: e.y - 22, txt: '破甲！', life: 0.8, max: 0.8, col: '#ffb74d', size: 14, tier: 1, vy: 35 }); sparks(e.x, e.y, '#ffb74d', 8, 300); }
       else if (e.t === 'boost' && b.bodies[b.mover] && b.bodies[b.mover].ultOn === 'overdrive') { SND('zap'); textPush(e.x, e.y - 24, '超載衝刺！', '#ff6a5a', 17, 0.9, { tier: 2 }); for (let k = 0; k < 4; k++) { const a = Math.random() * TAU; V.bolts.push({ x1: e.x, y1: e.y, x2: e.x + Math.cos(a) * 80, y2: e.y + Math.sin(a) * 80, life: 0.3, seed: Math.random() * 1000 }); } ring(e.x, e.y, 80, '#ff3b3b', 0.35, { w: 4 }); V.shake = Math.max(V.shake, 8); }
       else if (e.t === 'boost') { V.texts.push({ x: e.x, y: e.y - 22, txt: '加速！', life: 0.8, max: 0.8, col: '#cff', size: 14, tier: 1, vy: 35 }); sparks(e.x, e.y, '#cff', 8, 300); }
