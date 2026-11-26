@@ -224,7 +224,7 @@
       else if (e.t === 'over') SND(e.winner === 0 ? 'win' : 'lose');
       else if (e.t === 'fullpower') { SND('full'); V.texts.push({ x: e.x, y: e.y - 42, txt: '全力！', life: 1, max: 1, col: '#ff5', size: 24, tier: 2, vy: 30 }); ring(e.x, e.y, 70, '#ffe066', 0.35, { w: 5 }); sparks(e.x, e.y, '#ffe066', 14, 380); V.shake = Math.max(V.shake, 6); }
       else if (e.t === 'shrink') { V.banner = { txt: '⚠ 場地縮小！', life: 1.2, max: 1.2, col: '#ff8a8a' }; V.shrinkT = 1.4; V.shake = Math.max(V.shake, 6); }
-      else if (e.t === 'round') V.banner = { txt: e.extra ? '加時！' : `第 ${e.n} 輪`, life: 1.0, max: 1.0 };
+      else if (e.t === 'round') V.banner = { txt: e.extra ? '加時！' : `第 ${e.n} 輪${e.start ? (e.team === 0 ? '・我方先手' : '・敵方先手') : ''}`, life: e.start ? 1.4 : 1.0, max: e.start ? 1.4 : 1.0 };
       else if (e.t === 'skip') V.banner = { txt: (e.team === 0 ? '我方' : '敵方') + '全員暈眩，跳過', life: 1.2, max: 1.2 };
     }
     b.events = [];

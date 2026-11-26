@@ -122,7 +122,7 @@
     const rs = { s: (o.seed | 0) ^ 0x5bd1e995 }, lay = cfg.pillarLayouts[rng.int(rs, cfg.pillarLayouts.length)];
     const pillars = lay.map(([x, y, r, kind]) => ({ x: x * hw, y: y * hh, r: r * hw, kind }));
     const U0 = cfg.ult && cfg.ult.start || 0; if (U0) bodies.forEach(b => { if (!b.temp) b.energy = U0; }); // 大招開場能量
-    const bt = { R, R0: R, hw, hh, hw0: hw, hh0: hh, pillars, rules: o.rules || [], env, bodies, sides: [p.side, e.side], turn: 0, shots: [0, 0], round: 1, maxRounds: 999, bonus: [0, 0],
+    const bt = { R, R0: R, hw, hh, hw0: hw, hh0: hh, pillars, rules: o.rules || [], env, bodies, sides: [p.side, e.side], first: o.first != null ? o.first : (e.side.noAct ? 0 : rng.int({ s: (o.seed | 0) ^ 0x2545f491 }, 2)), turn: 0, shots: [0, 0], round: 1, maxRounds: 999, bonus: [0, 0],
       moves: [M + p.side.shotsAdd * 2, e.side.noAct ? 0 : M + e.side.shotsAdd * 2], movesMax: [0, 0], deaths: [0, 0],
       phase: 'aim', winner: null, rng: { s: o.seed | 0 }, events: [], simT: 0, mover: -1, chain: 0, hits: 0, pending: [], comboUsed: {},
       shotCount: 0, zones: [], ghost: {}, echoUsed: false, gold: 0, stopDone: false };
@@ -132,7 +132,7 @@
     if (bt.rules.includes('swamp')) [[-0.55, 0.15], [0.55, 0.15], [0, -0.02]].forEach(([x, y]) => bt.zones.push({ kind: 'pool', x: x * hw, y: y * hh, r: 50, dmg: 0, team: 1, left: 999, hit: {}, pDmg: 18, turns: 2 }));
     [0, 1].forEach(t => { for (let k = 0; k < bt.sides[t].openFreeze; k++) { const f = alive(bt, 1 - t); if (f.length) { const x = rng.pick(bt.rng, f); x.stunned = true; bt.events.push({ t: 'freeze', x: x.x, y: x.y }); } } });
     bondCreate(bt);
-    startTurn(bt);
+    bt.turn = bt.first; bt.events.push({ t: 'round', n: 1, team: bt.first, start: true }); startTurn(bt);
     return bt;
   }
 
@@ -199,11 +199,12 @@
   function endRound(b) {
     b.bodies.forEach(o => { if (o.stunned && !o.acted) o.stunned = false; o.acted = false; });
     b.round++;
-    b.events.push({ t: 'round', n: b.round, extra: b.round > b.maxRounds });
+    b.events.push({ t: 'round', n: b.round, extra: b.round > b.maxRounds, team: b.first || 0 });
   }
   function nextTurn(b, last) {
     for (let g = 0; g < 4; g++) {
-      const order = last == null ? [0, 1] : [1 - last, last];
+      const f = b.first || 0; // 每場隨機先手（create 時依種子決定），每輪都由先手方先動
+      const order = last == null ? [f, 1 - f] : [1 - last, last];
       const t = order.find(k => avail(b, k).length);
       if (t != null) { b.turn = t; return startTurn(b); }
       if (b.round <= b.maxRounds) { endRound(b); last = null; continue; }

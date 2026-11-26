@@ -32,7 +32,7 @@ const diff = { aimNoise: 0.06, candidates: +process.env.CAND || 10 }; // CAND=40
 // ---- 敵人詞綴 ----（第 3 參數，套在 B 隊）
 const AFF = process.argv[4] ? FA.run.affixExt(process.argv[4].split(','), { plane: 1 }) : null;
 if (process.argv[4]) console.log('敵人詞綴（B 隊）：' + (AFF ? AFF.ids.map(id => D.enemies.affixes[id].name).join('、') : '無有效詞綴'));
-const t0 = Date.now(); let wipes = 0, shotsT = 0, ultT = 0, unitsT = 0, deathsT = 0, simT = 0, longest = 0, thinkN = 0, thinks = [];
+const t0 = Date.now(); let aWin = 0, wipes = 0, shotsT = 0, ultT = 0, unitsT = 0, deathsT = 0, simT = 0, longest = 0, thinkN = 0, thinks = [];
 const TH = +process.env.THINK || 0; // THINK=1：量 AI 思考時間
 for (let n = 0; n < N; n++) {
   const A = team(), B = team();
@@ -49,7 +49,7 @@ for (let n = 0; n < N; n++) {
     FA.battle.runShot(b); simT += b.simT; FA.battle.endShot(b); b.events = [];
   }
   longest = Math.max(longest, guard); unitsT += A.front.length + B.front.length; deathsT += b.deaths[0] + b.deaths[1];
-  if (b.phase === 'over') wipes++;
+  if (b.phase === 'over') wipes++; if (b.winner === 0) aWin++;
   [A, B].forEach((T, side) => {
     const hp = t => b.bodies.filter(o => o.team === t).reduce((s, o) => s + o.hp / o.maxHp, 0);
     const ws = b.winner === 0 ? 0 : 1;
@@ -71,4 +71,5 @@ for (const k in st) {
 }
 console.log(`\n每場平均 ${(shotsT / N).toFixed(1)} 發（最長 ${longest}）、物理 ${(simT / N).toFixed(1)} 秒、陣亡 ${(deathsT / N).toFixed(2)} 次；大招 ${(ultT / N).toFixed(2)} 次/場＝每隻 ${(ultT / unitsT).toFixed(2)} 次/場`);
 if (TH) { thinks.sort((a, b) => a - b); console.log(`AI 思考 p50 ${thinks[thinks.length >> 1].toFixed(1)}ms、p95 ${thinks[Math.floor(thinks.length * 0.95)].toFixed(1)}ms、max ${thinks[thinks.length - 1].toFixed(1)}ms`); }
+console.log(`A 方（玩家側）勝率 ${(aWin / N * 100).toFixed(1)}%`);
 console.log(`\n分出勝負 ${(wipes / N * 100).toFixed(1)}%｜${N} 場，${((Date.now() - t0) / 1000).toFixed(1)}s`);
