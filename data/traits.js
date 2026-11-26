@@ -12,6 +12,19 @@
     mech: { name: '機械', color: '#90a4ae', tiers: [{ n: 2, mods: { atkPct: 0.1, massPct: 0.1 } }, { n: 4, mods: { atkPct: 0.12, massPct: 0.2, hpPct: 0.05 } }] },
     bounce: { name: '彈跳', color: '#2ec4b6', tiers: [{ n: 2, mods: { wallAdd: 0.15 } }, { n: 4, mods: { wallAdd: 0.3, bounces: 2 } }] }
   };
+  // 大招：角色依第一個羈絆決定（units 可用 ult 欄位覆蓋）
+  FA.DATA.traitUlt = { blast: 'nova', magnet: 'vortex', wall: 'bulwark', swift: 'phase', heavy: 'quake', toxic: 'plague', bounce: 'ricochet', mech: 'overdrive' };
+  FA.DATA.ults = {
+    nova: { name: '核爆衝擊', desc: '第一次撞到敵人時引發大爆炸（1.6 倍攻擊）' },
+    vortex: { name: '黑洞漩渦', desc: '停下時把大範圍敵人吸過來並造成傷害' },
+    bulwark: { name: '鐵壁號令', desc: '全隊獲得 30% 生命護盾，本發自己重量 ×3' },
+    phase: { name: '疾影穿梭', desc: '速度 ×1.35，穿過所有敵人並造成傷害' },
+    quake: { name: '震天撼地', desc: '撞到的敵人被大力震飛並冰凍' },
+    plague: { name: '瘟疫', desc: '停下時讓周圍所有敵人中毒' },
+    ricochet: { name: '無限反彈', desc: '本發每次撞牆加成 +50%，可多疊 6 層' },
+    overdrive: { name: '超載', desc: '停下後自動高速衝向最近的敵人' },
+    heal: { name: '聖光衝刺', desc: '速度 ×1.2，碰到的隊友回復 40% 生命' }
+  };
   // 詞條顯示名稱（羈絆、裝備、武器、策略共用）
   const p = v => Math.round(v * 100) + '%', s = v => (v < 0 ? '' : '+');
   FA.DATA.modText = {

@@ -120,7 +120,7 @@
     list.forEach(c => { const s = evalShot(b, team, c[0], c[1], c[2]); if (s > bs) { bs = s; best = c; } });
     if (!best) return null;
     const noise = (FA.rng.next(r) + FA.rng.next(r) - 1) * diff.aimNoise;
-    return { idx: best[0], angle: best[1] + noise, power: best[2], score: bs };
+    return { idx: best[0], angle: best[1] + noise, power: best[2], score: bs, ult: b.bodies[best[0]].energy >= FA.DATA.config.ult.max };
   }
 
   FA.ai = { choose, evalShot, bankAngles };

@@ -36,7 +36,7 @@ for (let n = 0; n < N; n++) {
   while (b.phase !== 'over' && guard++ < 40) {
     const ch = FA.ai.choose(b, b.turn, diff, b.rng);
     if (!ch) break;
-    FA.battle.launch(b, ch.idx, ch.angle, ch.power); b.events = [];
+    FA.battle.launch(b, ch.idx, ch.angle, ch.power, ch.ult); b.events = [];
     FA.battle.runShot(b); FA.battle.endShot(b); b.events = [];
   }
   if (!FA.battle.alive(b, 0).length || !FA.battle.alive(b, 1).length) wipes++;

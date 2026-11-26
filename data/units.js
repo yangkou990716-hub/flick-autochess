@@ -83,7 +83,7 @@
     thunder: { name: '雷鳥', cost: 4, traits: ['swift', 'magnet'], role: 'front', hp: 160, atk: 29, mass: 1, r: 23, speed: 1.2, color: '#fff176',
       ability: { type: 'chainHit', n: 2, mult: 0.5, r: 220, desc: '撞到敵人時閃電連鎖附近 2 隻敵人' },
       link: { with: 'icy', combo: { type: 'freezeBlast', r: 190, name: '冰雷爆' } } },
-    angel: { name: '天使', cost: 5, traits: ['wall', 'swift'], role: 'both', hp: 230, atk: 30, mass: 1.2, r: 26, speed: 1.15, color: '#fff3e0',
+    angel: { ult: 'heal', name: '天使', cost: 5, traits: ['wall', 'swift'], role: 'both', hp: 230, atk: 30, mass: 1.2, r: 26, speed: 1.15, color: '#fff3e0',
       ability: { type: 'healTouch', pct: 0.2, desc: '碰到隊友時替他回 20% 生命' }, back: { type: 'revive', pct: 0.4 },
       link: { with: 'berserker', combo: { type: 'healAll', pct: 0.25, name: '聖光' } } },
     // ---- 機械擴充 ----

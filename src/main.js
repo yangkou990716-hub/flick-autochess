@@ -355,6 +355,7 @@
       } }, { t: '取消' }]);
   };
   $('bQuit').onclick = () => { save(); toTitle(); };
+  $('bUlt').onclick = () => { ui.ultArmed = !ui.ultArmed; };
   function startFight() {
     mode = 'run';
     const b = RUN.startBattle(run); if (!b) { run.node = null; show('shop'); renderShop(); return flash('前台至少要放 1 隻'); }
@@ -393,7 +394,7 @@
     const tp = tap; tap = null;
     const isTap = tp && Math.hypot(e.clientX - tp.x, e.clientY - tp.y) < 12 && performance.now() - tp.t < 500;
     if (drag != null) {
-      if (!isTap && ui.aim && ui.aim.power > 0.1) { FA.battle.launch(battle, ui.aim.idx, ui.aim.angle, ui.aim.power); hideBInfo(); }
+      if (!isTap && ui.aim && ui.aim.power > 0.1) { FA.battle.launch(battle, ui.aim.idx, ui.aim.angle, ui.aim.power, ui.ultArmed); ui.ultArmed = false; hideBInfo(); }
       ui.aim = null; drag = null;
     }
     if (isTap && tp.body && battle) showBInfo(tp.body);
@@ -425,9 +426,13 @@
     if (mode === 'duel') run.enemy = { name: '對戰：' + duelName };
     const env = run.env && mode !== 'duel' ? '🌐' + RD.envs[run.env].name : '';
     $('bhud').innerHTML = `位面${run.plane}｜${run.enemy.name}${b.rules.length ? '｜' + b.rules.map(r => D.enemies.ruleText[r]).join('、') : ''}　${env}<br>` +
-      `${b.round > b.maxRounds ? `<b style="color:#ffb74d">加時</b>` : `第 ${b.round}/${b.maxRounds} 輪`}　<span style="color:#5cf">我方 ${hp(0)}（${b.round > b.maxRounds ? '剩 ' + b.shots[0] + ' 發' : '未動 ' + b.shots[0]}）</span>　<span style="color:#f77">敵方 ${hp(1)}（${b.round > b.maxRounds ? '剩 ' + b.shots[1] + ' 發' : '未動 ' + b.shots[1]}）</span>`;
+      `第 ${b.round} 輪　<span style="color:#5cf">我方動數 ${Math.max(0, b.moves[0])}/${b.movesMax[0]}</span>　<span style="color:#f77">敵方動數 ${Math.max(0, b.moves[1])}/${b.movesMax[1]}</span>`;
     if (b.affix && mode !== 'duel') $('bhud').innerHTML += `<br><span style="color:#f8a;font-size:12px">☠ ${b.affix.ids.map(id => D.enemies.affixes[id].name).join('・')}</span>`; // ---- 敵人詞綴 ----
-    ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！第 ${Math.min(b.round, b.maxRounds)}/${b.maxRounds} 輪` : b.phase === 'over' ? (b.winner === 0 ? '全滅敵人！' : '沒殺光…') : b.phase === 'aim' ? (b.turn === 0 ? '你的回合：按住棋子往後拉（殺光才算贏）' : '敵方瞄準中…') : '';
+    ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！剩 ${Math.max(0, b.moves[0])} 動` : b.phase === 'over' ? (b.winner === 0 ? '勝利！' : '落敗…') : b.phase === 'aim' ? (b.turn === 0 ? '你的回合：按住棋子往後拉（對方動數歸零就贏）' : '敵方瞄準中…') : '';
+    const ready = b.phase === 'aim' && b.turn === 0 && FA.battle.avail(b, 0).some(o => o.energy >= C.ult.max);
+    $('bUlt').classList.toggle('hidden', !ready); $('bUlt').classList.toggle('on', !!ui.ultArmed);
+    $('bUlt').textContent = ui.ultArmed ? '⚡ 大招就緒（彈發光的棋子）' : '⚡ 大招';
+    if (!ready) ui.ultArmed = false;
     ui.msgCol = b.turn === 0 ? '#ffe066' : '#f99';
   }
 
@@ -439,10 +444,10 @@
       const st = mode === 'duel' ? 15 : run.stage + 1 + (run.node === 'encounter' ? RD.encounter[run.encLv].add : 0);
       ai.c = FA.ai.choose(battle, 1, D.enemies.difficulty(st), battle.rng);
       if (!ai.c) { ai = null; return; }
-      if (ai.ff) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power); ui.aim = null; ai = null; return; }
+      if (ai.ff) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power, ai.c.ult); ui.aim = null; ai = null; return; }
       ui.aim = { idx: ai.c.idx, angle: ai.c.angle, power: ai.c.power, enemy: true };
     }
-    if (ai.c && (ai.t > 1.25 || ai.ff)) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power); ui.aim = null; ai = null; }
+    if (ai.c && (ai.t > 1.25 || ai.ff)) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power, ai.c.ult); ui.aim = null; ai = null; }
   }
 
   function afterShot() {

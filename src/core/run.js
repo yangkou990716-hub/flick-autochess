@@ -335,7 +335,7 @@
     const eExt = en.reward ? { mods: { hpPct: (RD().piggy.hpBase + RD().piggy.hpPerStage * r.stage) / D().units.piggy.hp - 1 } } : { threat: r.threat };
     if (en.affix) eExt.affix = en.affix; // ---- 敵人詞綴 ----
     return FA.battle.create({ pFront: front, pBack: r.back.slice(0, lv(r).back), eFront: en.front, eBack: en.back, rules: en.rules, env: efx(r),
-      pExt: battleExt(s), eExt, eNoShots: !!en.reward, extraRounds: en.boss ? C().bossRoundsAdd : 0,
+      pExt: battleExt(s), eExt, eNoShots: !!en.reward, extraMoves: en.boss ? C().bossMovesAdd : 0,
       seed: Math.floor(R().next(r.rng) * 2 ** 31) });
   }
 
@@ -379,14 +379,14 @@
     }
     r.streak = win ? Math.max(1, r.streak + 1) : Math.min(-1, r.streak - 1);
     if (!win) {
-      const left = FA.battle.alive(b, 1).length, L = c.lossDamage, A = RD().ascensions ? RD().ascensions[r.asc || 0] : { lossAdd: 0 };
+      const left = b.moves ? Math.ceil(Math.max(0, b.moves[1]) / c.deathCost) : FA.battle.alive(b, 1).length, L = c.lossDamage, A = RD().ascensions ? RD().ascensions[r.asc || 0] : { lossAdd: 0 };
       res.dmg = Math.round(L.base + left * L.perEnemy + (r.stage + 1) * L.perStage + (node === 'boss' ? 4 : 0) + A.lossAdd);
       r.hp = Math.max(0, r.hp - res.dmg);
       if (r.hp <= 0 && r.lastStand > 0) { r.lastStand--; r.hp = 1; res.saved = true; }
     } else {
       res.heal = Math.min(c.winHeal, (r.maxHp || c.squadHp) - r.hp); r.hp += res.heal;
       res.gold = 1 + (e.winGold || 0);
-      if (s.flawlessGold && b.bodies.every(o => o.team !== 0 || o.temp || o.alive)) { res.gold += s.flawlessGold; res.flawless = true; }
+      if (s.flawlessGold && !(b.deaths && b.deaths[0])) { res.gold += s.flawlessGold; res.flawless = true; }
       let rw = null;
       if (node === 'encounter') rw = RD().encounter[r.encLv].reward;
       if (node === 'boss') rw = RD().bossReward || { weapon: 1, item: 2 };
