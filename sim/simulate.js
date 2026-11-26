@@ -1,9 +1,12 @@
 // 平衡模擬器：node sim/simulate.js [場數=1000] [seed=1] [敵人詞綴=aff_jail,aff_frenzy（可省略；位面強化以第 1 位面計）]
 // AI 互打，統計各角色、羈絆、裝備勝率（目標 45%～55%）
+// 環境變數：THINK=1 量 AI 思考時間｜CAND=40 AI 思考深度（預設 10）｜CFG='{"hpMul":1.4}' 暫時覆蓋 config
 const path = require('path');
 ['data/config', 'data/units', 'data/traits', 'data/items', 'data/enemies', 'data/run', 'src/core/battle', 'src/core/ai', 'src/core/run']
   .forEach(f => require(path.join(__dirname, '..', f + '.js')));
 const FA = globalThis.FA, D = FA.DATA;
+// CFG='{"deathCost":2,"ult":{"gainLaunch":30}}'：暫時覆蓋 config 試數值（不寫檔）
+if (process.env.CFG) { const o = JSON.parse(process.env.CFG); for (const k in o) D.config[k] = (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k])) ? Object.assign({}, D.config[k], o[k]) : o[k]; }
 const N = +process.argv[2] || 1000, rs = { s: +process.argv[3] || 1 };
 const ids = Object.keys(D.units).filter(k => !D.units[k].noShop), traitIds = Object.keys(D.traits), baseItems = Object.keys(D.items).filter(k => D.items[k].tier === 'base');
 
@@ -25,21 +28,27 @@ function team() {
 
 const st = { unit: {}, trait: {}, faction: {}, item: {}, weapon: {} };
 const rec = (k, key, w) => { const o = st[k][key] = st[k][key] || [0, 0]; o[0]++; if (w) o[1]++; };
-const diff = { aimNoise: 0.06, candidates: 10 };
+const diff = { aimNoise: 0.06, candidates: +process.env.CAND || 10 }; // CAND=40：模擬高難度 AI 思考深度
 // ---- 敵人詞綴 ----（第 3 參數，套在 B 隊）
 const AFF = process.argv[4] ? FA.run.affixExt(process.argv[4].split(','), { plane: 1 }) : null;
 if (process.argv[4]) console.log('敵人詞綴（B 隊）：' + (AFF ? AFF.ids.map(id => D.enemies.affixes[id].name).join('、') : '無有效詞綴'));
-const t0 = Date.now(); let wipes = 0;
+const t0 = Date.now(); let wipes = 0, shotsT = 0, ultT = 0, unitsT = 0, deathsT = 0, simT = 0, longest = 0, thinkN = 0, thinks = [];
+const TH = +process.env.THINK || 0; // THINK=1：量 AI 思考時間
 for (let n = 0; n < N; n++) {
   const A = team(), B = team();
   const b = FA.battle.create({ pFront: A.front, pBack: A.back, eFront: B.front, eBack: B.back, seed: FA.rng.int(rs, 1e9), eExt: AFF ? { affix: AFF } : {}, rules: AFF ? AFF.rules : [] });
   let guard = 0;
   while (b.phase !== 'over' && guard++ < 40) {
+    const tt0 = TH ? process.hrtime.bigint() : 0;
     const ch = FA.ai.choose(b, b.turn, diff, b.rng);
+    if (TH) thinks.push(Number(process.hrtime.bigint() - tt0) / 1e6);
     if (!ch) break;
-    FA.battle.launch(b, ch.idx, ch.angle, ch.power, ch.ult); b.events = [];
-    FA.battle.runShot(b); FA.battle.endShot(b); b.events = [];
+    FA.battle.launch(b, ch.idx, ch.angle, ch.power, ch.ult);
+    if (b.bodies[ch.idx].ultOn) ultT++;
+    b.events = []; shotsT++;
+    FA.battle.runShot(b); simT += b.simT; FA.battle.endShot(b); b.events = [];
   }
+  longest = Math.max(longest, guard); unitsT += A.front.length + B.front.length; deathsT += b.deaths[0] + b.deaths[1];
   if (b.phase === 'over') wipes++;
   [A, B].forEach((T, side) => {
     const hp = t => b.bodies.filter(o => o.team === t).reduce((s, o) => s + o.hp / o.maxHp, 0);
@@ -60,4 +69,6 @@ for (const k in st) {
   console.log('\n== ' + k + ' ==');
   out[k].forEach(x => console.log(`${x.name.padEnd(6, '　')} ${String(x.rate).padStart(5)}%  (${x.n})${x.rate > 55 || x.rate < 45 ? '  ⚠' : ''}`));
 }
-console.log(`\n殺光率 ${(wipes / N * 100).toFixed(1)}%｜${N} 場，${((Date.now() - t0) / 1000).toFixed(1)}s`);
+console.log(`\n每場平均 ${(shotsT / N).toFixed(1)} 發（最長 ${longest}）、物理 ${(simT / N).toFixed(1)} 秒、陣亡 ${(deathsT / N).toFixed(2)} 次；大招 ${(ultT / N).toFixed(2)} 次/場＝每隻 ${(ultT / unitsT).toFixed(2)} 次/場`);
+if (TH) { thinks.sort((a, b) => a - b); console.log(`AI 思考 p50 ${thinks[thinks.length >> 1].toFixed(1)}ms、p95 ${thinks[Math.floor(thinks.length * 0.95)].toFixed(1)}ms、max ${thinks[thinks.length - 1].toFixed(1)}ms`); }
+console.log(`\n分出勝負 ${(wipes / N * 100).toFixed(1)}%｜${N} 場，${((Date.now() - t0) / 1000).toFixed(1)}s`);

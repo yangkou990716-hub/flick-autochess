@@ -44,7 +44,7 @@
   // 詞綴 id 清單 → battle.create 的 eExt.affix（純資料）；ctx: {plane, boss}
   function affixExt(ids, ctx) {
     ctx = ctx || {};
-    const o = { ids: [], hpPct: 0, speedPct: 0, bossHp: 0, bossShots: 0, minionHp: 0, minionMass: 0, hitSlow: 0, trauma: 0, traumaCap: 0, cheatDeath: 0,
+    const o = { ids: [], hpPct: 0, speedPct: 0, bossHp: 0, bossShots: 0, minionHp: 0, minionMass: 0, hitSlow: 0, trauma: 0, traumaCap: 0, cheatDeath: 0, cheatN: 0,
       vsStar1: 0, emptySlotDmg: 0, firstHitSpeed: 0, lowHp: null, cleanse: null, lava: 0, lavaMax: 0, rules: [] };
     (ids || []).forEach(id => {
       const X = AFX()[id]; if (!X) return; const f = X.fx;
@@ -56,7 +56,7 @@
       if (f.minion) { o.minionHp += f.minion.hpPct || 0; o.minionMass += f.minion.massPct || 0; }
       if (f.hitSlow) o.hitSlow = Math.max(o.hitSlow, f.hitSlow);
       if (f.trauma) { o.trauma += f.trauma; o.traumaCap = Math.max(o.traumaCap, f.cap || 0.4); }
-      if (f.cheatDeath) o.cheatDeath = Math.max(o.cheatDeath, f.cheatDeath);
+      if (f.cheatDeath) { o.cheatDeath = Math.max(o.cheatDeath, f.cheatDeath); o.cheatN = Math.max(o.cheatN, f.cheatN || 99); }
       if (f.vsStar1) o.vsStar1 += f.vsStar1;
       if (f.emptySlotDmg) o.emptySlotDmg += f.emptySlotDmg;
       if (f.firstHitSpeed) o.firstHitSpeed += f.firstHitSpeed;
