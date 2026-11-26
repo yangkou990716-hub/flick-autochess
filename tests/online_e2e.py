@@ -39,13 +39,15 @@ def open_page(ctx, who):
     p.wait_for_function('window.FA && FA.online && FA.netMock')
     return p
 
-def idle(p):
-    s = st(p)
+def idle(p, s=None):
+    s = s or st(p)
     return s['phase'] in ('aim', 'over') and not s['building']
 
 def synced(a, b):
+    # 只用同一組快照判斷（舊版先取 sa/sb、再另外呼叫 idle() 重新讀狀態：sa/sb 可能是「播動畫中」的舊快照，
+    # 等 idle() 讀到時已經算完 → 回傳過期的 hash，被誤判成「第 N 發 hash 不同」）
     sa, sb = st(a), st(b)
-    return sa['gen'] == sb['gen'] and sa['applied'] == sb['applied'] and idle(a) and idle(b) and (sa, sb)
+    return sa['gen'] == sb['gen'] and sa['applied'] == sb['applied'] and idle(a, sa) and idle(b, sb) and (sa, sb)
 
 def drag_shot(p):
     # 用真的滑鼠拖曳：從自己的棋子往下拉 → 往上彈（畫面上對手永遠在上方）
@@ -81,11 +83,13 @@ with sync_playwright() as pw:
 
     # 前兩發用真的拖曳（各一發），檢查客人端的輸入有翻轉
     angles = {}
-    for _ in range(2):
+    for _ in range(6):  # 連擊／多動可能讓同一方連續出手：直到雙方各拖過一發
+        if len(angles) == 2: break
         s0 = wait(lambda: synced(a, b), 40, '同步')[0]
         p = a if s0['turn'] == 0 else b
         drag_shot(p)
-        wait(lambda: st(a)['applied'] > s0['applied'] or st(a)['phase'] == 'moving', 10, '拖曳出手')
+        moved0 = lambda q: (lambda s: s['applied'] > s0['applied'] or s['phase'] == 'moving')(st(q))
+        wait(lambda: moved0(a) and moved0(b), 10, '拖曳出手')
         mv = a.evaluate(f'FA.netMock._dump().rooms["{code}"].moves')
         k = sorted(mv.keys())[-1]; angles[s0['turn']] = mv[k]['angle']
         b.screenshot(path=f'{OUT}/02_battle_B_moving.png') if s0['turn'] == 1 else None
@@ -96,8 +100,9 @@ with sync_playwright() as pw:
     reloaded = False; tampered = False; checks = 0
     while True:
         sa, sb = wait(lambda: synced(a, b), 60, '同步')
-        wait(lambda: st(a)['hash'] == st(b)['hash'], 5, f"第 {sa['applied']} 發 hash 不同")
-        sa, sb = st(a), st(b)
+        # 同一個 applied、雙方都停在瞄準時才比 hash（不一致時客人會讀房主快照覆蓋，給 5 秒）
+        n0 = sa['applied']
+        sa, sb = wait(lambda: (lambda s: s and s[0]['applied'] == n0 and s[0]['hash'] == s[1]['hash'] and s)(synced(a, b)), 5, f"第 {n0} 發 hash 不同")
         checks += 1
         if sa['phase'] == 'over': break
         if sa['applied'] == 4 and not reloaded:
@@ -111,7 +116,11 @@ with sync_playwright() as pw:
             b.evaluate('FA.online.battle().bodies.forEach(o => { o.x += 7; o.hp *= 0.9; })'); tampered = True
         p = a if sa['turn'] == 0 else b
         if not p.evaluate('FA.online.autoShoot()'):
-            time.sleep(0.3)
+            time.sleep(0.3); continue
+        # 等雙方都收到這一發（開始移動或已算完）才進下一輪；否則下一輪的「同步」可能還是出手前的狀態，
+        # 接著比 hash 時雙方剛好在各自播動畫（moving）→ 誤判 hash 不同
+        moved = lambda q: (lambda s: s['applied'] > n0 or s['phase'] == 'moving')(st(q))
+        wait(lambda: moved(a) and moved(b), 10, f'第 {n0} 發雙方收到')
     sa, sb = st(a), st(b)
     print('結束：發數', sa['applied'], '勝方', sa['winner'], sb['winner'], 'hash', sa['hash'], sb['hash'], '比對次數', checks, 'resync', sa['resyncs'], sb['resyncs'])
     assert sa['winner'] == sb['winner'] and sa['hash'] == sb['hash']

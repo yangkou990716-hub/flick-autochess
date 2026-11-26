@@ -40,14 +40,23 @@
   }
   function teamCode(r, name) { ensureFront(r); return RUN().exportTeam(r, name); }
 
+  // 對戰結束時某一方（seat）的戰鬥資料：自己打出的金幣（爆破得金策略 g、羈絆抽獎 lg）、陣亡數 d、啟動的羈絆 tr（人脈進階用）
+  // 權威端寫進 pr/{i}.st，房主結算時轉進 res/{pid}.st，各家自己的手機再用它算商店
+  function battleStats(b, seat) {
+    if (!b) return null;
+    const L = b.lot || {}, tr = (b.sides[seat] && b.sides[seat].traits) || {};
+    return { g: (b.goldT || [b.gold || 0, 0])[seat] || 0, lg: (L.goldT || [L.gold || 0, 0])[seat] || 0, d: (b.deaths || [0, 0])[seat] || 0, tr: Object.keys(tr).filter(k => tr[k]) };
+  }
   // 回合結算（自己的 run）：沿用 run.endBattle 的連勝連敗、收入、利息、經驗、掉落、陣營／策略效果；
   // 血量以房主算的為準（hp），之後加發本模式的戰後掉落與每 3 回合的投資策略
-  // res: { round, win, left（對方剩餘動數，輸時算扣血用）, hp, myGold（本場自己打出的金幣） }
+  // res: { round, win, left（對方剩餘動數，輸時算扣血用）, hp, st（battleStats：本場自己的金幣／陣亡／羈絆） }
   function finishRound(r, res) {
     if (!res || r.league.applied >= res.round) return null;
     r.league.applied = res.round;
-    const left = Math.max(0, res.left || 0);
-    const fake = { winner: res.win ? 0 : 1, moves: [res.win ? left : 0, res.win ? 0 : left], deaths: [0, 0], sides: [{ traits: res.traits || {} }, { traits: {} }], gold: res.myGold || 0, bodies: [] };
+    const left = Math.max(0, res.left || 0), st = res.st || {}, cap = (v, m) => Math.max(0, Math.min(m, v | 0)); // 數值設上限（資料來自網路）
+    const traits = {}; (Array.isArray(st.tr) ? st.tr : st.tr && typeof st.tr === 'object' ? Object.values(st.tr) : []).slice(0, 20).forEach(k => { if (FA.DATA.traits[k]) traits[k] = 1; });
+    const fake = { winner: res.win ? 0 : 1, moves: [res.win ? left : 0, res.win ? 0 : left], deaths: [cap(st.d, 20), 0], sides: [{ traits }, { traits: {} }],
+      gold: cap(st.g, 10), lot: { gold: cap(st.lg, 10) }, bodies: [] };
     r.node = 'battle';
     const out = RUN().endBattle(r, fake);
     r.hp = res.hp; r.maxHp = L().hp; r.over = null; r.lastStand = 0; r.step = 0; // 沒有位面節點：step 歸零（商店不會顯示首領）
@@ -137,5 +146,5 @@
   }
 
   FA.league = { // 網路與畫面在 src/league.js（FA.leagueNet）
-    GHOST, newRun, stratFor, stratRound, ensureFront, teamCode, finishRound, autoShop, lossDmg, pair, ghostSource, settle };
+    GHOST, newRun, stratFor, stratRound, ensureFront, teamCode, battleStats, finishRound, autoShop, lossDmg, pair, ghostSource, settle };
 })(globalThis);

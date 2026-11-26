@@ -131,7 +131,7 @@
     const bt = { R, R0: R, hw, hh, hw0: hw, hh0: hh, pillars, rules: o.rules || [], env, bodies, sides: [p.side, e.side], first: o.first != null ? o.first : (e.side.noAct ? 0 : rng.int({ s: (o.seed | 0) ^ 0x2545f491 }, 2)), turn: 0, shots: [0, 0], round: 1, maxRounds: 999, bonus: [0, 0],
       moves: [M + p.side.shotsAdd * 2, e.side.noAct ? 0 : M + e.side.shotsAdd * 2], movesMax: [0, 0], deaths: [0, 0],
       phase: 'aim', winner: null, rng: { s: o.seed | 0 }, events: [], simT: 0, mover: -1, chain: 0, hits: 0, pending: [], comboUsed: {},
-      shotCount: 0, zones: [], ghost: {}, echoUsed: false, gold: 0, stopDone: false, stepN: 0, tapQ: null, tapLog: null, teamHit: false };
+      shotCount: 0, zones: [], ghost: {}, echoUsed: false, gold: 0, stopDone: false, stepN: 0, tapQ: null, tapLog: null, teamHit: false, goldBoth: !!o.goldBoth };
     bt.movesMax = bt.moves.slice();
     if (o.eExt && o.eExt.affix) affixSetup(bt, o); // ---- 敵人詞綴 ----
     relax(bt);
@@ -295,7 +295,7 @@
     if (sd.chainAll) chain = true;
     if (src && src.blastMul) dmg *= 1 + src.blastMul;
     lotDraw(b, team, 'boom', x, y);
-    if (sd.blastGold && b.gold < sd.blastGold) b.gold++;
+    if (sd.blastGold) { const G = b.goldT || (b.goldT = [0, 0]); if (G[team] < sd.blastGold) { G[team]++; if (team === 0) b.gold++; } } // goldT：各方自己打出的金幣（連線自走棋雙方都算）
     const q = [{ x, y, r, dmg, d: 0 }];
     while (q.length) {
       const e = q.shift(); b.chain++;
@@ -807,11 +807,12 @@
     for (const q of pool) { if (r < q[1]) { p = q; break; } r -= q[1]; }
     let prize = p[0];
     if (prize === 'shot' && L.shotN[team] >= RR.shotCap) prize = 'none';
-    if (prize === 'gold' && (team !== 0 || L.gold >= RR.goldCap)) prize = 'none';
+    const LG = L.goldT || [L.gold, 0];
+    if (prize === 'gold' && ((team !== 0 && !b.goldBoth) || LG[team] >= RR.goldCap)) prize = 'none'; // goldBoth：連線自走棋，紅方抽中的金幣也算（各自的商店）
     if (prize === 'dmg') L.dmg[team] += p[2];
     if (prize === 'stack') L.stack[team]++;
     if (prize === 'shot') { L.shotN[team]++; b.moves[team]++; b.movesMax[team]++; } // 總動數制：抽中多 1 動
-    if (prize === 'gold') L.gold++;
+    if (prize === 'gold') { if (team === 0) L.gold++; (L.goldT || (L.goldT = [L.gold - (team === 0 ? 1 : 0), 0]))[team]++; }
     b.events.push({ t: 'lotto', x, y, prize, val: p[2] || 0, team, on, trait: s.lot[on].trait });
   }
   const lotStack = (b, src) => (b.lot && b.lot.stack[src.team]) || 0;

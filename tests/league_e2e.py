@@ -67,7 +67,10 @@ with sync_playwright() as pw:
         while p.is_visible('#modal') and p.is_visible('#modalBox [data-c]'):  # 第 1 回合的投資策略（有的策略會再加選）
             p.click('#modalBox [data-c="0"]'); time.sleep(0.2)
         p.evaluate('FA.leagueNet.autoShop()')
-        if k == 'A': a.screenshot(path=f'{OUT}/02_shop_A.png')
+        if k == 'A':
+            a.screenshot(path=f'{OUT}/02_shop_A.png')
+            info = a.inner_text('#enemyInfo'); print('A 商店資訊列：', info.replace('\n', ' '))
+            assert '敵強化' not in info, '連線自走棋不該顯示敵強化'
         p.click('#bFight')
     a.screenshot(path=f'{OUT}/03_waiting_A.png')
     wait(lambda: st(a)['phase'] == 'battle', 10, '第 1 回合開戰')
@@ -76,6 +79,35 @@ with sync_playwright() as pw:
 
     bys = set()
     rounds_seen = set(); closed = False; reloaded = False; shots_png = False; spect_png = False
+    handed = False; spec_need = False; spec_seen = ''
+    def handoff(before):
+        # 換裝置：B 送出隊伍（雲端已備份）→ 關掉 B → 新分頁 B2（空的 localStorage）用接手連結接回 → 商店進度要和 B 一樣
+        global b
+        bk = lambda: [v for v in ((a.evaluate(f'(FA.netMock._dump().lgrun || {{}})["{code}"]') or {}).get(pids['B']) or {}).values() if v.get('r') == before['round']]
+        t1 = time.time()
+        while not bk() and time.time() - t1 < 10: time.sleep(0.05)
+        assert bk(), 'B 雲端備份'
+        link = b.evaluate('FA.leagueNet.takeLink()'); print('接手連結', link)
+        b.close()
+        p = ctx.new_page()
+        p.on('dialog', lambda d: d.accept())
+        p.on('console', lambda m: (m.type == 'error') and errors.append(f'B2: {m.text}'))
+        p.on('pageerror', lambda e: errors.append(f'B2 pageerror: {e} {e.stack}'))
+        p.goto(BASE + 'B2&lgtake=' + link.split('lgtake=')[1])
+        t1 = time.time(); after = None
+        while time.time() - t1 < 25:
+            try:
+                s2 = st(p)
+                if s2['code'] == code and s2['restored']: after = s2; break
+            except Exception: pass
+            time.sleep(0.3)
+        assert after, 'B2 沒有接回房間'
+        assert after['pid'] == pids['B'], ('B2 身分', after['pid'], pids['B'])
+        keys = ('gold', 'level', 'round', 'applied', 'strats', 'front')
+        print('換裝置前', {k: before[k] for k in keys}, '還原', {k: after['restored'][k] for k in keys})
+        assert all(before[k] == after['restored'][k] for k in keys), '換裝置後商店進度不同'
+        assert 'lgtake' not in p.url
+        PAGES['B'] = p; b = p
     t0 = time.time()
     while time.time() - t0 < 600:
         live = {k: p for k, p in PAGES.items() if not p.is_closed()}
@@ -90,7 +122,8 @@ with sync_playwright() as pw:
             for k, p in live.items():
                 s = st(p)
                 if s['scr'] == 'shop' and s['me'] and not s['me'].get('out') and s['me'].get('rdy') != r:
-                    p.evaluate('FA.leagueNet.autoShop(); document.getElementById("modal").classList.add("hidden"); FA.leagueNet.ready()')
+                    rr = p.evaluate('FA.leagueNet.autoShop(); document.getElementById("modal").classList.add("hidden"); FA.leagueNet.ready(); FA.leagueNet.state().run')
+                    if k == 'B' and r >= 2 and not handed: handoff(rr); handed = True  # 送出隊伍＝寫雲端備份，馬上換裝置
             time.sleep(0.3); continue
         # 對戰：輪到誰就出手（同時記下每一發是誰出的：玩家 pid／ai:ghost／ai:<離線玩家>）
         for m in moves(a, code): bys.add((m.get('r'), m.get('by')))
@@ -104,8 +137,12 @@ with sync_playwright() as pw:
             a.screenshot(path=f'{OUT}/04_battle_A.png'); shots_png = True
         for k, p in live.items():
             s = st(p)
-            if s['me'] and s['me'].get('out') and not spect_png and s['scr'] == 'lgb':
-                time.sleep(0.3); p.screenshot(path=f'{OUT}/06_spectator_{k}.png'); spect_png = True
+            if s['me'] and s['me'].get('out') and s['scr'] == 'lgb' and s['phase'] == 'battle':
+                sp = p.evaluate('FA.leagueNet.spec()')
+                if any(x['r'] == s['round'] and x['phase'] not in (None, 'over') for x in s['pairs']): spec_need = True
+                if sp: spec_seen = sp
+                if not spect_png and sp:
+                    time.sleep(0.3); p.screenshot(path=f'{OUT}/06_spectator_{k}.png'); spect_png = True
             if s['myTurn']: p.evaluate('FA.leagueNet.autoShoot()')
         time.sleep(0.1)
 
@@ -119,6 +156,12 @@ with sync_playwright() as pw:
     ghost_ai = [x for x in bys if x[1] == 'ai:ghost']; c_ai = [x for x in bys if x[1] == 'ai:' + pids['C']]
     print('幽靈 AI 出手的回合', sorted({x[0] for x in ghost_ai}), '｜C 掉線 AI 代打的回合', sorted({x[0] for x in c_ai}))
     assert ghost_ai, '幽靈應由 AI 出手'
+    assert handed, '沒有測到換裝置接手'
+    print('觀戰列：', spec_seen.replace('\n', ' ') if spec_seen else '（沒看到）', '｜需要', spec_need)
+    if spec_need: assert spec_seen and '離開房間' in spec_seen and 'vs' in spec_seen, '淘汰者觀戰時應有觀戰列'
+    res = a.evaluate(f'FA.netMock._dump().leagues["{code}"].res || {{}}')
+    print('最後一回合 res.st：', {k: v.get('st') for k, v in res.items()})
+    assert any(v.get('st') and 'g' in v['st'] and 'lg' in v['st'] for v in res.values()), '結算應帶對戰資料 st'
     assert c_ai and min(x[0] for x in c_ai) >= 2, 'C 掉線後應由 AI 代打'
     time.sleep(1)
     a.screenshot(path=f'{OUT}/07_over_A.png'); b.screenshot(path=f'{OUT}/08_over_B.png')
