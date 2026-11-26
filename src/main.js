@@ -27,7 +27,13 @@
   // ---------- 文字 ----------
   const MT = D.modText, pct = v => Math.round(v * 100) + '%';
   const modsText = m => Object.entries(m || {}).map(([k, v]) => MT[k] ? MT[k](v) : '').filter(Boolean).join('、');
-  const itemText = it => `${D.items[it.id].icon}${D.items[it.id].name}（${modsText(it.rolls)}）`;
+  const itemText = it => `${D.items[it.id].icon}${D.items[it.id].name}（${D.items[it.id].addTrait ? D.traits[D.items[it.id].addTrait].name + '羈絆 +1、' : ''}${modsText(it.rolls)}）`;
+  // ---- 羈絆抽獎 ／ 陣營 ／ 徽章 ---- 文字
+  const lotText = L => { if (!L) return ''; const LR = D.lotteryRules, tot = L.pool.reduce((a, p) => a + p[1], 0); return `<span style="color:#ffd54f">🎰 每次${LR.onName[L.on]}抽獎：</span>` + L.pool.map(p => `${p[0] === 'dmg' ? LR.name.dmg + '+' + pct(p[2]) : LR.name[p[0]]} ${Math.round(p[1] / tot * 100)}%`).join('、'); };
+  const tierLine = t => `${t.n}：${modsText(t.mods)}${t.lottery ? '<br>　' + lotText(t.lottery) : ''}`;
+  const FAC = D.factions || {};
+  const facName = id => { const U = D.units[id], F = U && U.faction && FAC[U.faction]; return F ? `<span style="color:${F.color}">${F.icon}${F.name}</span>` : ''; };
+  const teamEmb = () => FA.battle.emblemMap(RUN.teamUnits(run));
   const weaponText = id => `${D.weapons[id].icon}${D.weapons[id].name}：${D.weapons[id].desc}`;
   function backText(U) {
     const b = U.back; if (!b) return '';
@@ -37,7 +43,7 @@
   function unitInfo(u) {
     const U = D.units[u.id], m = C.starMult[u.star - 1];
     const role = { front: '前台', back: '後台', both: '兩用（站位賦能）' }[U.role];
-    let s = `<b>${U.name} ${'★'.repeat(u.star)}</b>　<span class="k">${U.cost}費</span>　${U.traits.map(t => D.traits[t].name).join('・')}　${role}<br>`;
+    let s = `<b>${U.name} ${'★'.repeat(u.star)}</b>　<span class="k">${U.cost}費</span>　${U.traits.map(t => D.traits[t].name).join('・')}${U.faction ? '　' + facName(u.id) : ''}　${role}<br>`;
     s += `生命 ${Math.round(U.hp * m)}｜攻擊 ${Math.round(U.atk * m)}｜速度 ${U.speed}｜重量 ${U.mass}｜大小 ${U.r}<br>`;
     if (U.ability && U.role !== 'back') s += `<span class="k">${U.role === 'both' ? '前台' : '能力'}：</span>${U.ability.desc}<br>`;
     if (U.back && U.role !== 'front') s += `<span class="k">後台：</span>${backText(U)}<br>`;
@@ -55,7 +61,7 @@
     if (type === 'supply') { const o = RD.supplies[id]; return `<b>📦 ${o.name}</b><br>${o.desc}`; }
     if (type === 'encounter') {
       const e = RD.encounter[id], w = e.reward;
-      return `<b>❗ ${e.name}</b>${e.add ? `<span class="tier" style="color:#f88">敵人 +${e.add} 關${e.extra ? `、多 ${e.extra} 隻` : ''}</span>` : ''}<br>勝利獎勵：${[w.gold ? w.gold + ' 金' : '', w.item ? '裝備' : '', w.weapon ? '武器' : '', w.cons ? consNames(w.cons) : '', w.consOne ? w.consOne.map(k => consNames({ [k]: 1 })).join('或') : '', w.strategy ? RD.tiers[w.strategy].name + '投資策略' : ''].filter(Boolean).join('＋')}`;
+      return `<b>❗ ${e.name}</b>${e.add ? `<span class="tier" style="color:#f88">敵人 +${e.add} 關${e.extra ? `、多 ${e.extra} 隻` : ''}</span>` : ''}<br>勝利獎勵：${[w.gold ? w.gold + ' 金' : '', w.item ? '裝備' : '', w.weapon ? '武器' : '', w.emblem ? '徽章' : '', w.cons ? consNames(w.cons) : '', w.consOne ? w.consOne.map(k => consNames({ [k]: 1 })).join('或') : '', w.strategy ? RD.tiers[w.strategy].name + '投資策略' : ''].filter(Boolean).join('＋')}`;
     }
     if (type === 'path') { const o = RD.nodeInfo[id]; return `<b>${o.icon} ${o.name}</b><br>${o.desc}`; }
     if (type === 'strategy') {
@@ -121,12 +127,12 @@
     $('enemyInfo').innerHTML += affixChips(); // ---- 敵人詞綴 ----
     $('strats').innerHTML = run.strats.map(id => { const S = RD.strategies[id], T = RD.tiers[S.tier]; return `<span class="st-chip" style="border-color:${T.color};color:${T.color}" data-st="${id}">${S.name}</span>`; }).join('');
     const onTeam = run.front.slice(0, lv.front).concat(run.back.slice(0, lv.back)).filter(Boolean).map(u => u.id);
-    const tt = FA.battle.traitTiers(onTeam);
-    $('traits').innerHTML = Object.keys(D.traits).map(k => {
+    const tt = FA.battle.traitTiers(onTeam, teamEmb());
+    $('traits').innerHTML = (Object.keys(D.traits).map(k => {
       const T = D.traits[k], n = tt.counts[k] || 0, a = tt.active[k];
       if (!n) return '';
-      return `<span class="tr ${a ? 'act' : ''}" style="${a ? 'background:' + T.color : ''}" data-tr="${k}">${T.name} ${n}/${(T.tiers.find(t => t.n > n) || T.tiers[T.tiers.length - 1]).n}</span>`;
-    }).join('') || '<span class="lbl">羈絆：同羈絆角色湊 2 隻起有小加成</span>';
+      return `<span class="tr ${a ? 'act' : ''}" style="${a ? 'background:' + T.color : ''}" data-tr="${k}">${T.name} ${n}/${(T.tiers.find(t => t.n > n) || T.tiers[T.tiers.length - 1]).n}${a && a.lottery ? '🎰' : ''}</span>`;
+    }).join('') + factionChips(onTeam)) || '<span class="lbl">羈絆：同羈絆角色湊 2 隻起有小加成</span>';
     ['front', 'back', 'bench'].forEach(z => {
       const lim = z === 'front' ? lv.front : z === 'back' ? lv.back : C.benchSize;
       const len = z === 'front' ? Math.max(6, lv.front) : run[z].length;
@@ -144,7 +150,8 @@
     else if (sel && sel.cs != null && (run.consumables || [])[sel.cs]) info = consInfo(sel.cs); // ---- 道具 ----
     else if (sel && sel.item != null) info = itemText(run.items[sel.item]) + '<br><span class="lbl">點角色裝上（最多 3 件）。鐵拳＋彈簧＝爆裂彈簧；護符＋疾行靴＝吸血疾靴</span>';
     else if (sel && sel.wp != null) info = weaponText(run.weapons[sel.wp]) + '<br><span class="lbl">點角色裝上（每隻 1 把，會替換）</span>';
-    else if (sel && sel.trait) { const T = D.traits[sel.trait]; info = `<b>${T.name}</b>（只加給${T.name}角色）<br>` + T.tiers.map(t => `${t.n}：${modsText(t.mods)}`).join('<br>'); }
+    else if (sel && sel.trait) { const T = D.traits[sel.trait]; info = `<b>${T.name}</b>（只加給${T.name}角色）<br>` + T.tiers.map(tierLine).join('<br>'); }
+    else if (sel && sel.fa) info = facInfo(sel.fa);
     else if (sel && sel.st) { const S = RD.strategies[sel.st]; info = `<b>${S.name}</b>（${RD.tiers[S.tier].name}）<br>${S.desc}`; }
     else info = '<span class="lbl">殺光敵人才算贏，贏 +2 血；🛡＝鎖血免死。點商店卡片購買；點角色查看／移動；3 隻同星自動升星。佈好陣按「前進」選路線。</span>';
     $('info').innerHTML = info;
@@ -153,10 +160,19 @@
       const U = D.units[id], cc = ['#888', '#3fb950', '#4ea0ff', '#b072ff', '#ffb000'][U.cost - 1];
       return `<div class="card" data-b="${i}" style="border-color:${cc}">${icon(id, 1, 40) ? `<img src="${icon(id, 1, 40)}" style="width:${U.r * 1.4}px;height:${U.r * 1.4}px;display:block;margin:0 auto">` : `<div class="dot" style="background:${U.color};width:${U.r * 1.2}px;height:${U.r * 1.2}px"></div>`}${U.name}<div class="c">${RUN.unitCost(run, id)}💰</div><div class="t">${U.traits.map(t => D.traits[t].name).join('・')}</div>${cardHint(id, onTeam, tt)}</div>`;
     }).join('');
-    $('bReroll').textContent = run.freeLeft ? `免費刷新` : `刷新 ${C.rerollCost}`;
-    $('bReroll').disabled = !run.freeLeft && run.gold < C.rerollCost; $('bXp').disabled = run.gold < C.xpCost || run.level >= C.levels.length;
+    $('bReroll').textContent = run.freeLeft ? `免費刷新` : `刷新 ${RUN.rerollCost(run)}`;
+    $('bReroll').disabled = !run.freeLeft && run.gold < RUN.rerollCost(run); $('bXp').disabled = run.gold < C.xpCost || run.level >= C.levels.length;
     $('bLock').classList.toggle('on', run.locked); $('bLock').textContent = run.locked ? '已鎖定' : '鎖定';
   }
+  // ---- 陣營 ----：商店羈絆列的陣營（方框、虛線外框，和流派圓角膠囊區分）
+  function factionChips(onTeam) {
+    const ft = FA.battle.factionTiers(onTeam);
+    return Object.keys(FAC).map(k => {
+      const F = FAC[k], n = ft.counts[k] || 0, a = ft.active[k]; if (!n) return '';
+      return `<span class="tr" data-fa="${k}" style="border-radius:3px;border:1px dashed ${F.color};${a ? `background:${F.color}33;color:${F.color};font-weight:bold` : ''}">${F.icon}${F.name} ${n}/${(F.tiers.find(t => t.n > n) || F.tiers[F.tiers.length - 1]).n}</span>`;
+    }).join('');
+  }
+  const facInfo = k => { const F = FAC[k]; return `<b style="color:${F.color}">${F.icon}${F.name}</b>（陣營：經濟／規則加成，算前台＋後台）<br>` + F.tiers.map(t => `${t.n}：${t.desc}`).join('<br>') + `<br><span class="lbl">成員：${F.members.map(id => D.units[id].name).join('、')}</span>`; };
   // 場上已有幾隻（升星進度）＋買了能不能湊羈絆
   function owned(id) { const c = [0, 0, 0]; ['front', 'back', 'bench'].forEach(z => run[z].forEach(u => { if (u && u.id === id) c[u.star - 1]++; })); return c; }
   function cardHint(id, onTeam, tt) {
@@ -177,13 +193,14 @@
   }
 
   $('shop').addEventListener('click', e => {
-    const t = e.target.closest('[data-z],[data-it],[data-wp],[data-b],[data-tr],[data-st],[data-cs],#bSell'); if (!t) return;
+    const t = e.target.closest('[data-z],[data-it],[data-wp],[data-b],[data-tr],[data-fa],[data-st],[data-cs],#bSell'); if (!t) return;
     if (consClick(t)) return; // ---- 道具 ----
     if (t.id === 'bSell') { RUN.sell(run, sel); sel = null; }
     else if (t.dataset.b != null) { if (!RUN.buy(run, +t.dataset.b)) return flash('金幣或空位不足'); FA.sound.play('coin'); }
     else if (t.dataset.it != null) { const i = +t.dataset.it; sel = sel && sel.item === i ? null : { item: i }; }
     else if (t.dataset.wp != null) { const i = +t.dataset.wp; sel = sel && sel.wp === i ? null : { wp: i }; }
     else if (t.dataset.tr) sel = { trait: t.dataset.tr };
+    else if (t.dataset.fa) sel = { fa: t.dataset.fa };
     else if (t.dataset.st) sel = { st: t.dataset.st };
     else {
       const loc = { zone: t.dataset.z, i: +t.dataset.i }, u = RUN.unitAt(run, loc);
@@ -274,7 +291,8 @@
     const shopCard = src.buy != null, id = shopCard ? run.shop[src.buy] : RUN.unitAt(run, src).id;
     const u = shopCard ? { id, star: 1, items: [], weapon: null } : RUN.unitAt(run, src), c = owned(id);
     const prog = `<span class="k">升星：</span>1星 ${c[0]}/3　2星 ${c[1]}/3${c[2] ? `　3星 ×${c[2]}` : ''}`;
-    const tr = D.units[id].traits.map(t => { const T = D.traits[t]; return `<span class="k">${T.name}：</span>` + T.tiers.map(x => `${x.n}隻 ${modsText(x.mods)}`).join('；'); }).join('<br>');
+    const tr = D.units[id].traits.map(t => { const T = D.traits[t]; return `<span class="k">${T.name}：</span>` + T.tiers.map(x => `${x.n}隻 ${modsText(x.mods)}${x.lottery ? '（🎰抽獎）' : ''}`).join('；'); }).join('<br>') +
+      (D.units[id].faction ? '<br>' + facInfo(D.units[id].faction) : '');
     const btns = shopCard ? [{ t: `購買 ${RUN.unitCost(run, id)}💰`, cls: 'go', f: () => { if (!RUN.buy(run, src.buy)) flash('金幣或空位不足'); else FA.sound.play('coin'); renderShop(); save(); } }, { t: '關閉' }]
       : [{ t: `賣出 +${RUN.sellPrice(u, run)}`, f: () => { RUN.sell(run, src); renderShop(); save(); } }, { t: '關閉', cls: 'go' }];
     modal(`<div class="ux-detail">${unitInfo(u)}${prog}<br>${tr}</div>`, btns);
@@ -362,7 +380,7 @@
     battle = b; bst = newStats(); V.reset(); ai = null; ui.aim = null; hideBInfo(); show('battle'); V.resize(); save();
     setTimeout(tutBattle, 60);
     if (run.enemy.boss) V.banner = { txt: '首領：' + run.enemy.name, life: 1.6 };
-    else if (run.enemy.reward) V.banner = { txt: '打破撲滿！每隻 +' + RD.piggy.goldEach + ' 金', life: 1.6 };
+    else if (run.enemy.reward) V.banner = { txt: '次元撲滿會逃跑！每掉 1/4 血 +' + (RD.piggy.goldPerQuarter || 1) + ' 金', life: 1.6 };
     else if (run.node === 'encounter') V.banner = { txt: '遭遇・' + RD.encounter[run.encLv].name, life: 1.2 };
   }
   function flash(t) { $('info').innerHTML = `<b style="color:#f88">${t}</b>`; }
@@ -553,8 +571,10 @@
   // ---------- 圖鑑 ----------
   const CODEX = {
     角色: () => Object.keys(D.units).sort((a, b) => D.units[a].cost - D.units[b].cost).map(id => `<div class="choice">${unitInfo({ id, star: 1, items: [], weapon: null })}</div>`).join(''),
-    羈絆: () => Object.values(D.traits).map(T => `<div class="choice"><b style="color:${T.color}">${T.name}</b>：${Object.keys(D.units).filter(k => D.units[k].traits.includes(Object.keys(D.traits).find(x => D.traits[x] === T))).map(k => D.units[k].name).join('、')}<br>` + T.tiers.map(t => `${t.n}：${modsText(t.mods)}`).join('<br>') + '</div>').join(''),
-    裝備: () => Object.values(D.items).map(I => `<div class="choice"><b>${I.icon}${I.name}</b>${I.recipe ? `（${I.recipe.map(x => D.items[x].name).join('＋')}）` : '（基礎）'}<br>${Object.entries(I.affix).map(([k, v]) => D.modText[k] ? D.modText[k](v[0]) + (v[0] !== v[1] ? '～' + D.modText[k](v[1]).replace(/^[^\d+-]*/, '') : '') : '').join('、')}</div>`).join(''),
+    羈絆: () => Object.values(D.traits).map(T => `<div class="choice"><b style="color:${T.color}">${T.name}</b>：${Object.keys(D.units).filter(k => D.units[k].traits.includes(Object.keys(D.traits).find(x => D.traits[x] === T))).map(k => D.units[k].name).join('、')}<br>` + T.tiers.map(tierLine).join('<br>') + '</div>').join(''),
+    陣營: () => '<div class="lbl">第二條羈絆軸：每隻角色屬於 1 個陣營，湊 3／5 隻給經濟或規則加成</div>' + Object.keys(FAC).map(k => `<div class="choice">${facInfo(k)}</div>`).join(''),
+    徽章: () => '<div class="lbl">徽章佔 1 格裝備：穿上的角色多 1 個該羈絆（羈絆計數 +1，原本就有的不重複算）。取得：補給、遭遇難度 3+、白銀策略「買彩票」</div>' + Object.keys(D.emblems).map(k => `<div class="choice">${itemText({ id: k, rolls: Object.fromEntries(Object.entries(D.emblems[k].affix).map(([m, v]) => [m, v[0]])) })}</div>`).join(''),
+    裝備: () => Object.values(D.items).filter(I => I.tier !== 'emblem').map(I => `<div class="choice"><b>${I.icon}${I.name}</b>${I.recipe ? `（${I.recipe.map(x => D.items[x].name).join('＋')}）` : '（基礎）'}<br>${Object.entries(I.affix).map(([k, v]) => D.modText[k] ? D.modText[k](v[0]) + (v[0] !== v[1] ? '～' + D.modText[k](v[1]).replace(/^[^\d+-]*/, '') : '') : '').join('、')}</div>`).join(''),
     武器: () => Object.keys(D.weapons).map(id => `<div class="choice">${weaponText(id)}</div>`).join(''),
     策略: () => ['silver', 'gold', 'prism'].map(t => Object.values(RD.strategies).filter(S => S.tier === t).map(S => `<div class="choice"><span class="tier" style="color:${RD.tiers[t].color}">${RD.tiers[t].name}</span><b>${S.name}</b><br>${S.desc}</div>`).join('')).join(''),
     環境: () => '<div class="lbl">投資環境：開局選一次，整局都生效</div>' + Object.values(RD.envs).map(E => `<div class="choice"><b>🌐${E.name}</b><br>${E.desc}</div>`).join('') + '<h3>開局詞綴</h3>' + Object.values(RD.openers).map(E => `<div class="choice"><b>${E.name}</b><br>${E.desc}</div>`).join(''),

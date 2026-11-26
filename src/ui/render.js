@@ -84,6 +84,18 @@
       else if (e.t === 'bossSplit') { V.banner = { txt: '首領分裂了！', life: 1.4, max: 1.4, col: '#ff8fb0' }; V.shake = 16; burst(e.x, e.y, '#c9a', 40, 400); ring(e.x, e.y, 140, '#ff4d6d', 0.5, { w: 6 }); }
       else if (e.t === 'expose') { V.texts.push({ x: e.x, y: e.y - 22, txt: '破甲！', life: 0.8, max: 0.8, col: '#ffb74d', size: 14, tier: 1, vy: 35 }); sparks(e.x, e.y, '#ffb74d', 8, 300); }
       else if (e.t === 'boost') { V.texts.push({ x: e.x, y: e.y - 22, txt: '加速！', life: 0.8, max: 0.8, col: '#cff', size: 14, tier: 1, vy: 35 }); sparks(e.x, e.y, '#cff', 8, 300); }
+      // ---- 羈絆抽獎 ----
+      else if (e.t === 'lotto') {
+        const LR = FA.DATA.lotteryRules, big = e.prize === 'shot' || e.prize === 'gold', none = e.prize === 'none';
+        const txt = '🎰 ' + (e.prize === 'dmg' ? `傷害+${Math.round(e.val * 100)}%` : (e.prize === 'stack' ? '小獎！' : '') + LR.name[e.prize]);
+        V.texts.push({ x: e.x, y: e.y - 30, txt, life: none ? 0.7 : 1.4, max: none ? 0.7 : 1.4, col: none ? '#9a97b0' : big ? '#ffd54f' : '#b2ff59', size: none ? 11 : big ? 19 : 14, tier: big ? 2 : 1, vy: 28 });
+        if (big) { SND('combo'); ring(e.x, e.y, 70, '#ffd54f', 0.45, { w: 4 }); sparks(e.x, e.y, '#ffd54f', 16, 360); if (e.prize === 'shot') V.banner = { txt: '🎰 大獎！多 1 發', life: 1.2, max: 1.2, col: '#ffd54f' }; }
+        else if (!none) sparks(e.x, e.y, '#b2ff59', 6, 220);
+      }
+      // ---- 次元撲滿 ----
+      else if (e.t === 'piggold') { SND('coin'); V.texts.push({ x: e.x, y: e.y - 26, txt: `+${e.n}💰`, life: 1.1, max: 1.1, col: '#ffd54f', size: 16, tier: 1, vy: 40 }); burst(e.x, e.y, '#ffd54f', 10, 220, { k: 'ember', life: 0.8, max: 0.8, add: true }); }
+      else if (e.t === 'pighop') { V.texts.push({ x: e.x, y: e.y - 24, txt: '蹦！', life: 0.6, max: 0.6, col: '#f8a5c2', size: 12, tier: 1, vy: 30 }); ring(e.x, e.y, 30, '#f8a5c2', 0.25, { w: 2, nofill: true }); }
+      else if (e.t === 'pigflee') { burst(e.x, e.y, '#ffe0ec', 6, 160); }
       else if (e.t === 'over') SND(e.winner === 0 ? 'win' : 'lose');
       else if (e.t === 'fullpower') { SND('full'); V.texts.push({ x: e.x, y: e.y - 42, txt: '全力！', life: 1, max: 1, col: '#ff5', size: 24, tier: 2, vy: 30 }); ring(e.x, e.y, 70, '#ffe066', 0.35, { w: 5 }); sparks(e.x, e.y, '#ffe066', 14, 380); V.shake = Math.max(V.shake, 6); }
       else if (e.t === 'shrink') V.banner = { txt: '場地縮小！', life: 1.2, max: 1.2, col: '#ff8a8a' };

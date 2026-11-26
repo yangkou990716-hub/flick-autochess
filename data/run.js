@@ -30,10 +30,13 @@
     encounter: [
       { name: '難度 1', add: 0, extra: 0, reward: { gold: 4 } },
       { name: '難度 2', add: 2, extra: 0, reward: { gold: 7, cons: { armory: 1 } } },
-      { name: '難度 3', add: 4, extra: 1, reward: { gold: 10, weapon: 1, cons: { projector: 1 } } },
-      { name: '難度 4', add: 6, extra: 1, reward: { gold: 14, weapon: 1, strategy: 'gold', consOne: ['projectorX', 'armoryP'] } }
+      { name: '難度 3', add: 4, extra: 1, reward: { gold: 10, weapon: 1, emblem: 1, cons: { projector: 1 } } },
+      { name: '難度 4', add: 6, extra: 1, reward: { gold: 14, weapon: 1, strategy: 'gold', emblem: 1, consOne: ['projectorX', 'armoryP'] } }
     ],
-    piggy: { hpBase: 120, hpPerStage: 25, goldEach: 3, allBonus: { cons: { armory: 1 } } },
+    piggy: { hpBase: 220, hpPerStage: 35, goldEach: 3, allBonus: { cons: { armory: 1 } },
+      // ---- 次元撲滿 ----：被撞往反方向逃（flee 速度）；我方每次彈射時撲滿往遠離我方的方向蹦一下（hop 速度、jitter 弧度亂偏）
+      //                   每撞掉 25% 生命掉 goldPerQuarter 金，打倒再多 killGold 金
+      flee: 400, hop: 260, hopJitter: 0.7, goldPerQuarter: 1, killGold: 1, count: [3, 3, 4] }, // count：各位面撲滿數（撲滿更值錢，數量變少）
     // 開局詞綴（3 選 1）
     openers: {
       rich: { name: '富二代', desc: '開局 +10 金', fx: { gold: 10 } },
@@ -83,6 +86,7 @@
       s_arms: { tier: 'silver', name: '軍火貿易', desc: '立刻獲得 1 把武器與 6 金', fx: { weapons: 1, gold: 6 } },
       s_atk: { tier: 'silver', name: '磨刀', desc: '全隊攻擊 +8%', fx: { mods: { atkPct: 0.08 } } },
       s_piggybank: { tier: 'silver', name: '招財豬', desc: '每場完勝（我方沒有陣亡）+1 金', fx: { flawlessGold: 1 } },
+      s_lotto: { tier: 'silver', name: '買彩票', desc: '立刻獲得 1 個隨機羈絆徽章（穿上的角色多 1 個羈絆）', fx: { emblem: 1 } }, // ---- 徽章 ----
       s_echo: { tier: 'silver', name: '回音彈', desc: '每發第一次撞到敵人時，追加一次小爆炸', fx: { echo: { r: 70, mult: 0.35 } } },
       // 黃金：持續收益、期貨
       g_station: { tier: 'gold', name: '加油站', desc: '立刻 +8 金與 1 次免費刷新，之後每節點 +1 次免費刷新', fx: { gold: 8, freeRerolls: 1, perNode: { rerolls: 1, n: 99 } } },
@@ -121,7 +125,8 @@
       weapon: { name: '武器箱', desc: '隨機武器 1 把', fx: { weapons: 1 } },
       heal: { name: '醫療包', desc: '小隊回 12 血', fx: { heal: 12 } },
       xp: { name: '特訓', desc: '+6 經驗', fx: { xp: 6 } },
-      gold: { name: '資金', desc: '+8 金', fx: { gold: 8 } }
+      gold: { name: '資金', desc: '+8 金', fx: { gold: 8 } },
+      emblem: { name: '徽章', desc: '隨機羈絆徽章 1 個（穿上的角色多 1 個羈絆）', fx: { emblem: 1 } } // ---- 徽章 ----
     }
   };
 })(globalThis);

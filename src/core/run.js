@@ -119,7 +119,7 @@
 
   function reroll(r) {
     if (r.freeLeft > 0) { r.freeLeft--; rollShop(r, true); return true; }
-    if (r.gold < C().rerollCost) return false; r.gold -= C().rerollCost; rollShop(r, true); return true;
+    if (r.gold < rerollCost(r)) return false; r.gold -= rerollCost(r); rollShop(r, true); return true;
   }
   function buyXp(r) { if (r.gold < C().xpCost || r.level >= C().levels.length) return false; r.gold -= C().xpCost; addXp(r, C().xpGain); return true; }
   function addXp(r, n) {
@@ -227,6 +227,7 @@
     if (f.swapHpGold) { const mx = r.maxHp || C().squadHp, hp = r.hp, gold = r.gold; r.hp = Math.max(1, Math.min(mx, gold)); r.gold = hp + Math.max(0, gold - mx); }
     for (let k = 0; k < (f.weapon || 0) + (f.weapons || 0); k++) r.weapons.push(randomWeapon(r));
     for (let k = 0; k < (f.item || 0) + (f.items || 0); k++) r.items.push(makeItem(r, randomBase(r)));
+    for (let k = 0; k < (f.emblem || 0); k++) r.items.push(makeItem(r, randomEmblem(r)));
     for (let k = 0; k < (f.unit2 || 0); k++) addUnit(r, R().pick(r.rng, shopIds().filter(i => D().units[i].cost <= 2)), 2);
     const give = (cost, n, star) => { for (let k = 0; k < n; k++) addUnit(r, R().pick(r.rng, shopIds().filter(i => D().units[i].cost === cost)), star || 1); };
     if (f.units) give(f.units.cost, f.units.n, f.units.star);
@@ -304,7 +305,7 @@
     const E = D().enemies, node = r.node, enc = node === 'encounter' ? RD().encounter[r.encLv] : null;
     const st = r.stage + 1 + (enc ? enc.add : 0), df = E.difficulty(st);
     if (node === 'reward') {
-      const n = Math.min(6, 3 + r.plane);
+      const n = RD().piggy.count ? RD().piggy.count[r.plane - 1] : Math.min(6, 3 + r.plane); // ---- 次元撲滿 ----
       return { name: '撲滿', reward: true, rules: [], front: [...Array(n)].map(() => ({ id: 'piggy', star: 1, items: [] })), back: [] };
     }
     const mk = id => {
@@ -352,7 +353,7 @@
     r.timed.forEach(t => { if (t.n > 0) { t.n--; if (t.gold) r.gold += t.gold; if (t.xp) addXp(r, t.xp); if (t.rerolls) r.freeLeft += t.rerolls; } });
     r.timed = r.timed.filter(t => t.n > 0);
     addXp(r, c.xpPerRound);
-    r.freeLeft += r.freeReroll;
+    r.freeLeft += r.freeReroll + (factionFx(r).nodeReroll || 0);
     const wasBoss = r.node === 'boss';
     r.stage++; r.step++; r.node = null;
     if (r.hp <= 0) r.over = 'lose';
@@ -372,7 +373,7 @@
     const res = { win, node, dmg: 0, drops: [], weapons: [], gold: 0 };
     if (node === 'reward') {
       const P = RD().piggy, killed = b.bodies.filter(o => o.team === 1 && !o.alive).length;
-      res.gold = killed * P.goldEach; res.pigs = killed;
+      res.gold = b.pigGold != null ? b.pigGold + ((b.lot && b.lot.gold) || 0) : killed * P.goldEach; res.pigs = killed;
       if (win) { for (let k = 0; k < (P.allBonus.item || 0); k++) { const it = makeItem(r, randomBase(r)); r.items.push(it); res.drops.push(it); } }
       if (win) rewardCons(r, P.allBonus, res); // ---- 道具 ----
       r.gold += res.gold; finishNode(r, res, false); r.last = res; return res;
@@ -381,6 +382,7 @@
     if (!win) {
       const left = b.moves ? Math.ceil(Math.max(0, b.moves[1]) / c.deathCost) : FA.battle.alive(b, 1).length, L = c.lossDamage, A = RD().ascensions ? RD().ascensions[r.asc || 0] : { lossAdd: 0 };
       res.dmg = Math.round(L.base + left * L.perEnemy + (r.stage + 1) * L.perStage + (node === 'boss' ? 4 : 0) + A.lossAdd);
+      res.dmg = Math.max(1, res.dmg - (factionFx(r).lossRed || 0));
       r.hp = Math.max(0, r.hp - res.dmg);
       if (r.hp <= 0 && r.lastStand > 0) { r.lastStand--; r.hp = 1; res.saved = true; }
     } else {
@@ -395,11 +397,13 @@
         res.gold += rw.gold || 0;
         for (let k = 0; k < (rw.item || 0); k++) { const it = makeItem(r, randomBase(r)); r.items.push(it); res.drops.push(it); }
         for (let k = 0; k < (rw.weapon || 0); k++) { const w = randomWeapon(r); r.weapons.push(w); res.weapons.push(w); }
+        for (let k = 0; k < (rw.emblem || 0); k++) { const it = makeItem(r, randomEmblem(r)); r.items.push(it); res.drops.push(it); }
         if (rw.strategy) res.stratTier = rw.strategy;
         rewardCons(r, rw, res); // ---- 道具 ----
       }
     }
     if (e.battleHeal && r.hp > 0) { const h = Math.min(e.battleHeal, r.maxHp - r.hp); r.hp += h; res.heal = (res.heal || 0) + h; }
+    bondAfterBattle(r, b, res, win);
     res.gold += b.gold || 0; r.gold += res.gold;
     finishNode(r, res, true);
     if (res.stratTier && !r.over) { if (r.pending) r.futures.push({ at: r.stage, tier: res.stratTier }); else askStrategy(r, res.stratTier); }
@@ -491,6 +495,27 @@
     }
     finishNode(r, null);
   }
+  // ---- 徽章 ----：併進 items（tier:'emblem'，不進基礎裝備池、不參與合成）
+  (function () { const E = D().emblems || {}; for (const id in E) if (!D().items[id]) D().items[id] = E[id]; })();
+  const randomEmblem = r => R().pick(r.rng, Object.keys(D().emblems));
+
+  // ---- 陣營 ----：上場（前台＋後台）陣營加成的 fx 合計
+  const teamUnits = r => r.front.slice(0, lv(r).front).concat(r.back.slice(0, lv(r).back)).filter(Boolean);
+  function factionFx(r) {
+    const ft = FA.battle.factionTiers(teamUnits(r).map(u => u.id)), o = {};
+    for (const k in ft.active) { const t = ft.active[k]; if (t) for (const f in t.fx) o[f] = (o[f] || 0) + t.fx[f]; }
+    return o;
+  }
+  const rerollCost = r => Math.max(0, C().rerollCost - (factionFx(r).rerollOff || 0));
+  // 戰後：衛隊勝利多回血、工坊掉裝備／金幣、羈絆抽獎的金幣
+  function bondAfterBattle(r, b, res, win) {
+    const f = factionFx(r);
+    if (win && f.winHeal && r.hp > 0) { const h = Math.min(f.winHeal, (r.maxHp || C().squadHp) - r.hp); r.hp += h; res.heal = (res.heal || 0) + h; }
+    if (f.drop && R().next(r.rng) < f.drop) { const it = makeItem(r, randomBase(r)); r.items.push(it); res.drops.push(it); res.workshop = true; }
+    if (f.gold) res.gold += f.gold;
+    if (b.lot && b.lot.gold) { res.gold += b.lot.gold; res.lotGold = b.lot.gold; }
+  }
+
   // ---- 隊伍代碼（匯出／匯入）----
   function exportTeam(r, name) {
     const L = lv(r), pack = u => u && [u.id, u.star, u.weapon || '', u.items.map(it => [it.id, it.rolls])];
@@ -522,4 +547,5 @@
     exportTeam, importTeam, duelBattle, shopIds,
     cons, giveCons, useCons, consNeeds, carrierPending, rerollCarrier, carrierRerollCost }; // ---- 道具 ---- / ---- 補給 ----
   Object.assign(FA.run, { rollAffixes, rerollAffixes, affixExt, affixEnemy }); // ---- 敵人詞綴 ----
+  Object.assign(FA.run, { factionFx, rerollCost, teamUnits }); // ---- 陣營 ----
 })(globalThis);
