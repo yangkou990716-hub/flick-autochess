@@ -11,7 +11,7 @@
   const QS = new URLSearchParams(location.search), MOCK = QS.get('netmock') === '1';
   const MEM_KEY = 'fa_net' + (QS.get('who') ? '_' + QS.get('who') : (MOCK ? '_x' : '')); // ?who= 讓同一台裝置多個分頁當不同玩家（測試用）
   const SAVE_KEY = 'flick_autochess_save_v2';
-  const NEED = 2, MAXP = 8, AI_DELAY = 1.5, ROOM_TTL = 12 * 3600e3, AI_LV = 15;
+  const NEED = 2, MAXP = 8, AI_DELAY = 1.5, TURN_LIMIT = 30, ROOM_TTL = 12 * 3600e3, AI_LV = 15;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const pad = n => String(n).padStart(4, '0');
   const mkey = (g, n) => 'g' + g + '_' + pad(n);
@@ -316,10 +316,15 @@
     return true;
   }
   // 房主：輪到離線玩家 → 等一下（給對方回來的機會）再用 AI 代打
+  let turnT = 0, turnKey = ''; // 回合計時：每發各自計，超過 TURN_LIMIT 秒沒出手由房主 AI 代打這一發
   function aiTick(dt) {
-    if (!isHost() || !B || building || B.phase !== 'aim' || mv(applied) || aiBusy) return;
-    const c = ctrlOf(B.turn); if (online(c)) { aiT = 0; return; }
-    if ((aiT += dt) < AI_DELAY) return;
+    if (!B || building || B.phase !== 'aim') return;
+    const key = gen + '_' + applied; if (key !== turnKey) { turnKey = key; turnT = 0; aiT = 0; }
+    turnT += dt;
+    if (!isHost() || mv(applied) || aiBusy) return;
+    const c = ctrlOf(B.turn);
+    if (online(c)) { aiT = 0; if (turnT < TURN_LIMIT) return; }
+    else if ((aiT += dt) < AI_DELAY) return;
     aiBusy = true;
     const n = applied, ch = FA.ai.choose(B, B.turn, D.enemies.difficulty(AI_LV), { s: (R.battle.seed ^ Math.imul(n + 1, 0x9e3779b1) ^ gen) | 0 }); // 獨立亂數，不動到戰鬥本身的 rng
     if (!ch) { aiBusy = false; return; }
@@ -386,7 +391,7 @@
       `<span style="color:#f77">${esc(bv.names[op])} 動數 ${Math.max(0, b.moves[op])}/${b.movesMax[op]}</span>　${st}`;
     const opOff = !online(opId);
     ui.msg = b.phase === 'over' ? (b.winner === mySeat ? '勝利！' : '落敗…') : b.phase !== 'aim' ? '' :
-      b.turn === mySeat ? (writing || mv(applied) ? '傳送中…' : '輪到你：按住棋子往後拉') : opOff ? `${bv.names[b.turn]} 離線，AI 代打中…` : `輪到 ${bv.names[b.turn]}…`;
+      b.turn === mySeat ? (writing || mv(applied) ? '傳送中…' : '輪到你：按住棋子往後拉' + (TURN_LIMIT - turnT < 10 ? `（${Math.max(0, Math.ceil(TURN_LIMIT - turnT))} 秒後自動出手）` : '')) : opOff ? `${bv.names[b.turn]} 離線，AI 代打中…` : `輪到 ${bv.names[b.turn]}…`;
     ui.msgCol = b.turn === mySeat ? '#ffe066' : '#f99';
     const ready = myTurn() && BT.avail(b, mySeat).some(o => o.energy >= C.ult.max);
     if (!ready) ui.ultArmed = false;
