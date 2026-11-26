@@ -31,7 +31,8 @@
       hp: 1, maxHp: 1, atk: 0, baseAtk: 0, shield: 0, speed: 1, bounces: 0, wallAdd: 0, wallHits: 0, stunned: false, acted: false, chained: false, hitCount: 0, hurt: 0,
       lifesteal: 0, blastR: 0, blastMult: 0, blastMul: 0, pullMul: 0, poisonMul: 0, zapMult: 0, link: null, weapon: null, ab: null, split: null, poison: null,
       pierceLeft: 0, boomUsed: false, burnUsed: false, splitDone: false, healed: false, relaunched: false, fricMul: 1, exposed: 0, exposeAmp: 0, fx: {},
-      down: false, sx: 0, sy: 0, ringBuff: 0, energy: 0, ultType: '', ultOn: '', ultUsed: 0, ultStop: 0, ultMassMul: 1 };
+      down: false, sx: 0, sy: 0, ringBuff: 0, energy: 0, ultType: '', ultOn: '', ultUsed: 0, ultStop: 0, ultMassMul: 1,
+      farDmg: 0, dodge: 0, trav: 0, ox: 0, oy: 0, homed: false, tether: -1, fear: 0, veil: 0, decoyUsed: false };
   }
 
   function makeBody(inst, team, sideMods, traitsActive, env) {
@@ -52,6 +53,7 @@
     const b = Object.assign(base, { id: inst.id, name: U.name, star: inst.star, traits: unitTraits(inst), color: U.color,
       r: (U.r + (inst.star - 1) * 2) * rm, m: Math.max(0.3, U.mass * (1 + (mods.massPct || 0))), hp, maxHp: hp, atk, baseAtk: atk,
       speed: U.speed * (1 + (mods.speedPct || 0)), bounces: cfg.baseBounces + (mods.bounces || 0), wallAdd: mods.wallAdd || 0,
+      farDmg: mods.farDmg || 0, dodge: Math.min(cfg.dodgeCap || 0.5, mods.dodge || 0),
       lifesteal: mods.lifesteal || 0, blastR: mods.blastR || 0, blastMult: mods.blastMult || 0, blastMul: mods.blastMul || 0, pullMul: mods.pullMul || 0, poisonMul: mods.poisonMul || 0,
       link: U.link ? U.link.with : null, weapon: inst.weapon || null, ultType: U.ult || (D().traitUlt || {})[U.traits[0]] || 'nova' });
     b.shield = hp * (mods.shieldPct || 0);
@@ -79,7 +81,7 @@
     const bodies = front.filter(Boolean).map(u => makeBody(u.boss ? Object.assign({}, u, { threat: ext.threat }) : u, team, sideMods, tt.active, env));
     const side = { traits: tt.active, counts: tt.counts, turnHeal: 0, turnShield: 0, zap: 0, gravity: 0,
       shotsAdd: ext.shots || 0, chainAll: !!ext.chainAll, echo: ext.echo || null, blastGold: ext.blastGold || 0,
-      cannon: [], dmgTaken: ext.dmgTaken || 0, lowStarDmg: ext.lowStarDmg || 0, mark: 0, markAmp: 0, revive: ext.revive || 0, revivePct: 0.4, openFreeze: ext.openFreeze || 0, stormZap: ext.stormZap || 0, stormDmg: 0 };
+      cannon: [], dmgTaken: ext.dmgTaken || 0, lowStarDmg: ext.lowStarDmg || 0, mark: 0, markAmp: 0, revive: ext.revive || 0, revivePct: 0.4, openFreeze: ext.openFreeze || 0, stormZap: ext.stormZap || 0, stormDmg: 0, snipe: [], veil: 0, veilTick: 0 };
     bodies.forEach(b => { if (b.zapMult) side.zap += b.atk * b.zapMult; });
     if (bodies.length) side.stormDmg = bodies.reduce((s, b) => s + b.atk, 0) / bodies.length * 0.8;
     bondSide(side, all, tt);
@@ -93,6 +95,8 @@
       if (bk.type === 'gravity') side.gravity += bk.pull * (1 + 0.3 * (u.star - 1));
       if (bk.type === 'cannon') side.cannon.push({ dmg: U.atk * k * bk.mult, r: bk.r });
       if (bk.type === 'mark') { side.mark = Math.max(side.mark, bk.turns); side.markAmp = Math.max(side.markAmp, bk.amp + 0.05 * (u.star - 1)); }
+      if (bk.type === 'snipe') side.snipe.push(U.atk * k * bk.mult);
+      if (bk.type === 'veil') side.veil += bk.n + (u.star >= 3 ? 1 : 0);
       if (bk.type === 'revive') { side.revive += 1; side.revivePct = Math.max(side.revivePct, bk.pct + 0.1 * (u.star - 1)); }
     });
     return { bodies, side };
@@ -177,6 +181,9 @@
       if (b.env.fog && x.alive) dealDamage(b, x, x.maxHp * b.env.fog, null, 'poison');
     });
     s.cannon.forEach(cn => { const f = alive(b, foe); if (f.length) { const t = rng.pick(b.rng, f); explode(b, t.x, t.y, cn.r, cn.dmg, b.turn, null, false); } });
+    s.snipe.forEach(dmg => { const f = alive(b, foe); if (!f.length) return; const t = f.reduce((m, o) => (o.hp + o.shield < m.hp + m.shield ? o : m)); b.events.push({ t: 'snipe', x: t.x, y: t.y, team: b.turn }); dealDamage(b, t, dmg, null, 'snipe'); });
+    if (s.veil) s.veilTick++;
+    for (let k = 0; s.veilTick % 2 === 1 && k < s.veil; k++) { const f = alive(b, b.turn).filter(o => !o.veil); if (!f.length) break; const x = rng.pick(b.rng, f); x.veil = 1; b.events.push({ t: 'veil', x: x.x, y: x.y }); }
     for (let k = 0; k < s.stormZap; k++) { const f = alive(b, foe); if (f.length) { const t = rng.pick(b.rng, f); b.events.push({ t: 'zap', x: t.x, y: t.y }); dealDamage(b, t, s.stormDmg, null, 'zap'); } }
     if (s.gravity) { b.events.push({ t: 'pull', x: 0, y: 0, r: b.R }); shift(b, foe, 0, 0, s.gravity * 0.15); }
     if (b.env.storm) { const a = rng.range(b.rng, 0, 6.283), rr = rng.range(b.rng, 0, 0.5), x = Math.cos(a) * rr * b.hw, y = Math.sin(a) * rr * b.hh; b.events.push({ t: 'pull', x, y, r: b.R * 0.8 }); shift(b, null, x, y, b.env.storm * 0.1); }
@@ -219,6 +226,7 @@
     if (!x || !x.alive || x.temp || x.team !== b.turn || b.phase !== 'aim' || !avail(b, b.turn).includes(x)) return false;
     power = Math.max(0, Math.min(1, power));
     if (b.affix) power = affixLaunch(b, x, power); // ---- 敵人詞綴 ----
+    if (x.fear) { power *= 1 - x.fear; x.fear = 0; b.events.push({ t: 'fear', x: x.x, y: x.y, used: true }); } // 恐懼：這一發力道打折
     const full = power >= cfg.fullPowerAt;
     const sp = power * cfg.maxLaunch * x.speed * (full ? 1 + cfg.fullPowerBonus : 1);
     if (full) b.events.push({ t: 'fullpower', x: x.x, y: x.y });
@@ -228,7 +236,8 @@
     if (ult && x.energy >= U.max) { x.energy = 0; x.ultOn = x.ultType; b.events.push({ t: 'ult', x: x.x, y: x.y, name: ((D().ults || {})[x.ultType] || {}).name || '大招', team: x.team }); spd *= ultLaunch(b, x); }
     else x.energy = Math.min(U.max, x.energy + U.gainLaunch);
     x.vx = Math.cos(angle) * spd; x.vy = Math.sin(angle) * spd;
-    b.bodies.forEach(y => { y.ringBuff = 0; y.wallHits = 0; y.boomUsed = false; y.burnUsed = false; y.splitDone = false; y.healed = false; y.relaunched = false; if (y.ab && y.ab.type === 'pierce') y.pierceLeft = y.ab.n; });
+    b.bodies.forEach(y => { y.ringBuff = 0; y.wallHits = 0; y.boomUsed = false; y.burnUsed = false; y.splitDone = false; y.healed = false; y.relaunched = false; y.trav = 0; y.homed = false; y.tether = -1; if (y.ab && y.ab.type === 'pierce') y.pierceLeft = y.ab.n; });
+    x.ox = x.x; x.oy = x.y;
     b.zones.forEach(z => z.hit = {});
     b.phase = 'moving'; b.mover = idx; b.simT = 0; b.chain = 0; b.hits = 0; b.pending = []; b.ghost = {}; b.echoUsed = false; b.stopDone = false;
     b.events.push({ t: 'launch', i: idx });
@@ -263,6 +272,7 @@
       const c = JSON.parse(JSON.stringify(tgt)); c.i = b.bodies.length; c.x += tgt.r * 1.2; c.y -= tgt.r * 0.4; c.vx = -tgt.vx; c.vy = tgt.vy + 200; c.name += '分身'; c.boss = false; c.split = null;
       b.bodies.push(c); b.events.push({ t: 'bossSplit', x: tgt.x, y: tgt.y });
     }
+    if (tgt.hp <= 0 && tgt.ab && tgt.ab.type === 'decoy' && !tgt.decoyUsed && !tgt.temp) { tgt.decoyUsed = true; tgt.hp = tgt.maxHp * tgt.ab.keep; tgt.poison = null; b.events.push({ t: 'decoy', x: tgt.x, y: tgt.y }); } // 替身：每場一次
     const sd = b.sides[tgt.team];
     if (tgt.hp <= 0 && sd.revive > 0 && !tgt.boss) { sd.revive--; tgt.hp = tgt.maxHp * sd.revivePct; tgt.poison = null; b.events.push({ t: 'revive', x: tgt.x, y: tgt.y }); }
     if (tgt.hp <= 0) {
@@ -327,13 +337,19 @@
 
   function onHit(b, src, tgt, speed) {
     const cfg = C(), per = cfg.wallBonusPer * (b.env.wallBonusMul || 1) + src.wallAdd;
-    const mult = (1 + per * (Math.min(src.wallHits, src.bounces) + lotStack(b, src))) * (src.ringBuff ? 1.2 : 1), atk = atkOf(src);
-    dealDamage(b, tgt, atk * speed / cfg.dmgSpeedRef * mult, src, 'hit');
+    const mult = (1 + per * (Math.min(src.wallHits, src.bounces) + lotStack(b, src))) * (src.ringBuff ? 1.2 : 1), atk = atkOf(src), ab = src.ab;
+    // 幽影：閃避（隱身必閃）——閃掉碰撞傷害與所有附加效果
+    if (!tgt.temp && (tgt.veil || tgt.dodge) && (tgt.veil || rng.next(b.rng) < tgt.dodge)) { tgt.veil = 0; b.events.push({ t: 'dodge', x: tgt.x, y: tgt.y }); return; }
+    const far = src.farDmg ? 1 + src.farDmg * Math.min(cfg.farCap || 5, src.trav / 100) : 1, pinK = ab && ab.type === 'pin' ? 1 + ab.bonus : 1; // 狙擊：助跑距離加成
+    dealDamage(b, tgt, atk * speed / cfg.dmgSpeedRef * mult * far * pinK, src, 'hit');
+    if (pinK > 1 && tgt.alive && !tgt.boss) { tgt.vx = tgt.vy = 0; b.events.push({ t: 'pin', x: tgt.x, y: tgt.y }); }
+    if (ab && ab.type === 'fear' && tgt.alive && !tgt.boss) { tgt.fear = Math.max(tgt.fear, ab.val); b.events.push({ t: 'fear', x: tgt.x, y: tgt.y }); }
+    if (ab && ab.type === 'tether' && src.tether < 0 && tgt.alive && !tgt.temp) { src.tether = tgt.i; b.events.push({ t: 'tether', x: tgt.x, y: tgt.y }); }
     b.hits++; src.hitCount++;
     if (tgt.pigQ != null) pigOnHit(b, src, tgt);
     const UC = C().ult; if (!src.temp) src.energy = Math.min(UC.max, src.energy + UC.gainHit); tgt.energy = Math.min(UC.max, tgt.energy + UC.gainHurt);
     if (src.ultOn) ultHit(b, src, tgt, atk);
-    const ab = src.ab, sd = b.sides[src.team];
+    const sd = b.sides[src.team];
     if (ab && ab.type === 'explodeOnHit') explode(b, tgt.x, tgt.y, ab.r, atk * ab.mult * mult, src.team, src, false);
     if (src.blastR) explode(b, tgt.x, tgt.y, src.blastR, atk * src.blastMult * mult, src.team, src, false);
     if (ab && ab.type === 'burn' && !src.burnUsed) { src.burnUsed = true; b.zones.push({ x: tgt.x, y: tgt.y, r: ab.r, dmg: atk * ab.mult, team: src.team, left: ab.shots, hit: {} }); }
@@ -364,6 +380,7 @@
     if (cb.type === 'pullBlast') { pull(b, x, y, cb.r, 520, team, null, 0, owner); b.pending.push({ at: b.simT + 0.35, x, y, r: 110, dmg: atk * cb.mult, team, src: owner.i }); }
     if (cb.type === 'poisonCloud') { b.events.push({ t: 'pull', x, y, r: cb.r }); b.bodies.forEach(o => { if (o.alive && !o.temp && o.team !== team && Math.hypot(o.x - x, o.y - y) < cb.r + o.r) poison(b, o, atk * cb.mult, 3); }); }
     if (cb.type === 'freezeBlast') { b.events.push({ t: 'boom', x, y, r: cb.r, n: 0 }); b.bodies.forEach(o => { if (o.alive && !o.temp && o.team !== team && !o.boss && Math.hypot(o.x - x, o.y - y) < cb.r + o.r) { o.stunned = true; dealDamage(b, o, atk * 0.5, owner, 'zap'); b.events.push({ t: 'freeze', x: o.x, y: o.y }); } }); }
+    if (cb.type === 'fearBlast') { b.events.push({ t: 'pull', x, y, r: cb.r }); b.bodies.forEach(o => { if (o.alive && !o.temp && o.team !== team && Math.hypot(o.x - x, o.y - y) < cb.r + o.r) { dealDamage(b, o, atk * 0.4, owner, 'blast'); if (o.alive && !o.boss) { o.fear = Math.max(o.fear, cb.val); b.events.push({ t: 'fear', x: o.x, y: o.y }); } } }); }
     if (cb.type === 'launch') {
       const slow = Math.hypot(a.vx, a.vy) < Math.hypot(c.vx, c.vy) ? a : c;
       let best = null, bd = 1e9;
@@ -393,6 +410,11 @@
     if (kind === 'ring') { const k = Math.min(1.2, 1700 / (hyp(o.vx, o.vy) || 1)); o.vx *= k; o.vy *= k; o.ringBuff = 1; b.events.push({ t: 'ring', x: o.x, y: o.y }); }
     if (kind === 'wall' && b.rules.includes('spikes') && o.team === 0) dealDamage(b, o, o.maxHp * (C().spikeWall || 0.06), null, 'spike');
     if (o.ab && o.ab.type === 'boomerang') { const k = Math.min(1 + o.ab.boost, 1700 / (hyp(o.vx, o.vy) || 1)); o.vx *= k; o.vy *= k; }
+    if (o.ab && o.ab.type === 'homing' && !o.homed && i === b.mover) { // 鷹眼：第一次撞牆後轉向最近敵人
+      o.homed = true; let best = null, bd = 1e9;
+      b.bodies.forEach(q => { if (q.alive && !q.temp && q.team !== o.team) { const d = hyp(q.x - o.x, q.y - o.y); if (d < bd) { bd = d; best = q; } } });
+      if (best) { const a = Math.atan2(best.y - o.y, best.x - o.x), v = hyp(o.vx, o.vy) * o.ab.keep; o.vx = Math.cos(a) * v; o.vy = Math.sin(a) * v; b.events.push({ t: 'home', x: o.x, y: o.y, x2: best.x, y2: best.y }); }
+    }
     if (o.ab && o.ab.type === 'split' && !o.splitDone && i === b.mover) { o.splitDone = true; spawnShards(b, o); }
   }
 
@@ -405,6 +427,7 @@
       const o = bs[i]; if (!o.alive) continue;
       o.x += o.vx * dt; o.y += o.vy * dt;
       const sp = hyp(o.vx, o.vy);
+      if (o.farDmg) o.trav += sp * dt;
       if (sp > 0) {
         const ns = o.fricMul === 1 ? Math.max(0, sp * fr - ld) : Math.max(0, sp * Math.pow(fr, o.fricMul) - ld * o.fricMul);
         o.vx *= ns / sp; o.vy *= ns / sp;
@@ -429,6 +452,7 @@
       z.hit[o.i] = 1;
       if (z.kind === 'mine') { z.left = 0; explode(b, z.x, z.y, z.br, z.dmg, z.team, null, false); }
       else if (z.kind === 'pool') poison(b, o, z.pDmg, z.turns);
+      else if (z.kind === 'web') { o.vx *= z.slow; o.vy *= z.slow; poison(b, o, z.pDmg, z.turns); b.events.push({ t: 'webhit', x: o.x, y: o.y }); }
       else dealDamage(b, o, z.dmg, null, 'burn');
     }));
     if (b.zones.some(z => z.left <= 0)) b.zones = b.zones.filter(z => z.left > 0);
@@ -504,6 +528,24 @@
         });
         return false;
       }
+      if (!b.stopDone && mv && mv.alive && mv.ab && mv.ab.type === 'tether' && mv.tether >= 0) { // 電鰻：把拴住的敵人拉回身邊（瞬間位移）並電擊
+        b.stopDone = true; const t = bs[mv.tether];
+        if (t && t.alive && !t.temp && t.team !== mv.team) {
+          const dx = t.x - mv.x, dy = t.y - mv.y, d = hyp(dx, dy) || 1, rr = mv.r + t.r + 4, x0 = t.x, y0 = t.y;
+          if (d > rr) { t.x = mv.x + dx / d * rr; t.y = mv.y + dy / d * rr; t.vx = t.vy = 0; relax(b); }
+          b.events.push({ t: 'tetherPull', x1: x0, y1: y0, x2: t.x, y2: t.y, mx: mv.x, my: mv.y }); b.events.push({ t: 'bolt', x1: mv.x, y1: mv.y, x2: t.x, y2: t.y });
+          dealDamage(b, t, atkOf(mv) * mv.ab.mult, mv, 'zap');
+        }
+      }
+      if (!b.stopDone && mv && mv.alive && mv.ab && mv.ab.type === 'web') {
+        b.stopDone = true; const pd = atkOf(mv) * mv.ab.mult * (1 + (mv.poisonMul || 0));
+        b.zones.push({ kind: 'web', x: mv.x, y: mv.y, r: mv.ab.r, dmg: pd * mv.ab.turns, pDmg: pd, turns: mv.ab.turns, slow: mv.ab.slow, team: mv.team, left: 4, hit: {} });
+        b.events.push({ t: 'web', x: mv.x, y: mv.y, r: mv.ab.r });
+      }
+      if (!b.stopDone && mv && mv.alive && mv.ab && mv.ab.type === 'recall') { // 影子：瞬移回出發點＋護盾
+        b.stopDone = true; b.events.push({ t: 'blink', x: mv.x, y: mv.y, x2: mv.ox, y2: mv.oy });
+        mv.x = mv.ox; mv.y = mv.oy; mv.shield += mv.maxHp * mv.ab.shield; relax(b);
+      }
       if (!b.stopDone && mv && mv.alive && mv.ab && mv.ab.type === 'magnetStop') {
         b.stopDone = true; pull(b, mv.x, mv.y, mv.ab.r, mv.ab.pull * (1 + mv.pullMul), mv.team, null, atkOf(mv) * mv.ab.mult, mv); return false;
       }
@@ -524,11 +566,13 @@
     if (t === 'phase') { x.pierceLeft = 99; k = 1.35; }
     if (t === 'ricochet') { x.wallAdd += 0.5; x.bounces += 6; }
     if (t === 'heal') k = 1.2;
+    if (t === 'deadeye') k = 1.2;
     return k;
   }
   function ultHit(b, src, tgt, atk) {
     const t = src.ultOn;
     if (t === 'nova' && !src.ultUsed) { src.ultUsed = 1; explode(b, tgt.x, tgt.y, 150, atk * 1.6, src.team, src, false); }
+    if (t === 'deadeye' && !src.ultUsed && tgt.alive) { src.ultUsed = 1; b.events.push({ t: 'crit', x: tgt.x, y: tgt.y }); dealDamage(b, tgt, atk * 1.2, src, 'snipe'); expose(b, tgt, 2, 0.25); }
     if (t === 'quake' && tgt.alive) { const dx = tgt.x - src.x, dy = tgt.y - src.y, d = hyp(dx, dy) || 1, k = 700 / Math.sqrt(tgt.m); tgt.vx += dx / d * k; tgt.vy += dy / d * k; if (!tgt.boss) { tgt.stunned = true; b.events.push({ t: 'freeze', x: tgt.x, y: tgt.y }); } }
   }
   function ultStop(b, mv) {
@@ -536,6 +580,15 @@
     if (t === 'vortex') { pull(b, mv.x, mv.y, 330, 650 * (1 + mv.pullMul), mv.team, null, atk * 0.6, mv); return true; }
     if (t === 'plague') { b.events.push({ t: 'pull', x: mv.x, y: mv.y, r: 260 }); b.bodies.forEach(o => { if (o.alive && !o.temp && o.team !== mv.team && hyp(o.x - mv.x, o.y - mv.y) < 260 + o.r) poison(b, o, atk * 0.7 * (1 + (mv.poisonMul || 0)), 3); }); return false; }
     if (t === 'overdrive') { let best = null, bd = 1e9; b.bodies.forEach(o => { if (o.alive && !o.temp && o.team !== mv.team) { const d = hyp(o.x - mv.x, o.y - mv.y); if (d < bd) { bd = d; best = o; } } }); if (best) { const a = Math.atan2(best.y - mv.y, best.x - mv.x); mv.vx = Math.cos(a) * 1100; mv.vy = Math.sin(a) * 1100; b.events.push({ t: 'boost', x: mv.x, y: mv.y }); return true; } }
+    if (t === 'eclipse') { // 影換：和生命比例最低的敵人互換位置
+      let best = null, bv = 9; b.bodies.forEach(o => { if (o.alive && !o.temp && o.team !== mv.team && o.hp / o.maxHp < bv) { bv = o.hp / o.maxHp; best = o; } });
+      if (best) {
+        const x0 = mv.x, y0 = mv.y; mv.x = best.x; mv.y = best.y; best.x = x0; best.y = y0; best.vx = best.vy = 0;
+        b.events.push({ t: 'swap', x1: x0, y1: y0, x2: mv.x, y2: mv.y });
+        dealDamage(b, best, atk * 0.9, mv, 'blast'); if (best.alive && !best.boss) { best.fear = Math.max(best.fear, 0.4); b.events.push({ t: 'fear', x: best.x, y: best.y }); }
+        relax(b);
+      }
+    }
     return false;
   }
   function ultEnd(x) {
@@ -566,7 +619,7 @@
       b.moves[o.team] -= cfg.deathCost;
       b.events.push({ t: 'movecost', team: o.team, n: cfg.deathCost, x: o.x, y: o.y });
       if (b.moves[o.team] <= 0) return;
-      o.alive = true; o.hp = o.maxHp; o.shield = 0; o.poison = null; o.stunned = false; o.exposed = 0; o.vx = o.vy = 0; o.x = o.sx; o.y = o.sy;
+      o.alive = true; o.hp = o.maxHp; o.shield = 0; o.poison = null; o.stunned = false; o.exposed = 0; o.fear = 0; o.vx = o.vy = 0; o.x = o.sx; o.y = o.sy;
       b.events.push({ t: 'respawn', x: o.x, y: o.y, team: o.team });
     });
     relax(b);

@@ -6,8 +6,10 @@
 //   thorns 反傷 / explodeOnHit 撞擊爆炸 / pierce 穿過敵人 / allyBoost 被隊友撞到加速 / sticky 黏住敵人
 //   split 撞牆分裂 / boomerang 撞牆加速 / bigBounce 撞牆加成加大 / rage 越殘越痛
 //   poisonHit 撞到下毒 / freezeHit 撞到冰凍 / chainHit 連鎖閃電 / vamp 吸血 / mineDrop 停下放地雷 / healTouch 碰隊友治療
+//   pin 釘住被撞敵人＋增傷 / homing 撞牆後轉向最近敵人 / recall 停下瞬移回出發點＋護盾 / decoy 每場一次免死替身 / fear 撞到恐懼（下一發力道 -val）
+//   web 停下結網（減速＋中毒）/ tether 拴住第一個撞到的敵人，停下時拉回並電擊
 //   glide 自身摩擦力×mul / armorBreak 撞擊碎盾＋破甲（受傷+amp，turns 回合）/ quakeStop 停下時震開周圍敵人 / relaunch 停下後朝最近敵人再衝一次
-// back（後台被動）type：heal 回血 / shield 護盾 / atkPct 加攻 / zap 電擊敵人 / gravity 把敵人往中間吸 / cannon 炮擊 / revive 復活一次 / mark 每回合破甲標記 1 名敵人
+// back（後台被動）type：heal 回血 / shield 護盾 / atkPct 加攻 / zap 電擊敵人 / gravity 把敵人往中間吸 / cannon 炮擊 / revive 復活一次 / mark 每回合破甲標記 1 名敵人 / snipe 每回合狙擊生命最低的敵人 / veil 每 2 回合讓 n 名隊友隱身（下次被撞閃避）
 (function (g) {
   const FA = g.FA = g.FA || {}; FA.DATA = FA.DATA || {};
   FA.DATA.units = {
@@ -98,6 +100,31 @@
       link: { with: 'shield', combo: { type: 'shieldAll', amt: 35, name: '地壘' } } },
     comet: { name: '彗星', cost: 5, traits: ['swift', 'mech'], role: 'front', hp: 180, atk: 29, mass: 1.1, r: 23, speed: 1.25, color: '#80deea',
       ability: { type: 'relaunch', speed: 420, desc: '停下後自動朝最近的敵人再衝一次' },
-      link: { with: 'thunder', combo: { type: 'launch', speed: 1050, name: '流星雨' } } }
+      link: { with: 'thunder', combo: { type: 'launch', speed: 1050, name: '流星雨' } } },
+    // ---- 第七輪擴充：狙擊／幽影 ＋ 毒素、磁力補強 ----
+    javelin: { name: '標槍', cost: 1, traits: ['snipe', 'swift'], role: 'front', hp: 125, atk: 29, mass: 0.9, r: 20, speed: 1.2, color: '#ffab40',
+      ability: { type: 'pin', bonus: 0.3, desc: '撞到的敵人被釘在原地（不會被撞飛），並多受 30% 傷害' },
+      link: { with: 'hawk', combo: { type: 'launch', speed: 1000, name: '鷹擊' } } },
+    hawk: { name: '鷹眼', cost: 3, traits: ['snipe', 'bounce'], role: 'front', hp: 165, atk: 31, mass: 1, r: 23, speed: 1.15, color: '#a1887f',
+      ability: { type: 'homing', keep: 0.95, desc: '第一次撞牆後自動轉向最近的敵人' },
+      link: { with: 'javelin', combo: { type: 'launch', speed: 1000, name: '鷹擊' } } },
+    sniper: { name: '狙擊手', cost: 4, traits: ['snipe', 'mech'], role: 'back', hp: 150, atk: 32, mass: 1.2, r: 24, speed: 1, color: '#546e7a',
+      back: { type: 'snipe', mult: 0.65 },
+      link: { with: 'javelin', combo: { type: 'blast', r: 120, mult: 1.3, name: '貫穿射擊' } } },
+    shadow: { name: '影子', cost: 2, traits: ['shade', 'toxic'], role: 'front', hp: 140, atk: 28, mass: 0.9, r: 21, speed: 1.15, color: '#5e4b8b',
+      ability: { type: 'recall', shield: 0.06, desc: '停下時瞬移回出發點，並得到 6% 生命護盾' },
+      link: { with: 'nightmare', combo: { type: 'fearBlast', r: 200, val: 0.4, name: '夜幕' } } },
+    illusion: { name: '幻術師', cost: 3, traits: ['shade', 'magnet'], role: 'both', hp: 160, atk: 27, mass: 1.1, r: 24, speed: 1.05, color: '#b39ddb',
+      ability: { type: 'decoy', keep: 0.3, desc: '每場一次：受到致命傷時留下替身，改以 30% 生命撐住' }, back: { type: 'veil', n: 1 },
+      link: { with: 'shadow', combo: { type: 'shieldAll', amt: 35, name: '幻影壁' } } },
+    nightmare: { name: '夜魔', cost: 5, traits: ['shade', 'heavy'], role: 'front', hp: 215, atk: 32, mass: 1.8, r: 30, speed: 1, color: '#4527a0',
+      ability: { type: 'fear', val: 0.3, desc: '撞到的敵人陷入恐懼：下一發力道 -30%' },
+      link: { with: 'shadow', combo: { type: 'fearBlast', r: 200, val: 0.4, name: '夜幕' } } },
+    spider: { name: '毒蛛', cost: 2, traits: ['toxic', 'mech'], role: 'front', hp: 165, atk: 28, mass: 1, r: 22, speed: 1, color: '#ad1457',
+      ability: { type: 'web', r: 85, slow: 0.35, mult: 0.6, turns: 2, desc: '停下時結蛛網：碰到的敵人大幅減速並中毒（2 回合）' },
+      link: { with: 'shroom', combo: { type: 'poisonCloud', r: 170, mult: 0.45, name: '毒網' } } },
+    eel: { name: '電鰻', cost: 4, traits: ['magnet'], role: 'front', hp: 190, atk: 33, mass: 1.2, r: 25, speed: 1.1, color: '#26c6da',
+      ability: { type: 'tether', mult: 0.6, desc: '拴住第一個撞到的敵人；停下時把它拉回身邊並電擊' },
+      link: { with: 'magnet', combo: { type: 'pullBlast', r: 220, mult: 1.3, name: '電磁網' } } }
   };
 })(globalThis);

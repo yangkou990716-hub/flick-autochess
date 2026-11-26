@@ -7,7 +7,7 @@
   const clone = b => { const c = JSON.parse(JSON.stringify(b)); c.events = []; return c; };
   const EVAL_STEPS = 1000; // 預演最多約 8 秒（固定步長 1/120），大部分傷害都在前段，換取效能
   // 總動數制：擊倒對手＝對方動數 -deathCost，自己被打倒同理，所以擊殺／陣亡以「動數價值」move 計分
-  const W = { own: 0.9, move: 60, killHp: 0.15, dieHp: 0.15, combo: 35, freeze: 45, poison: 0.7, spike: 1.6, zone: 0.4, expose: 20, ring: 12, win: 2000, lose: 2000, ultHold: 15 };
+  const W = { own: 0.9, move: 60, killHp: 0.15, dieHp: 0.15, combo: 35, freeze: 45, poison: 0.7, spike: 1.6, zone: 0.4, expose: 20, ring: 12, win: 2000, lose: 2000, ultHold: 15, fear: 30 };
 
   function evalShot(b, team, idx, ang, pw, ult) {
     const c = clone(b);
@@ -31,6 +31,7 @@
           foesLeft++;
           if (o.stunned && !o0.stunned) s += W.freeze;
           if (o.exposed > o0.exposed) s += W.expose;
+          if (o.fear > o0.fear) s += W.fear;
           const p1 = o.poison ? o.poison.dmg * o.poison.turns : 0, p0 = o0.poison ? o0.poison.dmg * o0.poison.turns : 0;
           if (p1 > p0) s += (p1 - p0) * W.poison;
         }

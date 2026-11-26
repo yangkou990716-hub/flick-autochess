@@ -31,6 +31,7 @@
   // ---- 羈絆抽獎 ／ 陣營 ／ 徽章 ---- 文字
   const lotText = L => { if (!L) return ''; const LR = D.lotteryRules, tot = L.pool.reduce((a, p) => a + p[1], 0); return `<span style="color:#ffd54f">🎰 每次${LR.onName[L.on]}抽獎：</span>` + L.pool.map(p => `${p[0] === 'dmg' ? LR.name.dmg + '+' + pct(p[2]) : LR.name[p[0]]} ${Math.round(p[1] / tot * 100)}%`).join('、'); };
   const tierLine = t => `${t.n}：${modsText(t.mods)}${t.lottery ? '<br>　' + lotText(t.lottery) : ''}`;
+  const counterLine = T => (T.beats || T.weakTo) ? `<br><span class="lbl">⚔ 剋制：${(T.beats || []).map(k => D.traits[k].name).join('、') || '—'}｜被剋：${(T.weakTo || []).map(k => D.traits[k].name).join('、') || '—'}${T.why ? '（' + T.why + '）' : ''}</span>` : '';
   const FAC = D.factions || {};
   const facName = id => { const U = D.units[id], F = U && U.faction && FAC[U.faction]; return F ? `<span style="color:${F.color}">${F.icon}${F.name}</span>` : ''; };
   const teamEmb = () => FA.battle.emblemMap(RUN.teamUnits(run));
@@ -38,7 +39,8 @@
   function backText(U) {
     const b = U.back; if (!b) return '';
     return { atkPct: `${b.trait ? D.traits[b.trait].name + '角色' : '前台'}攻擊+${pct(b.val)}`, shield: `每回合前台護盾+${b.val}`, heal: `每回合前台回血+${b.val}`,
-      zap: `每回合電擊隨機敵人（${pct(b.mult)}攻擊）`, gravity: '每回合把敵人往中間吸', cannon: `每回合炮擊隨機敵人（${pct(b.mult)}攻擊爆炸）`, revive: `第一隻被打倒的隊友當場以 ${pct(b.pct)} 生命撐住（不扣動數）`, mark: `每回合標記 1 名敵人，受傷 +${pct(b.amp || 0)}（${b.turns || 0} 回合）` }[b.type];
+      zap: `每回合電擊隨機敵人（${pct(b.mult)}攻擊）`, gravity: '每回合把敵人往中間吸', cannon: `每回合炮擊隨機敵人（${pct(b.mult)}攻擊爆炸）`, revive: `第一隻被打倒的隊友當場以 ${pct(b.pct)} 生命撐住（不扣動數）`, mark: `每回合標記 1 名敵人，受傷 +${pct(b.amp || 0)}（${b.turns || 0} 回合）`,
+      snipe: `每回合狙擊生命最低的敵人（${pct(b.mult)}攻擊）`, veil: `每 2 回合讓 ${b.n} 名前台隊友隱身：下次被撞必定閃避（3 星 +1 名）` }[b.type];
   }
   // ---- 大招 ----：角色的大招（units.ult 覆蓋，否則看第一個羈絆）
   const UC = C.ult || { max: 100, gainLaunch: 25, gainHit: 15, gainHurt: 10 };
@@ -159,7 +161,7 @@
     else if (sel && sel.cs != null && (run.consumables || [])[sel.cs]) info = consInfo(sel.cs); // ---- 道具 ----
     else if (sel && sel.item != null) info = itemText(run.items[sel.item]) + '<br><span class="lbl">點角色裝上（最多 3 件）。鐵拳＋彈簧＝爆裂彈簧；護符＋疾行靴＝吸血疾靴</span>';
     else if (sel && sel.wp != null) info = weaponText(run.weapons[sel.wp]) + '<br><span class="lbl">點角色裝上（每隻 1 把，會替換）</span>';
-    else if (sel && sel.trait) { const T = D.traits[sel.trait]; info = `<b>${T.name}</b>（只加給${T.name}角色）<br>` + T.tiers.map(tierLine).join('<br>'); }
+    else if (sel && sel.trait) { const T = D.traits[sel.trait]; info = `<b>${T.name}</b>（只加給${T.name}角色）<br>` + T.tiers.map(tierLine).join('<br>') + counterLine(T); }
     else if (sel && sel.fa) info = facInfo(sel.fa);
     else if (sel && sel.st) { const S = RD.strategies[sel.st]; info = `<b>${S.name}</b>（${RD.tiers[S.tier].name}）<br>${S.desc}`; }
     else info = `<span class="lbl">雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈 -1、被打倒 -${C.deathCost}，對方動數先歸零就贏；擊倒首領直接贏。贏 +${C.winHeal} 血、輸了扣血；🛡＝鎖血免死。點商店卡片購買；點角色查看／移動；3 隻同星自動升星。佈好陣按「前進」選路線。</span>`;
@@ -438,6 +440,8 @@
     const st = [];
     if (o.stunned) st.push('<span style="color:#8df">❄ 冰凍：這回合不能彈射</span>');
     if (o.poison) st.push(`<span style="color:#9ccc65">☠ 中毒：每回合 ${Math.round(o.poison.dmg)} 傷害，剩 ${o.poison.turns} 回合</span>`);
+    if (o.fear) st.push(`<span style="color:#b388ff">😱 恐懼：下一發力道 -${pct(o.fear)}</span>`);
+    if (o.veil) st.push('<span style="color:#d1c4e9">👻 隱身：下次被撞閃避</span>');
     if (st.length) h += st.join('　') + '<br>';
     if (U && U.ability && U.role !== 'back') h += `<span class="k">能力：</span>${U.ability.desc}<br>`;
     if (o.ultType) h += ultLine(o.ultType, o.energy || 0);
@@ -609,7 +613,7 @@
   // ---------- 圖鑑 ----------
   const CODEX = {
     角色: () => Object.keys(D.units).sort((a, b) => D.units[a].cost - D.units[b].cost).map(id => `<div class="choice">${unitInfo({ id, star: 1, items: [], weapon: null })}</div>`).join(''),
-    羈絆: () => Object.values(D.traits).map(T => `<div class="choice"><b style="color:${T.color}">${T.name}</b>：${Object.keys(D.units).filter(k => D.units[k].traits.includes(Object.keys(D.traits).find(x => D.traits[x] === T))).map(k => D.units[k].name).join('、')}<br>` + T.tiers.map(tierLine).join('<br>') + '</div>').join(''),
+    羈絆: () => Object.values(D.traits).map(T => `<div class="choice"><b style="color:${T.color}">${T.name}</b>：${Object.keys(D.units).filter(k => D.units[k].traits.includes(Object.keys(D.traits).find(x => D.traits[x] === T))).map(k => D.units[k].name).join('、')}<br>` + T.tiers.map(tierLine).join('<br>') + counterLine(T) + '</div>').join(''),
     陣營: () => '<div class="lbl">第二條羈絆軸：每隻角色屬於 1 個陣營，湊 3／5 隻給經濟或規則加成</div>' + Object.keys(FAC).map(k => `<div class="choice">${facInfo(k)}</div>`).join(''),
     徽章: () => '<div class="lbl">徽章佔 1 格裝備：穿上的角色多 1 個該羈絆（羈絆計數 +1，原本就有的不重複算）。取得：補給、遭遇難度 3+、白銀策略「買彩票」</div>' + Object.keys(D.emblems).map(k => `<div class="choice">${itemText({ id: k, rolls: Object.fromEntries(Object.entries(D.emblems[k].affix).map(([m, v]) => [m, v[0]])) })}</div>`).join(''),
     裝備: () => Object.values(D.items).filter(I => I.tier !== 'emblem').map(I => `<div class="choice"><b>${I.icon}${I.name}</b>${I.recipe ? `（${I.recipe.map(x => D.items[x].name).join('＋')}）` : '（基礎）'}<br>${Object.entries(I.affix).map(([k, v]) => D.modText[k] ? D.modText[k](v[0]) + (v[0] !== v[1] ? '～' + D.modText[k](v[1]).replace(/^[^\d+-]*/, '') : '') : '').join('、')}</div>`).join(''),
