@@ -13,6 +13,7 @@ function team() {
   const pick = () => FA.rng.next(rs) < 0.7 ? FA.rng.pick(rs, pool) : FA.rng.pick(rs, ids);
   const mk = id => {
     const u = { id, star: FA.rng.next(rs) < 0.3 ? 2 : 1, items: [], weapon: FA.rng.next(rs) < 0.25 ? FA.rng.pick(rs, Object.keys(D.weapons)) : null };
+    if (FA.rng.next(rs) < 0.08) u.items.push(FA.run.makeItem({ rng: rs }, FA.rng.pick(rs, Object.keys(D.emblems)))); // 徽章
     if (FA.rng.next(rs) < 0.35) { const it = FA.rng.next(rs) < 0.25 ? FA.rng.pick(rs, ['blastspring', 'vampboots']) : FA.rng.pick(rs, baseItems); u.items.push(FA.run.makeItem({ rng: rs }, it)); }
     return u;
   };
@@ -22,7 +23,7 @@ function team() {
   return { front, back };
 }
 
-const st = { unit: {}, trait: {}, item: {}, weapon: {} };
+const st = { unit: {}, trait: {}, faction: {}, item: {}, weapon: {} };
 const rec = (k, key, w) => { const o = st[k][key] = st[k][key] || [0, 0]; o[0]++; if (w) o[1]++; };
 const diff = { aimNoise: 0.06, candidates: 10 };
 const t0 = Date.now(); let wipes = 0;
@@ -42,8 +43,10 @@ for (let n = 0; n < N; n++) {
     const ws = !FA.battle.alive(b, 1).length ? 0 : !FA.battle.alive(b, 0).length ? 1 : (hp(0) > hp(1) ? 0 : 1);
     const w = ws === side, all = T.front.concat(T.back);
     new Set(all.map(u => u.id)).forEach(id => rec('unit', D.units[id].name, w));
-    const tt = FA.battle.traitTiers(all.map(u => u.id));
+    const tt = FA.battle.traitTiers(all.map(u => u.id), FA.battle.emblemMap(all));
     for (const k in tt.active) if (tt.active[k]) rec('trait', D.traits[k].name + tt.active[k].n, w);
+    const ft = FA.battle.factionTiers(all.map(u => u.id));
+    for (const k in ft.active) if (ft.active[k]) rec('faction', D.factions[k].name + ft.active[k].n, w);
     new Set(all.flatMap(u => u.items.map(i => i.id))).forEach(id => rec('item', D.items[id].name, w));
     new Set(all.map(u => u.weapon).filter(Boolean)).forEach(id => rec('weapon', D.weapons[id].name, w));
   });

@@ -15,9 +15,9 @@
   function addMods(acc, mods, k = 1) { for (const key in mods || {}) { if (MAXK.includes(key)) acc[key] = Math.max(acc[key] || 0, mods[key]); else acc[key] = (acc[key] || 0) + mods[key] * k; } return acc; }
 
   // ---- 羈絆計算 ----
-  function traitTiers(unitIds) {
+  function traitTiers(unitIds, emb) { // emb：徽章 {unitId:[trait]}（可省略）
     const uniq = [...new Set(unitIds)], counts = {}, active = {};
-    uniq.forEach(id => { const U = D().units[id]; if (U) U.traits.forEach(t => counts[t] = (counts[t] || 0) + 1); });
+    uniq.forEach(id => { const U = D().units[id]; if (U) U.traits.concat(emblemExtra(id, emb, U)).forEach(t => counts[t] = (counts[t] || 0) + 1); });
     for (const k in D().traits) {
       let best = null; D().traits[k].tiers.forEach(t => { if ((counts[k] || 0) >= t.n) best = t; });
       active[k] = best;
@@ -46,9 +46,9 @@
     const mods = addMods({}, sideMods);
     (inst.items || []).forEach(it => addMods(mods, it.rolls));
     if (inst.weapon) addMods(mods, D().weapons[inst.weapon].mods);
-    U.traits.forEach(t => { if (traitsActive[t]) addMods(mods, traitsActive[t].mods); });
+    unitTraits(inst).forEach(t => { if (traitsActive[t]) addMods(mods, traitsActive[t].mods); });
     const hp = U.hp * m * (1 + (mods.hpPct || 0)), atk = U.atk * m * (1 + (mods.atkPct || 0));
-    const b = Object.assign(base, { id: inst.id, name: U.name, star: inst.star, traits: U.traits.slice(), color: U.color,
+    const b = Object.assign(base, { id: inst.id, name: U.name, star: inst.star, traits: unitTraits(inst), color: U.color,
       r: (U.r + (inst.star - 1) * 2) * rm, m: Math.max(0.3, U.mass * (1 + (mods.massPct || 0))), hp, maxHp: hp, atk, baseAtk: atk,
       speed: U.speed * (1 + (mods.speedPct || 0)), bounces: cfg.baseBounces + (mods.bounces || 0), wallAdd: mods.wallAdd || 0,
       lifesteal: mods.lifesteal || 0, blastR: mods.blastR || 0, blastMult: mods.blastMult || 0, blastMul: mods.blastMul || 0, pullMul: mods.pullMul || 0, poisonMul: mods.poisonMul || 0,
@@ -71,7 +71,7 @@
   function buildSide(front, back, team, ext, env) {
     const cfg = C();
     const all = front.concat(back).filter(u => u && !u.boss);
-    const tt = traitTiers(all.map(u => u.id));
+    const tt = traitTiers(all.map(u => u.id), emblemMap(all));
     const sideMods = addMods({}, ext.mods);
     if (ext.threat) { sideMods.hpPct = (sideMods.hpPct || 0) + ext.threat; sideMods.atkPct = (sideMods.atkPct || 0) + ext.threat; }
     if (team === 1 && env.enemyHp) sideMods.hpPct = (sideMods.hpPct || 0) + env.enemyHp;
@@ -81,6 +81,7 @@
       cannon: [], mark: 0, markAmp: 0, revive: ext.revive || 0, revivePct: 0.4, openFreeze: ext.openFreeze || 0, stormZap: ext.stormZap || 0, stormDmg: 0 };
     bodies.forEach(b => { if (b.zapMult) side.zap += b.atk * b.zapMult; });
     if (bodies.length) side.stormDmg = bodies.reduce((s, b) => s + b.atk, 0) / bodies.length * 0.8;
+    bondSide(side, all, tt);
     back.filter(Boolean).forEach(u => {
       const U = D().units[u.id]; if (!U || !U.back || U.role === 'front') return;
       const k = cfg.starMult[u.star - 1], bk = U.back;
@@ -122,6 +123,7 @@
     relax(bt);
     if (bt.rules.includes('swamp')) [[-0.45, 0.12], [0.45, 0.12], [0, -0.02]].forEach(([x, y]) => bt.zones.push({ kind: 'pool', x: x * R, y: y * R, r: 50, dmg: 0, team: 1, left: 999, hit: {}, pDmg: 18, turns: 2 }));
     [0, 1].forEach(t => { for (let k = 0; k < bt.sides[t].openFreeze; k++) { const f = alive(bt, 1 - t); if (f.length) { const x = rng.pick(bt.rng, f); x.stunned = true; bt.events.push({ t: 'freeze', x: x.x, y: x.y }); } } });
+    bondCreate(bt);
     startTurn(bt);
     return bt;
   }
@@ -186,12 +188,14 @@
     b.zones.forEach(z => z.hit = {});
     b.phase = 'moving'; b.mover = idx; b.simT = 0; b.chain = 0; b.hits = 0; b.pending = []; b.ghost = {}; b.echoUsed = false; b.stopDone = false;
     b.events.push({ t: 'launch', i: idx });
+    bondLaunch(b, x);
     return true;
   }
 
   // ---- 傷害 ----
   function dealDamage(b, tgt, amt, src, kind) {
     if (!tgt.alive || tgt.temp || amt <= 0) return 0;
+    amt *= bondDmgMul(b, tgt, src, kind);
     if (kind === 'hit' && tgt.ab && tgt.ab.type === 'guard') amt *= 1 - tgt.ab.red;
     if (tgt.exposed > 0) amt *= 1 + tgt.exposeAmp;
     const pierceShield = src && kind === 'hit' && ((src.fx && src.fx.shieldPierce) || (src.ab && src.ab.type === 'armorBreak'));
@@ -218,6 +222,7 @@
       tgt.hp = 0; tgt.alive = false; tgt.vx = tgt.vy = 0;
       b.events.push({ t: 'death', x: tgt.x, y: tgt.y, team: tgt.team, color: tgt.color });
     }
+    if (tgt.pigQ != null) pigDamaged(b, tgt);
     return amt;
   }
 
@@ -225,6 +230,7 @@
     const sd = b.sides[team];
     if (sd.chainAll) chain = true;
     if (src && src.blastMul) dmg *= 1 + src.blastMul;
+    lotDraw(b, team, 'boom', x, y);
     if (sd.blastGold && b.gold < sd.blastGold) b.gold++;
     const q = [{ x, y, r, dmg, d: 0 }];
     while (q.length) {
@@ -243,6 +249,7 @@
 
   function pull(b, cx, cy, r, force, team, except, dmg, src) {
     b.events.push({ t: 'pull', x: cx, y: cy, r });
+    lotDraw(b, team, 'pull', cx, cy);
     b.bodies.forEach(o => {
       if (!o.alive || o.team === team || o === except || o.temp) return;
       const dx = cx - o.x, dy = cy - o.y, d = Math.hypot(dx, dy) || 1;
@@ -272,9 +279,10 @@
 
   function onHit(b, src, tgt, speed) {
     const cfg = C(), per = cfg.wallBonusPer * (b.env.wallBonusMul || 1) + src.wallAdd;
-    const mult = 1 + per * Math.min(src.wallHits, src.bounces), atk = atkOf(src);
+    const mult = 1 + per * (Math.min(src.wallHits, src.bounces) + lotStack(b, src)), atk = atkOf(src);
     dealDamage(b, tgt, atk * speed / cfg.dmgSpeedRef * mult, src, 'hit');
     b.hits++; src.hitCount++;
+    if (tgt.pigQ != null) pigOnHit(b, src, tgt);
     const ab = src.ab, sd = b.sides[src.team];
     if (ab && ab.type === 'explodeOnHit') explode(b, tgt.x, tgt.y, ab.r, atk * ab.mult * mult, src.team, src, false);
     if (src.blastR) explode(b, tgt.x, tgt.y, src.blastR, atk * src.blastMult * mult, src.team, src, false);
@@ -347,6 +355,7 @@
           o.vx -= (1 + e) * vn * nx; o.vy -= (1 + e) * vn * ny;
           if (vn > 80) {
             o.wallHits++; b.events.push({ t: 'wall', x: o.x, y: o.y });
+            if (o.team === b.turn && o.traits.indexOf('bounce') >= 0) lotDraw(b, o.team, 'wall', o.x, o.y);
             if (b.rules.includes('spikes') && o.team === 0) dealDamage(b, o, o.maxHp * 0.06, null, 'spike');
             if (o.ab && o.ab.type === 'boomerang') { const k = Math.min(1 + o.ab.boost, 1700 / (hyp(o.vx, o.vy) || 1)); o.vx *= k; o.vy *= k; }
             if (o.ab && o.ab.type === 'split' && !o.splitDone && i === b.mover) { o.splitDone = true; spawnShards(b, o); }
@@ -478,7 +487,7 @@
     for (let k = 0; k < 1500; k++) {
       const done = step(c);
       if (hit < 0) {
-        const j = c.bodies.findIndex((q, n) => n !== idx && !q.temp && q.alive && (Math.abs(q.vx) > 1 || Math.abs(q.vy) > 1));
+        const j = c.bodies.findIndex((q, n) => n !== idx && !q.temp && q.alive && !q.hopT && (Math.abs(q.vx) > 1 || Math.abs(q.vy) > 1));
         if (j >= 0) { hit = j; hitPts = [[c.bodies[j].x, c.bodies[j].y]]; }
       }
       if (cut < 0 && (hit >= 0 || o.wallHits > Math.max(1, o.bounces))) cut = pts.length;
@@ -491,7 +500,92 @@
     return { pts, cut: cut < 0 ? pts.length - 1 : cut, hit: hitPts, r: o.r };
   }
 
+  // ---- 徽章 ----：裝備裡的徽章讓角色多 1 個羈絆（原本就有的不重複算）
+  const emblemOf = it => D().emblems && it && D().emblems[it.id];
+  function emblemMap(units) {
+    const m = {};
+    (units || []).forEach(u => { if (!u || !u.items) return; u.items.forEach(it => { const E = emblemOf(it); if (E) (m[u.id] = m[u.id] || []).push(E.addTrait); }); });
+    return m;
+  }
+  function emblemExtra(id, emb, U) { const a = (emb && emb[id]) || []; return a.filter((t, i) => !U.traits.includes(t) && a.indexOf(t) === i && D().traits[t]); }
+  function unitTraits(inst) { const U = D().units[inst.id]; return U.traits.concat(emblemExtra(inst.id, emblemMap([inst]), U)); }
+
+  // ---- 陣營 ----：計數同流派（前台＋後台、同角色算一次）
+  function factionTiers(unitIds) {
+    const F = D().factions || {}, counts = {}, active = {};
+    [...new Set(unitIds)].forEach(id => { const U = D().units[id]; if (U && U.faction) counts[U.faction] = (counts[U.faction] || 0) + 1; });
+    for (const k in F) { let best = null; F[k].tiers.forEach(t => { if ((counts[k] || 0) >= t.n) best = t; }); active[k] = best; }
+    return { counts, active };
+  }
+  // 建一方時：陣營（多發／第一發規則）＋羈絆抽獎獎池
+  function bondSide(side, all, tt) {
+    const ft = factionTiers(all.map(u => u.id));
+    side.factions = ft.active; side.launches = 0; side.firstMul = 1; side.lot = {};
+    for (const k in ft.active) { const f = ft.active[k]; if (f && f.fx.shots) { side.shotsAdd += f.fx.shots; side.firstMul = Math.min(side.firstMul, f.fx.firstMul || 1); } }
+    for (const k in tt.active) { const a = tt.active[k]; if (a && a.lottery) side.lot[a.lottery.on] = { trait: k, pool: a.lottery.pool }; }
+  }
+  function bondCreate(bt) {
+    bt.lot = { n: {}, dmg: [0, 0], stack: [0, 0], shotN: [0, 0], gold: 0 }; bt.pigGold = 0;
+    bt.bodies.forEach(o => { if (o.id === 'piggy' && o.team === 1) { o.pigQ = 0; o.hopT = false; } });
+  }
+  function bondLaunch(b, x) {
+    const s = b.sides[x.team]; s.launches = (s.launches || 0) + 1;
+    if (b.lot) { b.lot.n = {}; b.lot.dmg = [0, 0]; b.lot.stack = [0, 0]; }
+    pigHop(b, x.team);
+  }
+  // 傷害倍率：抽獎的本發加成；馬戲團第一發沒先撞牆時碰撞傷害打折
+  function bondDmgMul(b, tgt, src, kind) {
+    if (!src || !b.lot || src.team === tgt.team) return 1;
+    let m = 1 + (b.lot.dmg[src.team] || 0);
+    const s = b.sides[src.team];
+    if (kind === 'hit' && s.firstMul < 1 && s.launches === 1 && src.team === b.turn) { const mv = b.bodies[b.mover]; if (mv && mv.team === src.team && !mv.wallHits) m *= s.firstMul; }
+    return m;
+  }
+
+  // ---- 羈絆抽獎 ----：觸發時機用 b.rng 抽，每發每種時機最多 perShot 次
+  function lotDraw(b, team, on, x, y) {
+    const s = b.sides[team], L = b.lot; if (!L || !s || !s.lot || !s.lot[on]) return;
+    const RR = D().lotteryRules, key = team + on; if ((L.n[key] || 0) >= RR.perShot) return; L.n[key] = (L.n[key] || 0) + 1;
+    const pool = s.lot[on].pool; let r = rng.next(b.rng) * pool.reduce((a, p) => a + p[1], 0), p = pool[0];
+    for (const q of pool) { if (r < q[1]) { p = q; break; } r -= q[1]; }
+    let prize = p[0];
+    if (prize === 'shot' && L.shotN[team] >= RR.shotCap) prize = 'none';
+    if (prize === 'gold' && (team !== 0 || L.gold >= RR.goldCap)) prize = 'none';
+    if (prize === 'dmg') L.dmg[team] += p[2];
+    if (prize === 'stack') L.stack[team]++;
+    if (prize === 'shot') { L.shotN[team]++; if (b.bonus) b.bonus[team]++; else b.shots[team]++; } // 輪流制：加到 b.bonus（輪數用完後的加時發數）
+    if (prize === 'gold') L.gold++;
+    b.events.push({ t: 'lotto', x, y, prize, val: p[2] || 0, team, on, trait: s.lot[on].trait });
+  }
+  const lotStack = (b, src) => (b.lot && b.lot.stack[src.team]) || 0;
+
+  // ---- 次元撲滿 ----：被撞往反方向逃、我方每次彈射時蹦一下、每掉 25% 生命掉金
+  const PIG = () => (D().run && D().run.piggy) || {};
+  function pigHop(b, team) {
+    b.bodies.forEach(o => { if (o.pigQ != null) o.hopT = false; });
+    if (team !== 0) return;
+    const pigs = b.bodies.filter(o => o.alive && o.pigQ != null), mine = alive(b, 0); if (!pigs.length || !mine.length) return;
+    const P = PIG(), cx = mine.reduce((a, o) => a + o.x, 0) / mine.length, cy = mine.reduce((a, o) => a + o.y, 0) / mine.length;
+    pigs.forEach(o => {
+      const a = Math.atan2(o.y - cy, o.x - cx) + (rng.next(b.rng) - 0.5) * 2 * (P.hopJitter || 0), v = P.hop || 0; if (!v) return;
+      o.vx = Math.cos(a) * v; o.vy = Math.sin(a) * v; o.hopT = true; b.events.push({ t: 'pighop', x: o.x, y: o.y });
+    });
+  }
+  function pigOnHit(b, src, tgt) {
+    if (!tgt.alive) return;
+    const P = PIG(), dx = tgt.x - src.x, dy = tgt.y - src.y, d = Math.hypot(dx, dy) || 1, v = Math.max(P.flee || 0, Math.hypot(tgt.vx, tgt.vy));
+    tgt.hopT = false; tgt.vx = dx / d * v; tgt.vy = dy / d * v; b.events.push({ t: 'pigflee', x: tgt.x, y: tgt.y });
+  }
+  function pigDamaged(b, tgt) {
+    const P = PIG(), q = tgt.alive ? Math.min(3, Math.floor((1 - tgt.hp / tgt.maxHp) * 4 + 1e-9)) : 4;
+    if (q <= tgt.pigQ) return;
+    const g = (q - tgt.pigQ) * (P.goldPerQuarter || 0) + (q === 4 ? P.killGold || 0 : 0);
+    tgt.pigQ = q; b.pigGold = (b.pigGold || 0) + g;
+    if (g) b.events.push({ t: 'piggold', x: tgt.x, y: tgt.y, n: g });
+  }
+
   function runShot(b) { let k = 0; while (!step(b) && k++ < 2500); }
 
-  FA.battle = { create, launch, step, endShot, runShot, predict, startTurn, alive, hpSum, traitTiers, dealDamage, canMove, addMods, atkOf, expose };
+  FA.battle = { create, launch, step, endShot, runShot, predict, startTurn, alive, hpSum, traitTiers, dealDamage, canMove, addMods, atkOf, expose,
+    factionTiers, emblemMap, unitTraits };
 })(globalThis);

@@ -224,6 +224,13 @@
       c.lineWidth = lw * 0.8; P(c, () => { c.moveTo(-r * 0.22, r * 0.36); for (let k = 1; k <= 6; k++) c.lineTo(-r * 0.22 + k * r * 0.073, r * 0.36 + (k % 2 ? -1 : 1) * r * 0.05); }); c.stroke();
       return;
     }
+    if (o.id === 'piggy' && o.team === 1 && Math.hypot(o.vx || 0, o.vy || 0) > 60) { // ---- 次元撲滿 ----：逃跑中＝驚恐臉＋汗
+      c.fillStyle = '#fff'; P(c, () => { c.arc(-e, ey, er * 1.3, 0, TAU); c.arc(e, ey, er * 1.3, 0, TAU); }); c.fill();
+      c.fillStyle = dark; P(c, () => { c.arc(-e, ey, er * 0.45, 0, TAU); c.arc(e, ey, er * 0.45, 0, TAU); }); c.fill();
+      P(c, () => c.ellipse(0, r * 0.4, r * 0.13, r * 0.17, 0, 0, TAU)); c.fill();
+      c.fillStyle = '#8fd3ff'; [-1, 1].forEach(s => { P(c, () => { c.moveTo(s * r * 0.75, -r * 0.5); c.quadraticCurveTo(s * r * 0.88, -r * 0.25, s * r * 0.75, -r * 0.17); c.quadraticCurveTo(s * r * 0.62, -r * 0.25, s * r * 0.75, -r * 0.5); }); c.fill(); });
+      return;
+    }
     const blink = ((t + o.i * 0.73) % 3.4) < 0.12;
     const angry = o.team === 1 || o.boss, worried = !angry && o.hp < o.maxHp * 0.3;
     if (blink) { c.lineWidth = lw; P(c, () => { c.moveTo(-e - er, ey); c.lineTo(-e + er, ey); c.moveTo(e - er, ey); c.lineTo(e + er, ey); }); c.stroke(); }
