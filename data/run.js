@@ -63,7 +63,12 @@
       rainbow: { name: '彩虹時代', desc: '投資策略出現稜彩的機率大增（敵人也會更強）', fx: { tierBias: 'prism' } },
       longrun: { name: '長線作戰', desc: '每場戰鬥後小隊回 2 血', fx: { battleHeal: 2 } },
       silverage: { name: '白銀時代', desc: '投資策略都是白銀，但每次多 1 個選項（4 選 1）', fx: { tierBias: 'silver', stratOptions: 4 } },
-      warfront: { name: '戰爭邊疆', desc: '第三位面的戰鬥節點全部換成遭遇節點', fx: { planeSwap: { plane: 3, from: 'battle', to: 'encounter' } } }
+      warfront: { name: '戰爭邊疆', desc: '第三位面的戰鬥節點全部換成遭遇節點', fx: { planeSwap: { plane: 3, from: 'battle', to: 'encounter' } } },
+      // ---- 經濟擴充 ----（概念股 c_<羈絆> 由 src/core/run.js 依 FA.DATA.traits 自動產生，選項中最多出現 1 個）
+      insurance: { name: '人身意外險', desc: '每個首領節點前，多一次補給（選 1 隻帶裝角色）', fx: { preBossSupply: 1 } },
+      rotation: { name: '輪崗', desc: '每個節點隨機一種費用的角色出現機率 ×2（商店上方顯示）', fx: { rotateCost: 2 } },
+      evolve: { name: '進化演算法', desc: '每進入新節點，全隊攻擊永久 +2%（可疊）', fx: { perNodeAtk: 0.02 } },
+      secondhand: { name: '二手市場', desc: '商店手動刷新累計 20 次，送 20 金＋1 個員工投影儀', fx: { rerollQuest: { n: 20, gold: 20, cons: { projector: 1 } } } }
     },
     // 投資策略：越高階越強，也讓之後的敵人越強（threat 加到敵人生命與攻擊；extraEnemy 多派敵人）
     tiers: {
@@ -81,13 +86,17 @@
       s_xp: { tier: 'silver', name: '經驗到賬', desc: '立刻 +10 經驗', fx: { xp: 10 } },
       s_lunch: { tier: 'silver', name: '免費午餐', desc: '立刻獲得 10 次免費刷新', fx: { freeRerolls: 10 } },
       s_aid2: { tier: 'silver', name: '二費援軍', desc: '立刻獲得 3 隻隨機 2 費角色', fx: { units: { cost: 2, n: 3, star: 1 } } },
-      s_growth: { tier: 'silver', name: '成長基金', desc: '升到 4 級時 +25 金', fx: { atLevel: { lv: 4, gold: 25 } } },
+      s_growth: { tier: 'silver', name: '成長基金', desc: '升到 5 級時 +25 金', fx: { atLevel: { lv: 5, gold: 25 } } },
       s_team: { tier: 'silver', name: '擴充團隊', desc: '立刻獲得 2 隻 1 費、1 隻 3 費角色', fx: { units2: [[1, 2], [3, 1]] } },
       s_arms: { tier: 'silver', name: '軍火貿易', desc: '立刻獲得 1 把武器與 6 金', fx: { weapons: 1, gold: 6 } },
       s_atk: { tier: 'silver', name: '磨刀', desc: '全隊攻擊 +8%', fx: { mods: { atkPct: 0.08 } } },
       s_piggybank: { tier: 'silver', name: '招財豬', desc: '每場完勝（我方沒有陣亡）+1 金', fx: { flawlessGold: 1 } },
       s_lotto: { tier: 'silver', name: '買彩票', desc: '立刻獲得 1 個隨機羈絆徽章（穿上的角色多 1 個羈絆）', fx: { emblem: 1 } }, // ---- 徽章 ----
       s_echo: { tier: 'silver', name: '回音彈', desc: '每發第一次撞到敵人時，追加一次小爆炸', fx: { echo: { r: 70, mult: 0.35 } } },
+      // ---- 經濟擴充 ----
+      s_save: { tier: 'silver', name: '存款回報', desc: '上個節點沒花任何金幣，下個節點 +2 次免費刷新', fx: { saveRerolls: 2 } },
+      s_diode: { tier: 'silver', name: '二極體', desc: '遭遇節點只剩難度 1 和難度 4；立刻 +6 血、+5 金', fx: { heal: 6, gold: 5, encMode: 'diode' } },
+      s_teamS: { tier: 'silver', name: '團隊力量·銀', desc: '每個已啟動的羈絆，全隊攻擊 +3%', fx: { perTrait: { atkPct: 0.03 } } },
       // 黃金：持續收益、期貨
       g_station: { tier: 'gold', name: '加油站', desc: '立刻 +8 金與 1 次免費刷新，之後每節點 +1 次免費刷新', fx: { gold: 8, freeRerolls: 1, perNode: { rerolls: 1, n: 99 } } },
       g_gun: { tier: 'gold', name: '槍在手', desc: '立刻獲得 1 件裝備＋1 把武器', fx: { items: 1, weapons: 1 } },
@@ -99,6 +108,10 @@
       g_blastfund: { tier: 'gold', name: '爆破分紅', desc: '我方每次爆炸 +1 金，每場最多 3 金', fx: { blastGold: 3 } },
       g_streak: { tier: 'gold', name: '連勝紅利', desc: '連勝／連敗獎勵每次 +1；開場凍住 1 隻敵人', fx: { streakAdd: 1, openFreeze: 1 } },
       g_angel: { tier: 'gold', name: '守護', desc: '每場第一隻陣亡的隊友以 40% 生命復活', fx: { revive: 1 } },
+      // ---- 經濟擴充 ----
+      g_value: { tier: 'gold', name: '價值投資', desc: '立刻獲得 1 隻 2 星 1 費角色；之後 6 個節點，每節點再送 1 隻同角色 1 星', fx: { valueInv: { cost: 1, star: 2, n: 6 } } },
+      g_layoff: { tier: 'gold', name: '大裁員', desc: '立刻賣掉場上和備戰區全部角色，拿 2 倍售價（裝備退回物品欄），再給 9 次免費刷新', fx: { sellAll: 2, freeRerolls: 9 } },
+      g_starpress: { tier: 'gold', name: '星級壓制', desc: '全隊速度 +10%；撞擊星級比自己低的敵人，傷害 +25%', fx: { mods: { speedPct: 0.1 }, lowStarDmg: 0.25 } },
       // 稜彩：改變玩法（敵人難度大增）
       p_open: { tier: 'prism', name: '開源節流', desc: '立刻 +10 金，利息上限變 9', fx: { gold: 10, interestCap: 9 } },
       p_rescue: { tier: 'prism', name: '天降救兵', desc: '立刻獲得 1 隻隨機 3 星 1 費角色與 1 把武器', fx: { units: { cost: 1, n: 1, star: 3 }, weapons: 1 } },
@@ -107,7 +120,13 @@
       p_front: { tier: 'prism', name: '擴編', desc: '前台上限 +1（最多 7）', fx: { frontAdd: 1 } },
       p_chain: { tier: 'prism', name: '連環爆', desc: '我方所有爆炸都會連鎖', fx: { chainAll: true } },
       p_swap: { tier: 'prism', name: '不等價交換', desc: '小隊生命和金幣數值互換（生命最多到上限，多的變金幣）', fx: { swapHpGold: true } },
-      p_double: { tier: 'prism', name: '雙響', desc: '每場我方多 2 次彈射', fx: { shots: 2 } }
+      p_double: { tier: 'prism', name: '雙響', desc: '每場我方多 2 次彈射', fx: { shots: 2 } },
+      // ---- 經濟擴充 ----
+      p_pinpoint: { tier: 'prism', name: '定點爆破', desc: '每場開打時，對生命最高的敵人造成其最大生命 40% 的傷害（首領 20%）', fx: { pinpoint: { pct: 0.4, bossPct: 0.2 } } },
+      p_expand: { tier: 'prism', name: '擴張的代價', desc: '前台上限 +2（最多 7）、全隊受到傷害 -10%；戰敗扣血 ×2', fx: { frontAdd: 2, dmgTaken: -0.1, lossMul: 2 } },
+      p_vision: { tier: 'prism', name: '遠見', desc: '立刻 +15 金並選 1 張黃金策略；之後的投資策略全是稜彩，而且不再加敵人強度', fx: { gold: 15, pickNow: 'gold', lockTier: 'prism', noThreat: true } },
+      p_network: { tier: 'prism', name: '人脈進階', desc: '單場啟動 2 個羈絆就領獎（8 金＋簡易武裝箱），之後門檻 +1、獎金 +4', fx: { bondQuest: { need: 2, gold: 8, cons: { armory: 1 }, step: 1, goldStep: 4 } } },
+      p_headhunt: { tier: 'prism', name: '獵頭', desc: '立刻獲得 2 個完美投影儀（任何費用都能複製）與 5 金', fx: { cons: { projectorX: 2 }, gold: 5 } }
     },
     // ---- 道具 ----
     // 首領獎勵、戰鬥掉落（取代原本直接給裝備）、進入位面時送的道具（ascensions[].wrench＝開局扳手）
