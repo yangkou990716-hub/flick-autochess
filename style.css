@@ -38,7 +38,7 @@ button.on{background:#6b5a1a;border-color:#ffc531}
 .card .dot{width:26px;height:26px;border-radius:50%;margin:2px auto}
 .ctrls{display:flex;gap:5px}.ctrls button{flex:1}
 #battle{padding:0}
-#cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+#cv{position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:#070e18}
 .bhud{position:absolute;top:calc(env(safe-area-inset-top) + 8px);left:10px;right:56px;font-size:14px;pointer-events:none;text-shadow:0 1px 3px #000}
 .pausebtn{position:absolute;top:calc(env(safe-area-inset-top) + 6px);right:8px;padding:6px 10px}
 .modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:9}
