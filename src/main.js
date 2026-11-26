@@ -23,6 +23,7 @@
   const unitN = () => ['front', 'back', 'bench'].reduce((a, z) => a + run[z].filter(Boolean).length, 0);
   const buySnd = n0 => FA.sound.play(unitN() < n0 + 1 ? 'starup' : 'buy'); // 買完隻數沒 +1＝合成升星
   function modal(html, btns) {
+    $('modalBox').className = 'box';
     $('modalBox').innerHTML = html + btns.map((b, i) => `<button data-m="${i}" class="${b.cls || ''}">${b.t}</button>`).join('');
     $('modal').classList.remove('hidden');
     $('modalBox').onclick = e => { const t = e.target.closest('[data-m]'); if (!t) return; $('modal').classList.add('hidden'); btns[+t.dataset.m].f && btns[+t.dataset.m].f(); };
@@ -76,13 +77,21 @@
       const e = RD.encounter[id], w = e.reward;
       return `<b>❗ ${e.name}</b>${e.add ? `<span class="tier" style="color:#f88">敵人 +${e.add} 關${e.extra ? `、多 ${e.extra} 隻` : ''}</span>` : ''}<br>勝利獎勵：${[w.gold ? w.gold + ' 金' : '', w.item ? '裝備' : '', w.weapon ? '武器' : '', w.emblem ? '徽章' : '', w.cons ? consNames(w.cons) : '', w.consOne ? w.consOne.map(k => consNames({ [k]: 1 })).join('或') : '', w.strategy ? RD.tiers[w.strategy].name + '投資策略' : ''].filter(Boolean).join('＋')}`;
     }
-    if (type === 'path') { const o = RD.nodeInfo[id]; return `<b>${o.icon} ${o.name}</b><br>${o.desc}`; }
+    if (type === 'path') { const o = RD.nodeInfo[id], ic = NODE_IC[id]; return `<span class="node-ic" style="--nc:${ic ? ic[1] : '#39c6ff'}">${ic && FA.ti ? FA.ti(ic[0]) : o.icon}</span><div><b>${o.name}</b><br>${o.desc}</div>`; }
     if (type === 'strategy') {
       const o = RD.strategies[id], T = RD.tiers[o.tier];
       return `<span class="tier" style="color:${T.color}">${T.name}</span><b>${o.name}</b><br>${o.desc}` +
         (T.threat ? `<br><span style="color:#f88">之後敵人生命/攻擊 +${pct(T.threat)}${T.extraEnemy ? `、多 ${T.extraEnemy} 隻` : ''}</span>` : '');
     }
   }
+  // ---- 畫面 ----：節點圖示（Tabler Icons）、位面地圖列、選擇卡材質
+  const NODE_IC = { battle: ['swords', '#ff6a4d'], encounter: ['alert-hexagon', '#f0a030'], reward: ['pig-money', '#ee6fa0'], supply: ['package', '#2fa8e0'], boss: ['crown', '#a04dff'] };
+  function planeMap() {
+    const st = RUN.steps(run);
+    return '<div class="pmap">' + st.map((x, k) => { const ic = x && NODE_IC[x];
+      return (k ? `<b class="${k <= run.step ? 'done' : ''}"></b>` : '') + `<i class="${k < run.step ? 'done' : k === run.step ? 'now' : ''}${x === 'boss' ? ' boss' : ''}">${ic && FA.ti ? FA.ti(ic[0]) : '?'}</i>`; }).join('') + '</div>';
+  }
+  const choiceCls = (type, id) => 'm-' + (type === 'strategy' ? RD.strategies[id].tier : type);
   const choiceTitle = { opener: '選擇開局詞綴', env: '投資環境（持續整局）', path: '選擇路線', supply: '補給 3 選 1', encounter: '遭遇：選擇難度', strategy: '投資策略' };
   Object.assign(choiceTitle, { carrier: '補給：選 1 隻（連裝備）', armory: '武裝箱：3 選 1' }); // ---- 道具 ---- / ---- 補給 ----
   function flow() {
@@ -104,13 +113,14 @@
       }
     } else if (run.over) {
       const won = run.over === 'win'; clearSave();
-      return modal(`<h2>${won ? '🏆 通關！' : '☠ 小隊血量歸零'}</h2>難度 ${RD.ascensions[run.asc || 0].name}・打到第 ${run.plane} 位面・第 ${run.stage} 個節點<br>投資策略 ${run.strats.length} 張`, [{ t: '回標題', f: toTitle }]);
+      return modal(`<h2 class="res-h ${won ? 'win' : 'lose'}">${won ? '🏆 通關！' : '☠ 小隊血量歸零'}</h2>難度 ${RD.ascensions[run.asc || 0].name}・打到第 ${run.plane} 位面・第 ${run.stage} 個節點<br>投資策略 ${run.strats.length} 張`, [{ t: '回標題', f: toTitle }]);
     }
     const p = run.pending;
     if (p) {
       const sub = p.type === 'env' ? '開局選一次，整局都生效' : p.type === 'path' ? `第 ${run.plane} 位面・節點 ${run.step + 1}/${RUN.steps(run).length}` : p.type === 'strategy' ? (p.tier ? RD.tiers[p.tier].name + '投資策略' : '黃金、稜彩越強，之後敵人也越強') : '';
-      $('modalBox').innerHTML = `<h2>${choiceTitle[p.type]}</h2>${sub ? `<div class="lbl">${sub}</div>` : ''}<div class="choices">` +
-        p.options.map((id, i) => `<div class="choice" data-c="${i}">${choiceCard(p.type, id)}</div>`).join('') + '</div>' +
+      $('modalBox').className = 'box';
+      $('modalBox').innerHTML = `<h2>${choiceTitle[p.type]}</h2>${p.type === 'path' ? planeMap() : ''}${sub ? `<div class="lbl">${sub}</div>` : ''}<div class="choices">` +
+        p.options.map((id, i) => `<div class="choice ${choiceCls(p.type, id)}" data-c="${i}">${choiceCard(p.type, id)}</div>`).join('') + '</div>' +
         (p.type === 'path' || p.type === 'encounter' ? '<button data-back="1">先回商店</button>' : '') + (p.type === 'carrier' ? carrierBtn(p) : '');
       $('modal').classList.remove('hidden');
       $('modalBox').onclick = e => {
@@ -172,7 +182,7 @@
     $('shopRow').innerHTML = run.shop.map((id, i) => {
       if (!id) return `<div class="card empty"></div>`;
       const U = D.units[id], cc = ['#888', '#3fb950', '#4ea0ff', '#b072ff', '#ffb000'][U.cost - 1];
-      return `<div class="card" data-b="${i}" style="border-color:${cc}">${icon(id, 1, 40) ? `<img src="${icon(id, 1, 40)}" style="width:${U.r * 1.4}px;height:${U.r * 1.4}px;display:block;margin:0 auto">` : `<div class="dot" style="background:${U.color};width:${U.r * 1.2}px;height:${U.r * 1.2}px"></div>`}${U.name}<div class="c">${RUN.unitCost(run, id)}💰</div><div class="t">${U.traits.map(t => D.traits[t].name).join('・')}</div>${cardHint(id, onTeam, tt)}</div>`;
+      return `<div class="card cost-${U.cost}" data-b="${i}" style="border-color:${cc}">${icon(id, 1, 48) ? `<img src="${icon(id, 1, 48)}" style="width:${Math.round(30 + U.r * 0.55)}px;height:${Math.round(30 + U.r * 0.55)}px;display:block;margin:-5px auto -3px">` : `<div class="dot" style="background:${U.color};width:${U.r * 1.2}px;height:${U.r * 1.2}px"></div>`}${U.name}<br><span class="c">${RUN.unitCost(run, id)} 金</span><div class="t">${U.traits.map(t => `<span class="cdot" style="background:${D.traits[t].color}"></span>${D.traits[t].name}`).join(' ')}</div>${cardHint(id, onTeam, tt)}</div>`;
     }).join('');
     $('bReroll').textContent = run.freeLeft ? `免費刷新` : `刷新 ${RUN.rerollCost(run)}`;
     $('bReroll').disabled = !run.freeLeft && run.gold < RUN.rerollCost(run); $('bXp').disabled = run.gold < C.xpCost || run.level >= C.levels.length;
@@ -503,12 +513,12 @@
     setTimeout(() => {
       FA.sound.music(b.winner === 0 ? 'win' : 'lose'); hideBInfo(); // 勝負短音效由 render.js 的 over 事件播
       const stats = movesRes(b) + statsHTML(); bst = null;
-      if (mode === 'duel') { battle = null; mode = 'run'; save(); modal(`<h2>${b.winner === 0 ? '🎉 你贏了' : '💥 你輸了'}</h2>對手：${duelName}<div class="lbl">${endReason(b)}</div>${stats}`, [{ t: '回商店', cls: 'go', f: () => { show('shop'); renderShop(); } }]); return tutResult(); }
+      if (mode === 'duel') { battle = null; mode = 'run'; save(); modal(`<h2 class="res-h ${b.winner === 0 ? 'win' : 'lose'}">${b.winner === 0 ? '🎉 你贏了' : '💥 你輸了'}</h2>對手：${duelName}<div class="lbl">${endReason(b)}</div>${stats}`, [{ t: '回商店', cls: 'go', f: () => { show('shop'); renderShop(); } }]); return tutResult(); }
       const res = RUN.endBattle(run, b); battle = null; save();
       const loot = res.drops.map(itemText).concat(res.weapons.map(weaponText)).concat((res.cons || []).map(k => CS[k] ? CS[k].icon + CS[k].name : '')); // ---- 道具 ----
       const gold = `<div class="ux-res">💰 收入 ${res.income}＋利息 ${res.interest}${res.streakBonus ? `＋連${run.streak > 0 ? '勝' : '敗'} ${res.streakBonus}` : ''}${res.gold ? `＋戰利 ${res.gold}` : ''}　→ 共 ${run.gold} 金</div>`;
-      if (res.node === 'reward') modal(`<h2>🐷 撲滿 ${res.pigs} 隻</h2>${stats}<div class="ux-res">+${res.gold} 金${res.drops.length ? '<br>全破獎勵：' + res.drops.map(itemText).concat((res.cons || []).map(k => CS[k] ? CS[k].icon + CS[k].name : '')).join('<br>') : (res.cons || []).length ? '<br>全破獎勵：' + res.cons.map(k => CS[k].icon + CS[k].name).join('、') : ''}</div>${gold}`, [{ t: '繼續', cls: 'go', f: flow }]);
-      else modal(`<h2>${res.win ? '🎉 勝利' : '💥 落敗'}</h2><div class="lbl">${endReason(b)}</div>${stats}<div class="ux-res">` +
+      if (res.node === 'reward') modal(`<h2 class="res-h win">🐷 撲滿 ${res.pigs} 隻</h2>${stats}<div class="ux-res">+${res.gold} 金${res.drops.length ? '<br>全破獎勵：' + res.drops.map(itemText).concat((res.cons || []).map(k => CS[k] ? CS[k].icon + CS[k].name : '')).join('<br>') : (res.cons || []).length ? '<br>全破獎勵：' + res.cons.map(k => CS[k].icon + CS[k].name).join('、') : ''}</div>${gold}`, [{ t: '繼續', cls: 'go', f: flow }]);
+      else modal(`<h2 class="res-h ${res.win ? 'win' : 'lose'}">${res.win ? '🎉 勝利' : '💥 落敗'}</h2><div class="lbl">${endReason(b)}</div>${stats}<div class="ux-res">` +
         (res.win ? `❤ 小隊 ${res.heal ? '+' + res.heal : '±0'}（${run.hp}）` : `<b style="color:#f88">❤ 小隊 -${res.dmg}（剩 ${run.hp}）</b><br><span class="lbl">${lossText(b, res)}</span>`) + '</div>' +
         (res.saved ? '<b style="color:#ffe066">🛡 鎖血免死觸發！剩 1 血</b><br>' : '') + (res.retry ? '<b style="color:#ffb74d">👑 終局首領還在！整頓後再挑戰</b><br>' : '') + (res.flawless ? '<b style="color:#f8a5c2">🐷 完勝！招財豬加碼</b><br>' : '') + gold +
         (loot.length ? '<div class="ux-res">🎁 獲得：<br>' + loot.join('<br>') + '</div>' : ''),
@@ -593,7 +603,7 @@
   addEventListener('pagehide', save);
 
   // ---- 敵人詞綴 ----
-  const affixCard = id => { const X = D.enemies.affixes[id]; return `<div class="choice"><span class="tier" style="color:${X.tier === 'hard' ? '#ff6b6b' : '#ffb74d'}">${X.tier === 'hard' ? '兇猛' : '溫和'}</span><b>☠ ${X.name}</b><br>${X.desc}</div>`; };
+  const affixCard = id => { const X = D.enemies.affixes[id]; return `<div class="choice m-affix"><span class="tier" style="color:${X.tier === 'hard' ? '#ff6b6b' : '#ffb74d'}">${X.tier === 'hard' ? '兇猛' : '溫和'}</span><b>☠ ${X.name}</b><br>${X.desc}</div>`; };
   function affixChips() {
     if (!run || !run.affixes || !run.affixes.length) return '';
     return '<br>' + run.affixes.map(id => `<span class="st-chip" style="border-color:#f77;color:#f99" data-af="${id}">☠${D.enemies.affixes[id].name}</span>`).join('');
@@ -614,13 +624,13 @@
 
   // ---------- 圖鑑 ----------
   const CODEX = {
-    角色: () => Object.keys(D.units).sort((a, b) => D.units[a].cost - D.units[b].cost).map(id => `<div class="choice">${unitInfo({ id, star: 1, items: [], weapon: null })}</div>`).join(''),
+    角色: () => Object.keys(D.units).sort((a, b) => D.units[a].cost - D.units[b].cost).map(id => `<div class="choice cx-u">${icon(id, 1, 52) ? `<img src="${icon(id, 1, 52)}" alt="">` : ''}<div>${unitInfo({ id, star: 1, items: [], weapon: null })}</div></div>`).join(''),
     羈絆: () => Object.values(D.traits).map(T => `<div class="choice"><b style="color:${T.color}">${T.name}</b>：${Object.keys(D.units).filter(k => D.units[k].traits.includes(Object.keys(D.traits).find(x => D.traits[x] === T))).map(k => D.units[k].name).join('、')}<br>` + T.tiers.map(tierLine).join('<br>') + '</div>').join(''),
     陣營: () => '<div class="lbl">第二條羈絆軸：每隻角色屬於 1 個陣營，湊 3／5 隻給經濟或規則加成</div>' + Object.keys(FAC).map(k => `<div class="choice">${facInfo(k)}</div>`).join(''),
     徽章: () => '<div class="lbl">徽章佔 1 格裝備：穿上的角色多 1 個該羈絆（羈絆計數 +1，原本就有的不重複算）。取得：補給、遭遇難度 3+、白銀策略「買彩票」</div>' + Object.keys(D.emblems).map(k => `<div class="choice">${itemText({ id: k, rolls: Object.fromEntries(Object.entries(D.emblems[k].affix).map(([m, v]) => [m, v[0]])) })}</div>`).join(''),
     裝備: () => Object.values(D.items).filter(I => I.tier !== 'emblem').map(I => `<div class="choice"><b>${I.icon}${I.name}</b>${I.recipe ? `（${I.recipe.map(x => D.items[x].name).join('＋')}）` : '（基礎）'}<br>${Object.entries(I.affix).map(([k, v]) => D.modText[k] ? D.modText[k](v[0]) + (v[0] !== v[1] ? '～' + D.modText[k](v[1]).replace(/^[^\d+-]*/, '') : '') : '').join('、')}</div>`).join(''),
     武器: () => Object.keys(D.weapons).map(id => `<div class="choice">${weaponText(id)}</div>`).join(''),
-    策略: () => ['silver', 'gold', 'prism'].map(t => Object.values(RD.strategies).filter(S => S.tier === t).map(S => `<div class="choice"><span class="tier" style="color:${RD.tiers[t].color}">${RD.tiers[t].name}</span><b>${S.name}</b><br>${S.desc}</div>`).join('')).join(''),
+    策略: () => ['silver', 'gold', 'prism'].map(t => Object.values(RD.strategies).filter(S => S.tier === t).map(S => `<div class="choice m-${t}"><span class="tier" style="color:${RD.tiers[t].color}">${RD.tiers[t].name}</span><b>${S.name}</b><br>${S.desc}</div>`).join('')).join(''),
     環境: () => '<div class="lbl">投資環境：開局選一次，整局都生效</div>' + Object.values(RD.envs).map(E => `<div class="choice"><b>🌐${E.name}</b><br>${E.desc}</div>`).join('') + '<h3>開局詞綴</h3>' + Object.values(RD.openers).map(E => `<div class="choice"><b>${E.name}</b><br>${E.desc}</div>`).join(''),
     節點: () => `<div class="choice"><b>⚔ 戰鬥規則</b><br>・直式場地，雙方輪流：每場隨機決定先手，一輪內交替出手，每隻都動過一次才換下一輪<br>・雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈一次 -1<br>・被打倒在出生點滿血復活，但該方動數再 -${C.deathCost}<br>・<b>對方動數先歸零就贏</b>；擊倒首領直接獲勝<br>・🛟泳圈柱：加速且本發攻擊 +20%；🌵尖刺柱：撞到受傷<br>・⚡大招：${ultCharge}（見「大招」分頁）<br>・落敗扣小隊血：基礎 ${C.lossDamage.base}＋敵方每剩 ${C.deathCost} 動 +${C.lossDamage.perEnemy}＋關卡加成（首領 +4）</div>` + Object.values(RD.nodeInfo).map(N => `<div class="choice"><b>${N.icon} ${N.name}</b><br>${N.desc}</div>`).join('') + '<div class="lbl">投資策略：開局 1 次、位面 1、2 首領後各 1 次，部分策略會延後再給（期貨）。黃金讓敵人 +6%、稜彩 +20% 且多 1 隻。</div>' +
       '<h3>補給內容</h3>' + Object.values(RD.supplies).map(E => `<div class="choice"><b>${E.name}</b>：${E.desc}</div>`).join(''),
@@ -633,6 +643,7 @@
   CODEX.道具 = () => Object.values(CS).map(X => `<div class="choice"><b>${X.icon}${X.name}</b>${X.reusable ? '（可重複使用）' : ''}<br>${X.desc}</div>`).join('') + '<div class="lbl">取得：補給、遭遇、撲滿全破、首領、戰鬥掉落；開局送扳手（A0–A2 精密、A3 起普通）；第二位面開頭送冶金爐</div>'; // ---- 道具 ----
   function codex(tab) {
     tab = tab || '角色';
+    $('modalBox').className = 'box codex';
     $('modalBox').innerHTML = `<h2>📖 圖鑑</h2><div class="traits">${Object.keys(CODEX).map(k => `<span class="tr ${k === tab ? 'act' : ''}" style="${k === tab ? 'background:#ffc531' : ''}" data-tab="${k}">${k}</span>`).join('')}</div><div class="choices">${CODEX[tab]()}</div><button data-close="1">關閉</button>`;
     $('modal').classList.remove('hidden'); $('modalBox').scrollTop = 0;
     $('modalBox').onclick = e => { if (e.target.dataset.tab) codex(e.target.dataset.tab); else if (e.target.dataset.close) $('modal').classList.add('hidden'); };
@@ -716,6 +727,33 @@
       if (t.dataset.econ === 'cons') { if (!RUN.buyShopCons(run)) return flash('金幣不足'); FA.sound.play('coin'); }
       renderShop(); save();
     });
+  })();
+
+  // ---- 畫面 ----：商店動態（只看畫面前後差異，不碰邏輯）：刷新時卡片翻出、升星光效、金幣飛入
+  (function () {
+    const base = renderShop; let lastShop = '', lastGold = null, lastStars = null, lastRun = null;
+    const starMap = () => { const m = {}; ['front', 'back', 'bench'].forEach(z => run[z].forEach(u => { if (u && u.star > 1) m[u.id + '|' + u.star] = (m[u.id + '|' + u.star] || 0) + 1; })); return m; };
+    renderShop = function () {
+      base(); if (!run) return;
+      if (lastRun !== run) { lastRun = run; lastShop = ''; lastGold = run.gold; lastStars = starMap(); }
+      const key = run.shop.join(',');
+      if (key !== lastShop) { lastShop = key; $('shopRow').querySelectorAll('.card').forEach((c, k) => { c.style.setProperty('--k', k); c.classList.add('flip'); }); }
+      const sm = starMap();
+      for (const k in sm) if (sm[k] > (lastStars[k] || 0)) { const [id, st] = k.split('|'); document.querySelectorAll('#shop .slot').forEach(el => { const u = RUN.unitAt(run, { zone: el.dataset.z, i: +el.dataset.i }); if (u && u.id === id && u.star === +st) el.classList.add('ux-starup'); }); vib(25); }
+      lastStars = sm;
+      if (lastGold != null && run.gold > lastGold) coinFly(run.gold - lastGold);
+      lastGold = run.gold;
+    };
+    function coinFly(n) {
+      const to = $('tGold').getBoundingClientRect(), tx = to.left + to.width * 0.25, ty = to.top + to.height / 2, cnt = Math.min(8, 2 + n);
+      for (let k = 0; k < cnt; k++) {
+        const c = document.createElement('div'); c.className = 'fly-coin'; const sx = innerWidth / 2 + (Math.random() - 0.5) * 140, sy = innerHeight * 0.55 + (Math.random() - 0.5) * 80;
+        c.style.left = sx + 'px'; c.style.top = sy + 'px'; document.body.appendChild(c);
+        setTimeout(() => { c.style.transform = `translate(${tx - sx}px,${ty - sy}px) scale(.7)`; c.style.opacity = '.4'; }, 20 + k * 45);
+        setTimeout(() => c.remove(), 700 + k * 45);
+      }
+      setTimeout(() => { const g = $('tGold'); g.classList.remove('bump'); void g.offsetWidth; g.classList.add('bump'); }, 520);
+    }
   })();
 
   // ---------- 標題 ----------

@@ -1,8 +1,8 @@
 // 離線快取：改版時把 VERSION +1
-const VERSION = 'fa-v21';
+const VERSION = 'fa-v22';
 const FILES = ['./', 'index.html', 'style.css', 'manifest.json', 'icons/icon-180.png', 'icons/icon-512.png',
   'data/config.js', 'data/units.js', 'data/traits.js', 'data/items.js', 'data/enemies.js', 'data/run.js',
-  'src/core/battle.js', 'src/core/ai.js', 'src/core/run.js', 'vendor/zzfx.js', 'src/ui/sound.js', 'src/ui/sprites.js', 'src/ui/render.js', 'src/main.js',
+  'src/core/battle.js', 'src/core/ai.js', 'src/core/run.js', 'vendor/zzfx.js', 'src/ui/sound.js', 'vendor/tabler-icons.js', 'src/ui/sprites.js', 'src/ui/render.js', 'src/main.js', 'src/ui/title.js',
   'vendor/firebase-app-compat.js', 'vendor/firebase-database-compat.js', 'data/netconfig.js', 'src/online.js', 'src/netmock.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k))))); self.clients.claim(); });
