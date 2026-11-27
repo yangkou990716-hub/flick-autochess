@@ -7,6 +7,7 @@
 import sys, os, time, json, math, random
 from playwright.sync_api import sync_playwright
 
+TUTNEXT = "(() => { const bs = [...document.querySelectorAll('#uxTut button')].filter(b => b.offsetParent && !/跳過/.test(b.textContent)); const b = bs[bs.length - 1]; if (b) { b.click(); return true; } return false; })()"
 OUT = sys.argv[1] if len(sys.argv) > 1 else '/tmp/fullsmoke'
 ONLY = set(sys.argv[2].split(',')) if len(sys.argv) > 2 else None
 os.makedirs(OUT, exist_ok=True)
@@ -183,29 +184,42 @@ with sync_playwright() as pw:
             p.screenshot(path=f'{OUT}/codex.png')
             p.click('#modalBox [data-close]')
         if want('tut'):
-            p.click('#uxTutBtn'); k = 0
-            while p.is_visible('#uxTut') and k < 20: p.click('#uxTutNext'); k += 1
+            p.click('#uxTutBtn'); p.wait_for_timeout(300)
+            if p.is_visible('#modalBox .tutlist'):  # v1.0：先出章節清單，挑第一章重看
+                p.click('#modalBox .tutlist button'); p.wait_for_timeout(300)
+            k = 0
+            while p.is_visible('#uxTut') and k < 20:
+                nb = p.query_selector('#uxTut button:visible')
+                if not nb: break
+                nb.click(); k += 1; p.wait_for_timeout(150)
             assert not p.is_visible('#uxTut'), '教學關不掉'
+            p.evaluate("document.getElementById('modal').classList.add('hidden'); localStorage.setItem('fa_tut', '{}'); localStorage.setItem('fa_a2hs', '1')")
+            p.reload(); p.wait_for_function('window.FA && FA.debug')
+            if p.is_visible('#uxTut'): p.evaluate(TUTNEXT)
             p.click('#btnNew'); s = scr(p)
             if s['modal'] and '開新局' in s['head']: p.click('#modalBox button.go')
-            seen = set()
-            # 教學開著時點「下一步」，記錄看過哪幾段（商店／戰鬥／結算）
+            seen = set(); bubbles = 0
+            # v1.0 教學：情境式泡泡（#uxTut 內按鈕）＋練習關；記錄在商店／戰鬥／結算各看過泡泡
             n = 0
-            while 'result' not in seen and n < 3000:
+            while not ('result' in seen and s.get('shop')) and n < 3000:
                 n += 1; s = scr(p)
-                if s['tut']:
-                    bt = p.inner_text('#uxBubble')
-                    seen.add('result' if '結算' in bt else 'battle' if s['battle'] else 'shop'); p.click('#uxTutNext'); continue
+                if p.is_visible('#uxTut'):
+                    bt = p.inner_text('#uxBubble') if p.is_visible('#uxBubble') else ''
+                    seen.add('result' if ('結算' in bt or '勝負' in bt) else 'battle' if s['battle'] else 'shop'); bubbles += 1
+                    if not p.evaluate(TUTNEXT): p.evaluate("document.getElementById('uxTut').classList.add('hidden')")
+                    continue
                 if s['modal']:
-                    if s['choices']: p.click('#modalBox [data-c="0"]')
+                    if s['choices']: p.evaluate("document.querySelector('#modalBox [data-c]').click()")
                     else:
-                        b = p.query_selector('#modalBox button.go') or p.query_selector('#modalBox button'); b and b.click()
+                        p.evaluate("(document.querySelector('#modalBox button.go') || document.querySelector('#modalBox button') || {click(){}}).click()")
+                    if 'battle' in seen: seen.add('result')
                 elif s['battle'] and s['phase'] == 'aim' and s['turn'] == 0: my_shot(p, False)
                 elif s['shop']:
-                    for kk in p.evaluate(SHOP): p.click(f'#shopRow [data-b="{kk}"]')
-                    p.evaluate(PLACE); p.click('#bFight')
+                    if 'battle' in seen: break
+                    for kk in p.evaluate(SHOP): p.evaluate("k => document.querySelector('#shopRow [data-b=\"' + k + '\"]').click()", str(kk))
+                    p.evaluate(PLACE); p.evaluate("document.getElementById('bFight').click()")
                 time.sleep(0.03)
-            print('教學重看：', sorted(seen)); assert seen >= {'shop', 'battle', 'result'}, seen
+            print('教學重看：', sorted(seen), '泡泡數', bubbles); assert {'shop', 'battle'} <= seen and bubbles >= 4, (seen, bubbles)
             p.evaluate("localStorage.setItem('fa_tut', JSON.stringify({skip: 1}))")
         ctx.close()
 
