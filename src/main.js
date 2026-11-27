@@ -63,9 +63,9 @@
   const bgm = () => FA.sound.music(screen === 'battle' ? (battle && battle.bodies.some(o => o.boss) ? 'boss' : 'battle') : screen);
   const unitN = () => ['front', 'back', 'bench'].reduce((a, z) => a + run[z].filter(Boolean).length, 0);
   const buySnd = n0 => FA.sound.play(unitN() < n0 + 1 ? 'starup' : 'buy'); // 買完隻數沒 +1＝合成升星
-  function modal(html, btns) {
-    $('modalBox').className = 'box';
-    $('modalBox').innerHTML = html + btns.map((b, i) => `<button data-m="${i}" class="${b.cls || ''}">${b.t}</button>`).join('');
+  function modal(html, btns, cls) {
+    $('modalBox').className = 'box' + (cls ? ' ' + cls : '');
+    $('modalBox').innerHTML = html + `<div class="mbtns${btns.length > 3 ? ' many' : ''}">` + btns.map((b, i) => `<button data-m="${i}" class="${b.cls || ''}">${b.t}</button>`).join('') + '</div>';
     $('modal').classList.remove('hidden');
     $('modalBox').onclick = e => { const t = e.target.closest('[data-m]'); if (!t) return; $('modal').classList.add('hidden'); btns[+t.dataset.m].f && btns[+t.dataset.m].f(); };
   }
@@ -168,10 +168,10 @@
     const p = run.pending;
     if (p) {
       const sub = p.type === 'env' ? '開局選一次，整局都生效' : p.type === 'path' ? `第 ${run.plane} 位面・節點 ${run.step + 1}/${RUN.steps(run).length}` : p.type === 'strategy' ? (p.tier ? RD.tiers[p.tier].name + '投資策略' : '黃金、稜彩越強，之後敵人也越強') : '';
-      $('modalBox').className = 'box';
-      $('modalBox').innerHTML = `<h2>${choiceTitle[p.type]}</h2>${p.type === 'path' ? planeMap() : ''}${sub ? `<div class="lbl">${sub}</div>` : ''}<div class="choices">` +
+      $('modalBox').className = 'box pick pick-' + p.type;
+      $('modalBox').innerHTML = `<div class="pk-h"><h2>${choiceTitle[p.type]}</h2>${sub ? `<div class="lbl">${sub}</div>` : ''}</div>${p.type === 'path' ? planeMap() : ''}<div class="choices n${p.options.length}">` +
         p.options.map((id, i) => `<div class="choice ${choiceCls(p.type, id)}" data-c="${i}">${choiceCard(p.type, id)}</div>`).join('') + '</div>' +
-        (p.type === 'path' || p.type === 'encounter' ? '<button data-back="1">先回商店</button>' : '') + (p.type === 'carrier' ? carrierBtn(p) : '');
+        ((p.type === 'path' || p.type === 'encounter' || p.type === 'carrier') ? `<div class="mbtns">${p.type === 'carrier' ? carrierBtn(p) : ''}${p.type === 'path' || p.type === 'encounter' ? '<button data-back="1">↩ 先回商店</button>' : ''}</div>` : '');
       $('modal').classList.remove('hidden'); setTimeout(() => tutPending(p.type), 60);
       $('modalBox').onclick = e => {
         if (e.target.dataset.reroll) { if (RUN.rerollCarrier(run)) { FA.sound.play('coin'); save(); } return flow(); } // ---- 補給 ----
@@ -189,61 +189,97 @@
     show('shop'); renderShop(); setTimeout(tutShop, 30);
   }
 
-  // ---------- 商店畫面 ----------
+  // ---------- 商店畫面（橫向，照《貨幣戰爭》配置：docs/ui/currency-wars-ui.md）----------
+  const COST_COL = ['#9aa5b1', '#3fb950', '#3a8dde', '#a35ce0', '#f0a000'];
+  const roleOf = id => (D.units[id] || {}).role || 'front';
+  const posIc = role => `<span class="posic p-${role}" aria-label="${{ front: '前台', back: '後台', both: '前後台' }[role]}"><i></i><i></i></span>`;
+  // 第幾級才解鎖這格（給鎖住的格子顯示「Lv5」）
+  function lvNeed(z, i) {
+    const s = RUN.sfx(run), k = C.levels.findIndex(L => (z === 'front' ? Math.min(C.maxFront, L.front + (s.frontAdd || 0)) : L.back) > i);
+    return k < 0 ? 0 : k + 1;
+  }
+  const ui2 = () => FA.settings;
   function renderShop() {
-    const lv = RUN.lv(run), boss = RUN.isBoss(run);
-    $('tStage').textContent = `${hs ? hs.players[hs.cur].name + '｜' : ''}位面${run.plane}・${boss ? '👑首領' : `節點${run.step + 1}/${RUN.steps(run).length}`}`;
-    $('tHp').textContent = `❤ ${run.hp}${run.lastStand ? ' 🛡' + (run.lastStand > 1 ? run.lastStand : '') : ''}`; $('tGold').textContent = `💰 ${run.gold}`;
-    const nx = C.levels[run.level]; $('tLv').textContent = `Lv${run.level}${nx ? ` (${run.xp}/${nx.xp})` : ''}`;
-    const env = run.env ? RD.envs[run.env] : null, s = RUN.sfx(run), e = RUN.efx(run);
-    $('enemyInfo').innerHTML = `${env ? `🌐${env.name}：${env.desc}` : ''}　利息 +${Math.min(C.interestMax + s.interestAdd + (e.interestAdd || 0), Math.floor(run.gold / C.interestPer))}` +
-      (boss ? `　<b>首領：${RUN.bossInfo(run).name}</b>` : '') + (run.streak ? `　${run.streak > 0 ? '連勝' : '連敗'} ${Math.abs(run.streak)}` : '') + (run.threat && mode !== 'league' ? `　<span style="color:#f88">敵強化 ${run.threat > 0 ? "+" : ""}${pct(run.threat)}</span>` : '');
-    $('enemyInfo').innerHTML += affixChips(); // ---- 敵人詞綴 ----
+    const lv = RUN.lv(run), boss = RUN.isBoss(run), st = RUN.steps(run), S2 = ui2();
+    // 上方資訊列：位面節點進度／小隊血量／金幣（含利息預覽）／等級與經驗條
+    $('tStage').innerHTML = `${hs ? `<b>${hs.players[hs.cur].name}</b> ` : ''}<span class="pm-t">位面${run.plane}</span><span class="pm-s">${st.map((x, k) => `<i class="${k < run.step ? 'done' : k === run.step ? 'now' : ''}${x === 'boss' ? ' boss' : ''}"></i>`).join('')}</span>${boss ? '<span class="pm-b">👑</span>' : ''}`;
+    $('tHp').innerHTML = `❤ <b>${run.hp}</b>${run.lastStand ? ' 🛡' + (run.lastStand > 1 ? run.lastStand : '') : ''}`;
+    const s = RUN.sfx(run), e = RUN.efx(run), cap = Math.max(C.interestMax + s.interestAdd + (e.interestAdd || 0), s.interestCap || 0), intr = Math.min(cap, Math.floor(run.gold / C.interestPer));
+    $('tGold').innerHTML = `💰 <b>${run.gold}</b><small title="下一場結算利息">+${intr}</small>`;
+    const nx = C.levels[run.level], xpPct = nx ? Math.round(run.xp / nx.xp * 100) : 100;
+    $('tLv').innerHTML = `<b>Lv${run.level}</b><span class="xpb"><i style="width:${xpPct}%"></i></span><small>${nx ? `${run.xp}/${nx.xp}` : 'MAX'}</small>`;
+    // 右側情報：環境、首領、連勝敗、敵強化、詞綴（點了看說明）
+    const env = run.env ? RD.envs[run.env] : null, chips = [];
+    if (env) chips.push(`<span class="chip env" data-env="1">🌐${env.name}</span>`);
+    if (boss) chips.push(`<span class="chip boss">👑${RUN.bossInfo(run).name}</span>`);
+    if (run.streak) chips.push(`<span class="chip ${run.streak > 0 ? 'win' : 'lose'}">${run.streak > 0 ? '連勝' : '連敗'} ${Math.abs(run.streak)}</span>`);
+    if (run.threat && mode !== 'league') chips.push(`<span class="chip threat">敵強化 ${run.threat > 0 ? '+' : ''}${pct(run.threat)}</span>`);
+    $('enemyInfo').innerHTML = chips.join('') + affixChips(); // ---- 敵人詞綴 ----
     setHTML($('strats'), run.strats.map(id => { const S = RD.strategies[id], T = RD.tiers[S.tier]; return `<span class="st-chip" style="border-color:${T.color};color:${T.color}" data-st="${id}">${S.name}</span>`; }).join(''));
+    // 左側羈絆面板：啟動中在上，顯示「n/下一階」與差幾隻
     const onTeam = run.front.slice(0, lv.front).concat(run.back.slice(0, lv.back)).filter(Boolean).map(u => u.id);
     const tt = FA.battle.traitTiers(onTeam, teamEmb());
-    setHTML($('traits'), (Object.keys(D.traits).map(k => {
-      const T = D.traits[k], n = tt.counts[k] || 0, a = tt.active[k];
-      if (!n) return '';
-      return `<span class="tr ${a ? 'act' : ''}" style="${a ? 'background:' + T.color : ''}" data-tr="${k}"><span class="tic" aria-hidden="true">${tIc(k)}</span>${a ? '✓' : ''}${T.name} ${n}/${(T.tiers.find(t => t.n > n) || T.tiers[T.tiers.length - 1]).n}${a && a.lottery ? '🎰' : ''}</span>`;
-    }).join('') + factionChips(onTeam)) || '<span class="lbl">羈絆：同羈絆的不同角色湊 2 隻起有加成</span>');
+    const trs = Object.keys(D.traits).filter(k => tt.counts[k]).sort((a, b) => (!!tt.active[b] - !!tt.active[a]) || tt.counts[b] - tt.counts[a]);
+    setHTML($('traits'), (trs.map(k => {
+      const T = D.traits[k], n = tt.counts[k], a = tt.active[k], nx2 = T.tiers.find(t => t.n > n), top = nx2 || T.tiers[T.tiers.length - 1];
+      return `<span class="tr ${a ? 'act' : ''}" style="--tc:${T.color}" data-tr="${k}"><span class="tic" aria-hidden="true">${tIc(k)}</span><span class="tn">${a ? '✓' : ''}${T.name}${a && a.lottery ? '🎰' : ''}</span><b class="tcn">${n}/${top.n}</b>${nx2 ? `<small class="need">差${nx2.n - n}</small>` : '<small class="need max">滿</small>'}</span>`;
+    }).join('') + factionChips(onTeam)) || '<span class="lbl tr-empty">同羈絆湊 2 隻起有加成</span>');
+    $('trPanel').classList.toggle('fold', !!S2.trFold); $('shop').classList.toggle('tr-fold', !!S2.trFold);
+    // 前台／後台／備戰區：格子，鎖住的標示幾級解鎖
     ['front', 'back', 'bench'].forEach(z => {
       const lim = z === 'front' ? lv.front : z === 'back' ? lv.back : C.benchSize;
-      const len = z === 'front' ? Math.max(6, lv.front) : run[z].length;
+      const len = z === 'bench' ? C.benchSize : run[z].length;
       setHTML($(z), run[z].slice(0, len).map((u, i) => {
-        const isSel = sel && sel.zone === z && sel.i === i;
-        return `<div class="slot ${i >= lim ? 'lock' : ''} ${isSel ? 'sel' : ''} ${sel && sel.zone && !isSel && i < lim ? 'tgt' : ''}" data-z="${z}" data-i="${i}">${u ? unitHTML(u) : (i >= lim ? '🔒' : '')}</div>`;
+        const isSel = sel && sel.zone === z && sel.i === i, lk = i >= lim, need = lk && z !== 'bench' ? lvNeed(z, i) : 0;
+        return `<div class="slot ${lk ? 'lock' : ''} ${isSel ? 'sel' : ''} ${sel && (sel.zone || sel.item != null || sel.wp != null) && !isSel && !lk ? 'tgt' : ''}" data-z="${z}" data-i="${i}">${u ? unitHTML(u) : lk ? `<span class="lk">🔒${need ? `<small>Lv${need}</small>` : ''}</span>` : ''}</div>`;
       }).join(''));
     });
-    const inv = run.items.map((it, i) => `<span class="item ${sel && sel.item === i ? 'sel' : ''}" data-it="${i}">${D.items[it.id].icon}${D.items[it.id].name}</span>`)
-      .concat(run.weapons.map((w, i) => `<span class="item wp ${sel && sel.wp === i ? 'sel' : ''}" data-wp="${i}">${D.weapons[w].icon}${D.weapons[w].name}</span>`));
+    const cnt = z => run[z].slice(0, z === 'front' ? lv.front : z === 'back' ? lv.back : C.benchSize).filter(Boolean).length;
+    $('zfN').textContent = `${cnt('front')}/${lv.front}`; $('zbN').textContent = `${cnt('back')}/${lv.back}`; $('zcN').textContent = `${cnt('bench')}/${C.benchSize}`;
+    // 右上：未裝備的裝備、武器、道具（點看說明，拖到角色身上）
+    const inv = run.items.map((it, i) => `<span class="item ${sel && sel.item === i ? 'sel' : ''}" data-it="${i}" title="${D.items[it.id].name}">${D.items[it.id].icon}<small>${D.items[it.id].name}</small></span>`)
+      .concat(run.weapons.map((w, i) => `<span class="item wp ${sel && sel.wp === i ? 'sel' : ''}" data-wp="${i}" title="${D.weapons[w].name}">${D.weapons[w].icon}<small>${D.weapons[w].name}</small></span>`));
     inv.push(...consChips()); // ---- 道具 ----
-    setHTML($('items'), inv.length ? inv.join('') : '<span class="lbl">裝備/武器：補給、遭遇、撲滿、首領取得</span>');
+    setHTML($('items'), inv.length ? inv.join('') : '<span class="lbl">🎒 無裝備</span>');
+    // 右側詳情
     let info = '';
-    if (sel && sel.zone && RUN.unitAt(run, sel)) { const u = RUN.unitAt(run, sel); info = unitInfo(u) + `<button id="bSell">賣出 +${RUN.sellPrice(u, run)}</button>　<span class="lbl">點空位移動／點角色交換</span>`; }
+    if (sel && sel.zone && RUN.unitAt(run, sel)) { const u = RUN.unitAt(run, sel); info = `<div class="ux-detail">${unitInfo(u)}</div><div class="ib"><button id="bSell" class="danger">出售 +${RUN.sellPrice(u, run)}💰</button><button id="bDetail">詳細</button></div><span class="lbl">點空格移動／點角色交換；長按拖曳</span>`; }
     else if (sel && sel.cs != null && (run.consumables || [])[sel.cs]) info = consInfo(sel.cs); // ---- 道具 ----
-    else if (sel && sel.item != null) info = itemText(run.items[sel.item]) + '<br><span class="lbl">點角色裝上（最多 3 件）。鐵拳＋彈簧＝爆裂彈簧；護符＋疾行靴＝吸血疾靴</span>';
-    else if (sel && sel.wp != null) info = weaponText(run.weapons[sel.wp]) + '<br><span class="lbl">點角色裝上（每隻 1 把，會替換）</span>';
+    else if (sel && sel.item != null) info = itemText(run.items[sel.item]) + '<br><span class="lbl">點角色裝上，或直接拖到角色身上（最多 3 件）。鐵拳＋彈簧＝爆裂彈簧；護符＋疾行靴＝吸血疾靴</span>';
+    else if (sel && sel.wp != null) info = weaponText(run.weapons[sel.wp]) + '<br><span class="lbl">點角色裝上，或拖到角色身上（每隻 1 把，會替換）</span>';
     else if (sel && sel.trait) { const T = D.traits[sel.trait]; info = `<b>${tIc(sel.trait)} ${T.name}</b>（只加給${T.name}角色）<br>` + T.tiers.map(tierLine).join('<br>') + counterLine(T); }
     else if (sel && sel.fa) info = facInfo(sel.fa);
     else if (sel && sel.st) { const S = RD.strategies[sel.st]; info = `<b>${S.name}</b>（${RD.tiers[S.tier].name}）<br>${S.desc}`; }
-    else info = `<span class="lbl shop-hint">雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈 -1、被打倒 -${C.deathCost}，對方動數先歸零就贏；擊倒首領直接贏。贏 +${C.winHeal} 血、輸了扣血；🛡＝鎖血免死。點商店卡片購買；點角色查看／移動；3 隻同星自動升星。佈好陣按「前進」選路線。</span>`;
+    else if (sel && sel.env && env) info = `<b>🌐 ${env.name}</b>（投資環境，整局生效）<br>${env.desc}`;
+    else info = `<span class="lbl shop-hint">點卡片購買、點角色看詳情；<b>長按拖曳</b>換位置，拖到<b>左下／右下</b>出售。3 隻同星自動升星。佈好陣按「出發」選路線。</span>`;
     $('info').innerHTML = info;
+    // 底部商店抽屜：標題列＝等級機率、備戰區空位；卡片＝費用、羈絆、站位、能否升星
+    const odds = (C.odds || [])[run.level - 1] || [], benchFree = run.bench.filter(x => !x).length;
+    $('shopHead').innerHTML = `<b>🛒 商店</b><span class="odds">${odds.map((v, k) => v ? `<i style="--cc:${COST_COL[k]}">${k + 1}費 ${v}%</i>` : '').join('')}</span><span class="bf ${benchFree ? '' : 'full'}">備戰空位 ${benchFree}</span>`;
     setHTML($('shopRow'), run.shop.map((id, i) => {
-      if (!id) return `<div class="card empty"></div>`;
-      const U = D.units[id], cc = ['#888', '#3fb950', '#4ea0ff', '#b072ff', '#ffb000'][U.cost - 1];
-      return `<div class="card cost-${U.cost}" data-b="${i}" style="border-color:${cc}">${icon(id, 1, 48) ? `<img src="${icon(id, 1, 48)}" style="width:${Math.round(30 + U.r * 0.55)}px;height:${Math.round(30 + U.r * 0.55)}px;display:block;margin:-5px auto -3px">` : `<div class="dot" style="background:${U.color};width:${U.r * 1.2}px;height:${U.r * 1.2}px"></div>`}${U.name}<br><span class="c">${RUN.unitCost(run, id)} 金</span><div class="t">${U.traits.map(t => `<span class="cdot" style="background:${D.traits[t].color}"></span>${tIc(t)}${D.traits[t].name}`).join(' ')}</div>${cardHint(id, onTeam, tt)}</div>`;
+      if (!id) return `<div class="card empty"><span>已購買</span></div>`;
+      const U = D.units[id], cost = RUN.unitCost(run, id), c = owned(id), canStar = c[0] === 2;
+      const poor = run.gold < cost, full = !benchFree && !canStar, ic = icon(id, 1, 64);
+      return `<div class="card cost-${U.cost}${poor ? ' poor' : ''}${full ? ' full' : ''}${canStar ? ' up' : ''}" data-b="${i}" style="--cc:${COST_COL[U.cost - 1]}">` +
+        `<span class="cc">${cost}<i>💰</i></span>${posIc(U.role)}` +
+        (ic ? `<img src="${ic}" alt="">` : `<div class="dot" style="background:${U.color}"></div>`) +
+        `<div class="cbody"><div class="cn">${U.name}</div><div class="t">${U.traits.map(t => `<span>${tIc(t)}${D.traits[t].name}</span>`).join('')}</div>${cardHint(id, onTeam, tt)}</div>${full ? '<span class="cx">備戰區已滿</span>' : ''}</div>`;
     }).join(''));
-    $('bReroll').textContent = run.freeLeft ? `免費刷新` : `刷新 ${RUN.rerollCost(run)}`;
-    $('bReroll').disabled = !run.freeLeft && run.gold < RUN.rerollCost(run); $('bXp').disabled = run.gold < C.xpCost || run.level >= C.levels.length;
-    $('bLock').classList.toggle('on', run.locked); $('bLock').textContent = run.locked ? '已鎖定' : '鎖定';
+    const fold = !!S2.shopFold; $('shopDrawer').classList.toggle('fold', fold); $('shop').classList.toggle('dr-open', !fold);
+    $('bShop').innerHTML = `🛒 商店 ${fold ? '▴' : '▾'}`; $('bShop').classList.toggle('on', !fold);
+    $('bReroll').innerHTML = run.freeLeft ? `🔄 免費刷新` : `🔄 刷新 <small>${RUN.rerollCost(run)}💰</small>`;
+    $('bReroll').disabled = !run.freeLeft && run.gold < RUN.rerollCost(run);
+    $('bXp').innerHTML = `<b>Lv${run.level}</b><span class="xpb"><i style="width:${xpPct}%"></i></span><small>${run.level >= C.levels.length ? '已滿級' : `升級 ${C.xpCost}💰`}</small>`;
+    $('bXp').disabled = run.gold < C.xpCost || run.level >= C.levels.length;
+    $('bLock').classList.toggle('on', run.locked); $('bLock').innerHTML = run.locked ? '🔒<small>已鎖定</small>' : '🔓<small>鎖定</small>'; $('bLock').setAttribute('aria-pressed', !!run.locked);
   }
   // ---- 陣營 ----：商店羈絆列的陣營（方框、虛線外框，和流派圓角膠囊區分）
   function factionChips(onTeam) {
     const ft = FA.battle.factionTiers(onTeam);
     return Object.keys(FAC).map(k => {
       const F = FAC[k], n = ft.counts[k] || 0, a = ft.active[k]; if (!n) return '';
-      return `<span class="tr" data-fa="${k}" style="border-radius:3px;border:1px dashed ${F.color};${a ? `background:${F.color}33;color:${F.color};font-weight:bold` : ''}">${F.icon}${F.name} ${n}/${(F.tiers.find(t => t.n > n) || F.tiers[F.tiers.length - 1]).n}</span>`;
+      const nx = F.tiers.find(t => t.n > n);
+      return `<span class="tr fa ${a ? 'act' : ''}" data-fa="${k}" style="--tc:${F.color}"><span class="tic">${F.icon}</span><span class="tn">${F.name}</span><b class="tcn">${n}/${(nx || F.tiers[F.tiers.length - 1]).n}</b>${nx ? `<small class="need">差${nx.n - n}</small>` : ''}</span>`;
     }).join('');
   }
   const facInfo = k => { const F = FAC[k]; return `<b style="color:${F.color}">${F.icon}${F.name}</b>（陣營：經濟／規則加成，算前台＋後台）<br>` + F.tiers.map(t => `${t.n}：${t.desc}`).join('<br>') + `<br><span class="lbl">成員：${F.members.map(id => D.units[id].name).join('、')}</span>`; };
@@ -260,17 +296,21 @@
     return h;
   }
   const icon = (id, star, px) => { try { return FA.sprites && FA.sprites.icon ? FA.sprites.icon(id, star, px) : null; } catch (e) { return null; } };
+  // 棋子：右上站位圖示、底部星級、下方最多 3 件裝備（貨幣戰爭的角色卡）、右側武器
   function unitHTML(u) {
-    const U = D.units[u.id], ic = icon(u.id, u.star, 56);
-    if (ic) return `<div class="u" style="background:url(${ic}) center/92% no-repeat;border-color:transparent"><span class="st" style="margin-top:auto">${'★'.repeat(u.star)}</span>${u.items.length ? `<span class="it">${u.items.map(i => D.items[i.id].icon).join('')}</span>` : ''}${u.weapon ? `<span class="wp">${D.weapons[u.weapon].icon}</span>` : ''}</div>`;
-    return `<div class="u" style="background:${U.color};color:${U.id === 'feather' ? '#333' : '#fff'}"><span>${U.name}</span><span class="st">${'★'.repeat(u.star)}</span>${u.items.length ? `<span class="it">${u.items.map(i => D.items[i.id].icon).join('')}</span>` : ''}${u.weapon ? `<span class="wp">${D.weapons[u.weapon].icon}</span>` : ''}</div>`;
+    const U = D.units[u.id], ic = icon(u.id, u.star, 64);
+    const extra = `${posIc(U.role)}<span class="st s${u.star}">${'★'.repeat(u.star)}</span>${u.items.length ? `<span class="it">${u.items.map(i => `<i>${D.items[i.id].icon}</i>`).join('')}</span>` : ''}${u.weapon ? `<span class="wp">${D.weapons[u.weapon].icon}</span>` : ''}<span class="un">${U.name}</span>`;
+    if (ic) return `<div class="u sp" style="background-image:url(${ic})">${extra}</div>`;
+    return `<div class="u" style="background:${U.color};color:${U.id === 'feather' ? '#333' : '#fff'}">${extra}</div>`;
   }
 
   $('shop').addEventListener('click', e => {
-    const t = e.target.closest('[data-z],[data-it],[data-wp],[data-b],[data-tr],[data-fa],[data-st],[data-cs],#bSell'); if (!t) return;
+    const t = e.target.closest('[data-z],[data-it],[data-wp],[data-b],[data-tr],[data-fa],[data-st],[data-cs],[data-env],#bSell,#bDetail'); if (!t) return;
     if (consClick(t)) return; // ---- 道具 ----
+    if (t.id === 'bDetail') { if (sel && sel.zone) detail(sel); return; }
     if (t.id === 'bSell') { RUN.sell(run, sel); sel = null; FA.sound.play('sell'); }
-    else if (t.dataset.b != null) { const n0 = unitN(); if (!RUN.buy(run, +t.dataset.b)) return flash('金幣或空位不足'); buySnd(n0); }
+    else if (t.dataset.env) sel = { env: 1 };
+    else if (t.dataset.b != null) { const n0 = unitN(); if (!RUN.buy(run, +t.dataset.b)) return flash(run.gold < RUN.unitCost(run, run.shop[+t.dataset.b] || Object.keys(D.units)[0]) ? '金幣不足' : '備戰區已滿'); buySnd(n0); }
     else if (t.dataset.it != null) { const i = +t.dataset.it; sel = sel && sel.item === i ? null : { item: i }; }
     else if (t.dataset.wp != null) { const i = +t.dataset.wp; sel = sel && sel.wp === i ? null : { wp: i }; }
     else if (t.dataset.tr) sel = { trait: t.dataset.tr };
@@ -291,50 +331,57 @@
   let pd = null, noClickUntil = 0;
   $('shop').addEventListener('contextmenu', e => e.preventDefault());
   $('shop').addEventListener('click', e => { if (performance.now() < noClickUntil) { e.stopPropagation(); e.preventDefault(); } }, true);
+  // 按下：角色／商店卡片／裝備／道具都可拖。移動超過 8px 立刻拖；角色、裝備長按 0.3 秒「拿起來」（不用移動）；商店卡片長按看詳細
   $('shop').addEventListener('pointerdown', e => {
     if (e.button > 0 || pd || !run) return;
-    const t = e.target.closest('[data-z],[data-b],[data-cs]'); if (!t) return;
+    const t = e.target.closest('[data-z],[data-b],[data-cs],[data-it],[data-wp]'); if (!t) return;
     if (t.dataset.cs != null) return consDown(e, t); // ---- 道具 ----
-    const src = t.dataset.b != null ? { buy: +t.dataset.b } : { zone: t.dataset.z, i: +t.dataset.i };
-    if (src.buy != null ? !run.shop[src.buy] : !RUN.unitAt(run, src)) return;
-    pd = { src, el: t, x: e.clientX, y: e.clientY, id: e.pointerId, drag: false, over: null, ghost: null };
-    pd.timer = setTimeout(() => { if (pd && !pd.drag) { const s = pd.src; endDrag(); noClickUntil = performance.now() + 600; vib(10); detail(s); } }, 450);
+    const src = t.dataset.b != null ? { buy: +t.dataset.b } : t.dataset.it != null ? { it: +t.dataset.it } : t.dataset.wp != null ? { wp: +t.dataset.wp } : { zone: t.dataset.z, i: +t.dataset.i };
+    if (src.buy != null ? !run.shop[src.buy] : src.zone ? !RUN.unitAt(run, src) : false) return;
+    pd = { src, el: t, x: e.clientX, y: e.clientY, cx: e.clientX, cy: e.clientY, id: e.pointerId, drag: false, over: null, ghost: null };
+    pd.timer = setTimeout(() => {
+      if (!pd || pd.drag) return;
+      if (pd.src.buy != null) { const s2 = pd.src; endDrag(); noClickUntil = performance.now() + 600; vib(10); detail(s2); return; }
+      vib(12); startDrag(); pd.ghost.style.left = pd.cx + 'px'; pd.ghost.style.top = pd.cy + 'px'; // 拿起來
+    }, 300);
   });
   addEventListener('pointermove', e => {
     if (!pd || e.pointerId !== pd.id) return;
-    if (!pd.drag) { if (Math.hypot(e.clientX - pd.x, e.clientY - pd.y) < 9) return; clearTimeout(pd.timer); startDrag(); }
+    pd.cx = e.clientX; pd.cy = e.clientY;
+    if (!pd.drag) { if (Math.hypot(e.clientX - pd.x, e.clientY - pd.y) < 8) return; clearTimeout(pd.timer); startDrag(); }
     e.preventDefault();
     pd.ghost.style.left = e.clientX + 'px'; pd.ghost.style.top = e.clientY + 'px';
     const tg = dropAt(e.clientX, e.clientY), el = tg ? tg.el : null;
-    if (pd.over !== el) { pd.over && pd.over.classList.remove('ux-over'); el && el.classList.add('ux-over'); pd.over = el; }
+    if (pd.over !== el) { pd.over && pd.over.classList.remove('ux-over'); el && el.classList.add('ux-over'); pd.over = el; if (el) vib(5); }
   }, { passive: false });
   addEventListener('pointerup', e => {
     if (!pd || e.pointerId !== pd.id) return;
-    const d = pd, tg = d.drag ? dropAt(e.clientX, e.clientY) : null; endDrag(); // 先找目標，再收起賣出區
+    const d = pd, tg = d.drag ? dropAt(e.clientX, e.clientY) : null; endDrag(); // 先找目標，再收起出售區
     if (d.drag) { noClickUntil = performance.now() + 250; doDrop(d.src, tg); }
   });
   addEventListener('pointercancel', e => { if (pd && e.pointerId === pd.id) endDrag(); });
   function startDrag() {
     if (pd.src.cs != null) return consStartDrag(); // ---- 道具 ----
     pd.drag = true; sel = null;
-    const u = pd.src.buy != null ? null : RUN.unitAt(run, pd.src), id = u ? u.id : run.shop[pd.src.buy];
     const g = document.createElement('div'); g.className = 'ux-ghost';
-    g.innerHTML = unitHTML(u || { id, star: 1, items: [], weapon: null });
+    if (pd.src.it != null || pd.src.wp != null) { g.classList.add('gi'); g.textContent = pd.src.it != null ? D.items[run.items[pd.src.it].id].icon : D.weapons[run.weapons[pd.src.wp]].icon; }
+    else { const u = pd.src.buy != null ? null : RUN.unitAt(run, pd.src), id = u ? u.id : run.shop[pd.src.buy]; g.innerHTML = unitHTML(u || { id, star: 1, items: [], weapon: null });
+      if (u) { $('uxSell').querySelectorAll('.sz').forEach(z => { z.innerHTML = `出售<b>+${RUN.sellPrice(u, run)}💰</b>`; }); $('uxSell').classList.remove('hidden'); } }
     document.body.appendChild(g); pd.ghost = g; g.style.left = pd.x + 'px'; g.style.top = pd.y + 'px';
-    $('shop').classList.add('ux-dragging'); pd.el.style.opacity = '.35';
-    if (u) { $('uxSell').textContent = `拖到這裡賣出 +${RUN.sellPrice(u, run)} 💰`; $('uxSell').classList.remove('hidden'); }
+    $('shop').classList.add('ux-dragging'); pd.el.classList.add('ux-src');
   }
   function endDrag() {
     if (!pd) return; clearTimeout(pd.timer);
-    if (pd.ghost) pd.ghost.remove(); if (pd.over) pd.over.classList.remove('ux-over'); pd.el.style.opacity = '';
+    if (pd.ghost) pd.ghost.remove(); if (pd.over) pd.over.classList.remove('ux-over'); pd.el.classList.remove('ux-src');
     $('shop').classList.remove('ux-dragging'); $('uxSell').classList.add('hidden'); pd = null;
   }
-  // 手指下方的放置目標：賣出區／格子／整排（放到該排第一個空位）
+  // 手指下方的放置目標：出售區／格子／整排（放到該排第一個空位）
   function dropAt(x, y) {
     const el = document.elementFromPoint(x, y); if (!el) return null;
-    if (el.closest('#uxSell')) return { sell: true, el: $('uxSell') };
+    const sz = el.closest('#uxSell .sz'); if (sz) return { sell: true, el: sz };
     const ie = el.closest('[data-it]'); if (ie && pd && pd.src.cs != null) return { item: +ie.dataset.it, el: ie }; // ---- 道具 ----
     const s = el.closest('[data-z]');
+    if (pd && (pd.src.it != null || pd.src.wp != null || pd.src.cs != null)) return s && RUN.unitAt(run, { zone: s.dataset.z, i: +s.dataset.i }) ? { loc: { zone: s.dataset.z, i: +s.dataset.i }, el: s } : null; // 裝備只能放在角色身上
     if (s && !s.classList.contains('lock')) return { loc: { zone: s.dataset.z, i: +s.dataset.i }, el: s };
     const row = el.closest('#front,#back,#bench');
     if (row) {
@@ -346,16 +393,18 @@
   function doDrop(src, tg) {
     if (!tg) return;
     if (src.cs != null) { if (tg.loc || tg.item != null) applyCons(src.cs, tg.loc || { item: tg.item }); return; } // ---- 道具 ----
+    if (src.it != null) { const r = RUN.equip(run, src.it, tg.loc); renderShop(); save(); if (!r) return flash('最多 3 件裝備'); FA.sound.play('coin'); if (r === 'combine') flash('合成進階裝備！'); return; }
+    if (src.wp != null) { RUN.equipWeapon(run, src.wp, tg.loc); FA.sound.play('coin'); renderShop(); save(); return; }
     if (src.buy != null) {
       if (!tg.loc) return;
       const uid = run.uid, n0 = unitN();
-      if (!RUN.buy(run, src.buy)) { renderShop(); return flash('金幣或空位不足'); }
+      if (!RUN.buy(run, src.buy)) { renderShop(); return flash(run.gold < RUN.unitCost(run, run.shop[src.buy]) ? '金幣不足' : '備戰區已滿'); }
       buySnd(n0);
       let from = null; ['front', 'back', 'bench'].forEach(z => run[z].forEach((u, i) => { if (u && u.uid === uid) from = { zone: z, i }; }));
       if (from && !(from.zone === tg.loc.zone && from.i === tg.loc.i)) RUN.move(run, from, tg.loc);
       renderShop(); save(); if (!from) flash('升星！'); return;
     }
-    if (tg.sell) { RUN.sell(run, src); FA.sound.play('sell'); }
+    if (tg.sell) { RUN.sell(run, src); FA.sound.play('sell'); vib(20); }
     else if (!(src.zone === tg.loc.zone && src.i === tg.loc.i) && !RUN.move(run, src, tg.loc)) { renderShop(); return flash('該格尚未解鎖'); }
     renderShop(); save();
   }
@@ -376,7 +425,7 @@
   // 消耗品：物品欄虛線框顯示；武裝箱點了直接開 3 選 1；其他先點道具再點角色／裝備，或直接拖過去；長按看說明
   const CS = D.consumables || {};
   const consNames = m => Object.keys(m).map(k => CS[k] ? CS[k].icon + CS[k].name + (m[k] > 1 ? '×' + m[k] : '') : '').filter(Boolean).join('＋');
-  const consChips = () => (run.consumables || []).map((id, i) => CS[id] ? `<span class="item cs ${sel && sel.cs === i ? 'sel' : ''}" data-cs="${i}" style="border-style:dashed;${sel && sel.cs === i ? '' : 'border-color:#5cf;'}">${CS[id].icon}${CS[id].name}</span>` : '').filter(Boolean);
+  const consChips = () => (run.consumables || []).map((id, i) => CS[id] ? `<span class="item cs ${sel && sel.cs === i ? 'sel' : ''}" data-cs="${i}" title="${CS[id].name}">${CS[id].icon}<small>${CS[id].name}</small></span>` : '').filter(Boolean);
   const consHow = { unit: '點角色使用（或把道具拖到角色上）', item: '點物品欄裝備或角色（身上有多件會再問）使用，也可以拖過去', none: '點一下直接打開' };
   function consInfo(ci) { const X = CS[run.consumables[ci]]; return `<b>${X.icon}${X.name}</b>（道具）<br>${X.desc}<br><span class="lbl">${consHow[X.target || 'none']}；再點一次道具取消</span>`; }
   function consDetail(ci) { const X = CS[(run.consumables || [])[ci]]; if (!X) return; modal(`<div class="ux-detail"><b>${X.icon}${X.name}</b>（道具${X.reusable ? '・可重複使用' : '・一次性'}）<br>${X.desc}<br><span class="lbl">${consHow[X.target || 'none']}</span></div>`, [{ t: '關閉', cls: 'go' }]); }
@@ -413,7 +462,7 @@
     pd.drag = true; sel = null;
     const g = document.createElement('div'); g.className = 'ux-ghost'; g.style.fontSize = '30px'; g.textContent = CS[run.consumables[pd.src.cs]].icon;
     document.body.appendChild(g); pd.ghost = g; g.style.left = pd.x + 'px'; g.style.top = pd.y + 'px';
-    $('shop').classList.add('ux-dragging'); pd.el.style.opacity = '.35';
+    $('shop').classList.add('ux-dragging'); pd.el.classList.add('ux-src');
   }
   // ---- 補給 ----／武裝箱 選擇卡
   function extraCard(type, o) {
@@ -425,7 +474,17 @@
   }
   function carrierBtn(p) { const c = RUN.carrierRerollCost(); return p.rerolls > 0 ? `<button data-reroll="1" ${run.gold < c ? 'disabled' : ''}>重骰 ${c}💰（剩 ${p.rerolls} 次，現有 ${run.gold}）</button>` : ''; }
   $('bReroll').onclick = () => { if (RUN.reroll(run)) FA.sound.play('reroll'); renderShop(); save(); };
-  $('bLock').onclick = () => { run.locked = !run.locked; renderShop(); save(); };
+  $('bLock').onclick = () => { run.locked = !run.locked; vib(8); renderShop(); save(); };
+  // 商店抽屜（可常駐展開，記在設定）、羈絆面板收合、選單、局內圖鑑
+  const setFold = (k, v) => { FA.settings[k] = v; saveSet(); renderShop(); };
+  $('bShop').onclick = () => setFold('shopFold', !FA.settings.shopFold);
+  $('shopHead').onclick = () => setFold('shopFold', !FA.settings.shopFold);
+  $('trFold').onclick = () => setFold('trFold', !FA.settings.trFold);
+  $('bMenu').onclick = () => $('shopMenu').classList.toggle('hidden');
+  $('bMenuX').onclick = () => $('shopMenu').classList.add('hidden');
+  $('shopMenu').addEventListener('click', e => { if (e.target.closest('button')) $('shopMenu').classList.add('hidden'); });
+  $('bCodexIn').onclick = () => codex('策略');
+  $('bSetIn').onclick = () => FA.settingsUI && FA.settingsUI.open(() => renderShop());
   $('bXp').onclick = () => { const lv = run.level; if (RUN.buyXp(run)) FA.sound.play(run.level > lv ? 'starup' : 'coin'); renderShop(); save(); };
   $('bFight').onclick = () => {
     if (lgHost) { sel = null; return lgHost.ready(); } // ---- 連線自走棋 ----
@@ -589,16 +648,17 @@
     setTimeout(() => {
       FA.sound.music(b.winner === 0 ? 'win' : 'lose'); hideBInfo(); // 勝負短音效由 render.js 的 over 事件播
       const stats = movesRes(b) + statsHTML(); bst = null;
-      if (mode === 'duel') { battle = null; mode = 'run'; save(); modal(`<h2 class="res-h ${b.winner === 0 ? 'win' : 'lose'}">${b.winner === 0 ? '🎉 你贏了' : '💥 你輸了'}</h2>對手：${duelName}<div class="lbl">${endReason(b)}</div>${stats}`, [{ t: '回商店', cls: 'go', f: () => { show('shop'); renderShop(); } }]); return tutResult(); }
+      if (mode === 'duel') { battle = null; mode = 'run'; save(); modal(`<div class="res-grid"><div class="res-l"><h2 class="res-h ${b.winner === 0 ? 'win' : 'lose'}">${b.winner === 0 ? '🎉 你贏了' : '💥 你輸了'}</h2><div class="ux-res">對手：${duelName}</div><div class="lbl">${endReason(b)}</div></div><div class="res-r">${stats}</div></div>`, [{ t: '回商店', cls: 'go', f: () => { show('shop'); renderShop(); } }], 'res'); return tutResult(); }
       const res = RUN.endBattle(run, b); battle = null; save();
       const loot = res.drops.map(itemText).concat(res.weapons.map(weaponText)).concat((res.cons || []).map(k => CS[k] ? CS[k].icon + CS[k].name : '')); // ---- 道具 ----
       const gold = `<div class="ux-res">💰 收入 ${res.income}＋利息 ${res.interest}${res.streakBonus ? `＋連${run.streak > 0 ? '勝' : '敗'} ${res.streakBonus}` : ''}${res.gold ? `＋戰利 ${res.gold}` : ''}　→ 共 ${run.gold} 金</div>`;
-      if (res.node === 'reward') modal(`<h2 class="res-h win">🐷 撲滿 ${res.pigs} 隻</h2>${stats}<div class="ux-res">+${res.gold} 金${res.drops.length ? '<br>全破獎勵：' + res.drops.map(itemText).concat((res.cons || []).map(k => CS[k] ? CS[k].icon + CS[k].name : '')).join('<br>') : (res.cons || []).length ? '<br>全破獎勵：' + res.cons.map(k => CS[k].icon + CS[k].name).join('、') : ''}</div>${gold}`, [{ t: '繼續', cls: 'go', f: flow }]);
-      else modal(`<h2 class="res-h ${res.win ? 'win' : 'lose'}">${res.win ? '🎉 勝利' : '💥 落敗'}</h2><div class="lbl">${endReason(b)}</div>${stats}<div class="ux-res">` +
-        (res.win ? `❤ 小隊 ${res.heal ? '+' + res.heal : '±0'}（${run.hp}）` : `<b style="color:#f88">❤ 小隊 -${res.dmg}（剩 ${run.hp}）</b><br><span class="lbl">${lossText(b, res)}</span>`) + '</div>' +
-        (res.saved ? '<b style="color:#ffe066">🛡 鎖血免死觸發！剩 1 血</b><br>' : '') + (res.retry ? '<b style="color:#ffb74d">👑 終局首領還在！整頓後再挑戰</b><br>' : '') + (res.flawless ? '<b style="color:#f8a5c2">🐷 完勝！招財豬加碼</b><br>' : '') + gold +
-        (loot.length ? '<div class="ux-res">🎁 獲得：<br>' + loot.join('<br>') + '</div>' : ''),
-        [{ t: '繼續', cls: 'go', f: flow }]);
+      // 結算（橫向兩欄）：左＝勝負、小隊血量、金幣；右＝戰鬥數據、戰利品
+      if (res.node === 'reward') modal(`<div class="res-grid"><div class="res-l"><h2 class="res-h win">🐷 撲滿 ${res.pigs} 隻</h2><div class="ux-res big">+${res.gold} 金${res.drops.length ? '<br>全破獎勵：' + res.drops.map(itemText).concat((res.cons || []).map(k => CS[k] ? CS[k].icon + CS[k].name : '')).join('<br>') : (res.cons || []).length ? '<br>全破獎勵：' + res.cons.map(k => CS[k].icon + CS[k].name).join('、') : ''}</div>${gold}</div><div class="res-r">${stats}</div></div>`, [{ t: '繼續 ▶', cls: 'go', f: flow }], 'res');
+      else modal(`<div class="res-grid"><div class="res-l"><h2 class="res-h ${res.win ? 'win' : 'lose'}">${res.win ? '🎉 勝利' : '💥 落敗'}</h2><div class="lbl">${endReason(b)}</div><div class="ux-res big">` +
+        (res.win ? `❤ 小隊 ${res.heal ? '+' + res.heal : '±0'}（${run.hp}）` : `<b style="color:#ff8a7a">❤ 小隊 -${res.dmg}（剩 ${run.hp}）</b><br><span class="lbl">${lossText(b, res)}</span>`) + '</div>' +
+        (res.saved ? '<b style="color:#ffe066">🛡 鎖血免死觸發！剩 1 血</b><br>' : '') + (res.retry ? '<b style="color:#ffb74d">👑 終局首領還在！整頓後再挑戰</b><br>' : '') + (res.flawless ? '<b style="color:#f8a5c2">🐷 完勝！招財豬加碼</b><br>' : '') + gold + '</div><div class="res-r">' + stats +
+        (loot.length ? '<div class="ux-res">🎁 獲得：<br>' + loot.join('<br>') + '</div>' : '') + '</div></div>',
+        [{ t: '繼續 ▶', cls: 'go', f: flow }], 'res');
       tutResult();
     }, 900 / (FA.settings.speed > 1 ? 2 : 1));
   }
@@ -734,7 +794,7 @@
   const tutQ = [];
   const saveTut = () => { try { localStorage.setItem(TUT_KEY, JSON.stringify(tutSeen)); } catch (e) { } };
   // 戰場座標 → 螢幕座標（由 V.toWorld 反推）
-  const scrOf = o => { const w0 = V.toWorld(0, 0), w1 = V.toWorld(1, 0), S = 1 / (w1.x - w0.x); return { x: (o.x - w0.x) * S, y: (o.y - w0.y) * S, r: o.r * S }; };
+  const scrOf = o => { const q = V.toScreen(o.x, o.y); return { x: q.x, y: q.y, r: o.r * V.scale() }; }; // 橫向時場地轉 90°，用 render.js 的換算
   const rectOf = o => { if (!o) return null; const p = scrOf(o), r = p.r + 12; return { left: p.x - r, top: p.y - r, width: r * 2, height: r * 2 }; };
   const myBody = pred => battle && battle.bodies.find(x => x.alive && !x.temp && x.team === 0 && (!pred || pred(x)));
   const bodyRect = () => rectOf(myBody(x => !x.stunned));
@@ -910,7 +970,7 @@
       const notes = RUN.takeNotes(run); if (notes.length) $('info').innerHTML = `<b style="color:#ffc531">${notes.join('<br>')}</b>`;
       // ---- 連線自走棋 ----：標題、準備鍵；不提供匯出／代碼對戰
       $('bExport').classList.toggle('hidden', !!lgHost); $('bDuel').classList.toggle('hidden', !!lgHost);
-      $('bFight').textContent = lgHost ? lgHost.fightText() : '前進 ▶';
+      $('bFight').textContent = lgHost ? lgHost.fightText() : '出發 ▶';
       if (lgHost) { $('tStage').textContent = lgHost.title(); $('bFight').disabled = lgHost.locked(); if (lgHost.decorate) lgHost.decorate(); }
     };
     $('shop').addEventListener('click', ev => {

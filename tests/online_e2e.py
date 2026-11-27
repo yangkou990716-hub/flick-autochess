@@ -54,12 +54,12 @@ def drag_shot(p):
     pos = p.evaluate('FA.view._own()')
     x, y = pos
     p.mouse.move(x, y); p.mouse.down()
-    for i in range(1, 8): p.mouse.move(x + i * 2, y + i * 14)
+    for i in range(1, 8): p.mouse.move(x - i * 14, y + i * 2)  # 橫向：我方在左，往左拉＝朝敵方（右）彈
     p.mouse.up()
 
 with sync_playwright() as pw:
     br = pw.chromium.launch(executable_path='/usr/bin/google-chrome', headless=os.environ.get('HEADED') != '1', args=['--autoplay-policy=no-user-gesture-required', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows'])
-    ctx = br.new_context(viewport={'width': 390, 'height': 844})
+    ctx = br.new_context(viewport={'width': 844, 'height': 390})
     ctx.add_init_script("localStorage.setItem('fa_tut', JSON.stringify({skip: 1}))")
     a = open_page(ctx, 'A')
     a.evaluate('localStorage.clear(); localStorage.setItem("fa_tut", JSON.stringify({skip:1}))')

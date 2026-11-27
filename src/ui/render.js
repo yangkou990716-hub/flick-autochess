@@ -5,7 +5,7 @@
   const SND = (n, k) => n && FA.sound && FA.sound.play(n, k);
   const TAU = Math.PI * 2, FONT = '-apple-system,"PingFang TC","Noto Sans TC",sans-serif';
   const V = FA.view = { trails: {}, bolts: [], parts: [], texts: [], rings: [], flashes: [], decals: [], walls: [], fx: [], ripples: [], shake: 0, hitstop: 0, banner: null, cutin: null, edge: null, shrinkT: 0, chainShow: 0, chainN: 0, chainPulse: 0, screenFlash: 0 };
-  let cv, ctx, W, H, dpr, S, CX, CY, bgCache = null, lastB = null, causA = null, pillarCache = {};
+  let cv, ctx, W, H, RW, RH, VW, VH, dpr, S, CX, CY, bgCache = null, lastB = null, causA = null, pillarCache = {};
   const dead = {}, hpLag = {}, spawnIn = {}, ghosts = {}, ripT = {}, pHit = {}, emitT = {}, vis = {}; // vis：棋子的視覺變形（壓扁回彈、跳起高度），不影響物理
   const BGP = 12; // 背景快取外擴（震動時不露邊）
   // 9 種大招的配色／圖示
@@ -26,20 +26,36 @@
 
   V.init = c => { cv = c; ctx = c.getContext('2d'); V.resize(); addEventListener('resize', V.resize); };
   V.resize = () => {
-    dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+    dpr = Math.min(2, devicePixelRatio || 1); W = RW = innerWidth; H = RH = innerHeight;
     cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); pillarCache = {}; causA = null;
-    const A = FA.DATA.config.arena; S = Math.min((W - 28) / (A.w + 10), (H - 190) / (A.h + 10)); CX = W / 2; CY = H / 2 + 18; bgCache = null;
+    const A = FA.DATA.config.arena;
+    // 橫向：世界座標不變，畫面層把場地轉 90°（我方在左、敵方在右）；VW×VH 是轉回直式後的虛擬畫布
+    V.rot = RW > RH;
+    if (V.rot) { VW = RH; VH = RW; S = Math.min((VW - 16) / (A.w + 10), (VH - Math.max(230, VH * 0.27)) / (A.h + 10)); CX = VW / 2; CY = VH / 2; }
+    else { VW = RW; VH = RH; S = Math.min((W - 28) / (A.w + 10), (H - 190) / (A.h + 10)); CX = W / 2; CY = H / 2 + 18; }
+    bgCache = null;
+    // 給 HUD 排版用：場地在螢幕上的左右邊界（CSS 變數）
+    const half = (V.rot ? (A.h / 2 + 5) : (A.w / 2 + 5)) * S, de = document.documentElement.style;
+    de.setProperty('--arena-l', Math.max(0, Math.round(RW / 2 - half)) + 'px'); de.setProperty('--arena-r', Math.max(0, Math.round(RW / 2 - half)) + 'px');
   };
+  // 世界 → 螢幕（轉向後）、螢幕 → 世界
+  V.toScreen = (x, y) => V.rot ? { x: RW - (CY + y * S), y: CX + x * S } : { x: CX + x * S, y: CY + y * S };
+  V.scale = () => S;
+  const RA = () => (V.rot ? Math.PI / 2 : 0);
+  // 在 (x,y) 附近畫「要保持正立」的東西（棋子、文字、血條）：繞該點反轉回來
+  const up = (x, y) => { if (V.rot) { ctx.translate(x, y); ctx.rotate(-Math.PI / 2); ctx.translate(-x, -y); } };
+  // 反轉框架內要畫另一個世界點 (px,py)（虛擬座標）時，換算成框架內座標
+  const upPt = (cx, cy, px, py) => V.rot ? [cx - (py - cy), cy + (px - cx)] : [px, py];
   // ---- 二次操作 ----：飛行中提示文字
   V.tapHint = b => { const mv = b.bodies[b.mover], k = FA.battle.tapAbility(mv); return k === 'boom' ? '👆 點畫面任一處：引爆！' : k === 'split' ? '👆 點想讓幻影衝去的位置！' : ''; };
-  V.toWorld = (x, y) => ({ x: (x - CX) / S, y: (y - CY) / S });
+  V.toWorld = (x, y) => V.rot ? { x: (y - CX) / S, y: (RW - x - CY) / S } : { x: (x - CX) / S, y: (y - CY) / S };
   V.reset = () => {
     V.trails = {}; V.bolts = []; V.parts = []; V.texts = []; V.rings = []; V.flashes = []; V.decals = []; V.walls = []; V.fx = []; V.ripples = [];
     V.shake = 0; V.hitstop = 0; V.banner = null; V.cutin = null; V.edge = null; V.shrinkT = 0; V.chainN = 0; V.chainShow = 0; V.chainPulse = 0; V.screenFlash = 0;
     [dead, hpLag, spawnIn, ghosts, ripT, pHit, emitT, vis].forEach(o => { for (const k in o) delete o[k]; });
   };
   // 測試用：己方可彈棋子的螢幕座標
-  V._own = () => { const b = lastB; if (!b) return null; const o = b.bodies.find(q => q.alive && !q.temp && q.team === 0 && !q.stunned); return o ? [CX + o.x * S, CY + o.y * S] : null; };
+  V._own = () => { const b = lastB; if (!b) return null; const o = b.bodies.find(q => q.alive && !q.temp && q.team === 0 && !q.stunned); if (!o) return null; const q = V.toScreen(o.x, o.y); return [q.x, q.y]; };
   Object.defineProperty(V, '_lastB', { get: () => lastB });
   V._vis = vis; // 測試用：視覺變形狀態
 
@@ -141,11 +157,11 @@
   // 大招特寫：畫面暗化（聚光在施放者）＋斜帶大字
   function drawCutin(c, t) {
     const U = ULT[c.type] || ULT0, age = c.max - c.life, fin = Math.min(1, age / 0.1), dark = fin * Math.max(0, Math.min(1, (0.8 - age) / 0.3)), bandA = fin * Math.min(1, c.life / 0.25);
-    const sx = CX + c.x * S, sy = CY + c.y * S, foe = c.team !== 0, dir = foe ? -1 : 1;
+    const sq = V.toScreen(c.x, c.y), sx = sq.x, sy = sq.y, foe = c.team !== 0, dir = foe ? -1 : 1;
     ctx.save();
     if (dark > 0) { const g = ctx.createRadialGradient(sx, sy, 24, sx, sy, Math.max(W, H) * 0.75); g.addColorStop(0, 'rgba(4,2,14,0)'); g.addColorStop(0.12, 'rgba(4,2,14,0.5)'); g.addColorStop(1, 'rgba(4,2,14,0.78)'); ctx.globalAlpha = dark; ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
       ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = U.col; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(sx, sy, 34 + age * 60, 0, TAU); ctx.stroke(); ctx.globalCompositeOperation = 'source-over'; }
-    const slide = 1 - Math.pow(1 - Math.min(1, age / 0.22), 3), by = sy < CY ? CY + 110 : CY - 110, bh = 64;
+    const slide = 1 - Math.pow(1 - Math.min(1, age / 0.22), 3), by = V.rot ? RH / 2 : sy < CY ? CY + 110 : CY - 110, bh = 64;
     ctx.globalAlpha = bandA; ctx.translate(W / 2 - (1 - slide) * W * dir, by); ctx.rotate(-0.07 * dir);
     const g = ctx.createLinearGradient(-W * 0.7, 0, W * 0.7, 0); g.addColorStop(0, `rgba(${U.rgb},0)`); g.addColorStop(0.2, `rgba(${U.rgb},0.88)`); g.addColorStop(0.8, `rgba(${U.rgb},0.88)`); g.addColorStop(1, `rgba(${U.rgb},0)`);
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(-W, -bh / 2 - 4, W * 2, bh + 8); ctx.fillStyle = g; ctx.fillRect(-W, -bh / 2, W * 2, bh);
@@ -479,12 +495,12 @@
         const bob = Math.sin(t * 2.2 + k * 1.7) * r * 0.08, rot = Math.sin(t * 1.3 + k) * 0.2, sq = h > 0 ? Math.sin(h * Math.PI * 5) * 0.22 * h : 0;
         if (dt) { const rk = 'p' + k; ripT[rk] = (ripT[rk] == null ? k * 0.5 : ripT[rk]) - dt; if (ripT[rk] <= 0) { ripT[rk] = 1.5; ripple(p.x, p.y, p.r * 1.9, 1.6, 0.35); } }
         ctx.fillStyle = 'rgba(0,25,55,0.3)'; ctx.beginPath(); ctx.ellipse(x + r * 0.1, y + r * 0.22, r * 1.06, r * 0.98, 0, 0, TAU); ctx.arc(x + r * 0.1, y + r * 0.22, r * 0.5, 0, TAU, true); ctx.fill();
-        ctx.save(); ctx.translate(x, y + bob - h * r * 0.25); ctx.rotate(rot); ctx.scale(1 + sq, 1 - sq); ctx.drawImage(sp.c, -sp.sz / 2, -sp.sz / 2, sp.sz, sp.sz); ctx.restore();
+        ctx.save(); up(x, y); ctx.translate(x, y + bob - h * r * 0.25); ctx.rotate(rot); ctx.scale(1 + sq, 1 - sq); ctx.drawImage(sp.c, -sp.sz / 2, -sp.sz / 2, sp.sz, sp.sz); ctx.restore();
         if (h > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(x, y, r * 0.5, x, y, r * 1.8); g.addColorStop(0, `rgba(127,211,255,${0.55 * h})`); g.addColorStop(1, 'rgba(127,211,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 1.8, 0, TAU); ctx.fill(); ctx.restore(); }
       } else {
         const jx = h > 0 ? Math.sin(t * 90) * r * 0.08 * h : 0;
         ctx.fillStyle = 'rgba(0,15,35,0.4)'; ctx.beginPath(); ctx.ellipse(x + r * 0.12, y + r * 0.3, r * 1.2, r * 1.0, 0, 0, TAU); ctx.fill();
-        ctx.drawImage(sp.c, x + jx - sp.sz / 2, y - sp.sz / 2, sp.sz, sp.sz);
+        ctx.save(); up(x, y); ctx.drawImage(sp.c, x + jx - sp.sz / 2, y - sp.sz / 2, sp.sz, sp.sz); ctx.restore();
         if (h > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const g = ctx.createRadialGradient(x, y, 0, x, y, r * 1.6); g.addColorStop(0, `rgba(255,40,60,${0.9 * h})`); g.addColorStop(1, 'rgba(255,40,60,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 1.6, 0, TAU); ctx.fill(); ctx.restore();
           ctx.strokeStyle = `rgba(255,70,90,${h})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r * (1.45 + (1 - h) * 0.4), 0, TAU); ctx.stroke(); }
       }
@@ -655,9 +671,11 @@
   function drawFrame(b, ui, dt) {
     lastB = b;
     const t = performance.now() / 1000, th = theme(b), bgKey = th.key + '|' + b.hw + 'x' + b.hh + '|' + b.rules.join() + '|' + W + 'x' + H;
-    ctx.clearRect(0, 0, W, H);
+    W = VW; H = VH; // 場地層用虛擬（直式）座標
+    ctx.clearRect(0, 0, RW, RH);
     ctx.save();
     if (V.shake > 0.5) ctx.translate((Math.random() - .5) * V.shake, (Math.random() - .5) * V.shake);
+    if (V.rot) { ctx.translate(RW / 2, RH / 2); ctx.rotate(Math.PI / 2); ctx.translate(-VW / 2, -VH / 2); }
     if (!bgCache || bgCache.key !== bgKey) bgCache = { key: bgKey, c: buildBg(b, th) };
     ctx.drawImage(bgCache.c, -BGP, -BGP, W + BGP * 2, H + BGP * 2); // 外擴，避免震動露邊
     drawWater(b, th, t);
@@ -717,12 +735,13 @@
     // 棋子：先更新視覺變形，再畫地面投影（跳越高影子越小越淡、越偏；速度越快影子沿速度拉長）
     const shC = shadowSprite();
     b.bodies.forEach(o => { if (!o.alive) return; const v = deform(o, dt), x = CX + o.x * S, y = CY + o.y * S, r = o.r * S, z = v.z * S, k = 1 / (1 + z / (r * 1.1)), sp = Math.hypot(o.vx, o.vy);
-      ctx.save(); ctx.translate(x + r * 0.26 + z * 0.4, y + r * 0.92 + z * 0.55);
-      if (sp > 60) { const a = Math.atan2(o.vy * 0.36, o.vx), st = Math.min(0.3, sp / 3500); ctx.rotate(a); ctx.scale(1 + st, 1 - st * 0.3); ctx.rotate(-a); }
+      ctx.save(); up(x, y); ctx.translate(x + r * 0.26 + z * 0.4, y + r * 0.92 + z * 0.55);
+      if (sp > 60) { const a = Math.atan2(o.vy * 0.36, o.vx) + RA(), st = Math.min(0.3, sp / 3500); ctx.rotate(a); ctx.scale(1 + st, 1 - st * 0.3); ctx.rotate(-a); }
       const w = r * 1.18 * k * (1 + Math.max(0, v.q) * 0.5), h = r * 0.46 * k; ctx.globalAlpha = 0.8 * k; ctx.drawImage(shC, -w, -h, w * 2, h * 2); ctx.restore(); });
     ctx.globalAlpha = 1;
     const SP = FA.sprites, canSel = b.phase === 'aim' && b.turn === 0 ? FA.battle.avail(b, 0) : null;
-    b.bodies.forEach(o => {
+    b.bodies.forEach(o => { ctx.save(); up(CX + o.x * S, CY + o.y * S); drawBody(o); ctx.restore(); });
+    function drawBody(o) {
       if (o.hurt > 0) o.hurt -= dt * 3;
       const x = CX + o.x * S, y = CY + o.y * S; let r = o.r * S;
       if (!o.alive) { // 陣亡：淡出飄起（之後到復活前不畫）
@@ -752,13 +771,13 @@
       const UM = FA.DATA.config.ult.max, en = Math.min(1, (o.energy || 0) / UM), full = en >= 1 && !o.temp && !o.ultOn, foe = o.team !== 0, pul = 0.5 + 0.5 * Math.sin(t * 7 + o.i);
       const ecol = foe ? '255,70,90' : '255,215,80';
       if (full) { const R2 = r * (1.8 + pul * 0.3); ctx.globalAlpha = (0.3 + pul * 0.3) / 0.6; ctx.drawImage(glowSprite(ecol), x - R2, y - R2, R2 * 2, R2 * 2); ctx.globalAlpha = 1; }
-      if (o.ultOn === 'phase' && SP) { const tr = V.trails[o.i] || []; ctx.save(); for (let j = tr.length - 3, n = 0; j >= 0 && n < 3; j -= 3, n++) { ctx.globalAlpha = 0.28 - n * 0.08; SP.draw(ctx, o, CX + tr[j][0] * S, CY + tr[j][1] * S, r, t); } ctx.restore(); ctx.globalAlpha = 1; }
+      if (o.ultOn === 'phase' && SP) { const tr = V.trails[o.i] || []; ctx.save(); for (let j = tr.length - 3, n = 0; j >= 0 && n < 3; j -= 3, n++) { ctx.globalAlpha = 0.28 - n * 0.08; const q = upPt(x, y, CX + tr[j][0] * S, CY + tr[j][1] * S); SP.draw(ctx, o, q[0], q[1], r, t); } ctx.restore(); ctx.globalAlpha = 1; }
       if (o.ultOn) ultAura(o, x, y, r, t, dt);
       if (SP) { // 2.5D：跳起位移＋速度拉伸＋碰撞壓扁回彈（只是畫面，碰撞判定不變）
         const v = vis[o.i] || { q: 0, z: 0, ang: 0 }, lift = Math.min(r * 0.3, v.z * S);
         ctx.save(); ctx.translate(x, y - lift);
-        if (sp0 > 60) { const a = Math.atan2(o.vy, o.vx), k = Math.min(0.09, sp0 / 10000); ctx.rotate(a); ctx.scale(1 + k, 1 - k * 0.7); ctx.rotate(-a); }
-        if (Math.abs(v.q) > 0.004) { ctx.rotate(v.ang); ctx.scale(1 - v.q, 1 + v.q * 0.65); ctx.rotate(-v.ang); }
+        if (sp0 > 60) { const a = Math.atan2(o.vy, o.vx) + RA(), k = Math.min(0.09, sp0 / 10000); ctx.rotate(a); ctx.scale(1 + k, 1 - k * 0.7); ctx.rotate(-a); }
+        if (Math.abs(v.q) > 0.004) { ctx.rotate(v.ang + RA()); ctx.scale(1 - v.q, 1 + v.q * 0.65); ctx.rotate(-v.ang); }
         const r0 = o.r * S; if (r !== r0) ctx.scale(r / r0, r / r0); // 復活彈出：縮放畫固定半徑（sprites 依半徑快取，半徑每幀變會一直重建）
         SP.draw(ctx, o, 0, 0, r0, t); ctx.restore();
       } else plainBody(o, x, y, r);
@@ -804,7 +823,7 @@
         const nm = o.name + (o.star > 1 ? '★'.repeat(o.star) : ''), lb = labelSprite(nm, o.star >= 3 ? '#ffe066' : o.star === 2 ? '#e3f2fd' : '#fff');
         ctx.drawImage(lb.c, x - lb.w / 2, by + bh - 1, lb.w, lb.h);
       }
-    });
+    }
 
     drawFx(t, 1);
     // 特效：火球/閃光
@@ -852,7 +871,7 @@
     V.texts.forEach(tx => {
       const age = tx.max - tx.life, pop = tx.tier >= 2 ? 1 + Math.max(0, 0.6 - age * 4) : 1 + Math.max(0, 0.3 - age * 3);
       const px = Math.max(tx.size * 1.3, Math.min(W - tx.size * 1.3, CX + tx.x * S)), py = CY + tx.y * S;
-      ctx.save(); ctx.translate(px, py); ctx.rotate(tx.rot || 0); ctx.scale(pop, pop); ctx.globalAlpha = Math.min(1, tx.life / tx.max * 3);
+      ctx.save(); ctx.translate(px, py); if (V.rot) ctx.rotate(-Math.PI / 2); ctx.rotate(tx.rot || 0); ctx.scale(pop, pop); ctx.globalAlpha = Math.min(1, tx.life / tx.max * 3);
       if (tx.tier === 3) { // 暴擊：背後爆星
         ctx.fillStyle = '#ffcf3a'; ctx.strokeStyle = '#7a2a00'; ctx.lineWidth = 2; ctx.beginPath(); for (let k = 0; k < 16; k++) { const a = k / 16 * TAU + age * 2, rr = k % 2 ? tx.size * 0.55 : tx.size * 1.1; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr - tx.size * 0.35); } ctx.closePath(); ctx.stroke(); ctx.fill();
       }
@@ -865,6 +884,7 @@
     // 力道條（畫在棋子上方）
     if (aimO && ui.aim && !ui.aim.enemy) {
       const o = aimO, fp = FA.DATA.config.fullPowerAt, pw = ui.aim.power, full = pw >= fp, bw = 76, bx = CX + o.x * S - bw / 2, by = CY + o.y * S - o.r * S * 1.6 - 30;
+      ctx.save(); up(CX + o.x * S, CY + o.y * S);
       rrect(bx - 3, by - 3, bw + 6, 14, 7); ctx.fillStyle = '#000c'; ctx.fill(); ctx.strokeStyle = full ? '#ff5a3c' : '#ffffff44'; ctx.lineWidth = 1.5; ctx.stroke();
       const gr = ctx.createLinearGradient(bx, 0, bx + bw, 0); gr.addColorStop(0, '#7cf05a'); gr.addColorStop(0.6, '#ffb347'); gr.addColorStop(1, '#ff3b3b');
       ctx.save(); rrect(bx, by, bw, 8, 4); ctx.clip(); ctx.fillStyle = gr; ctx.fillRect(bx, by, bw * pw, 8); ctx.fillStyle = '#ffffff55'; ctx.fillRect(bx, by, bw * pw, 3);
@@ -874,13 +894,16 @@
       if (ab && ab.type === 'sweetSpot') { ctx.fillStyle = sw ? '#69f0ae' : '#69f0ae88'; ctx.fillRect(bx + bw * ab.lo, by - 4, bw * (ab.hi - ab.lo), 16); ctx.strokeStyle = '#0a3'; ctx.lineWidth = 1; ctx.strokeRect(bx + bw * ab.lo, by - 4, bw * (ab.hi - ab.lo), 16); } // 甜蜜點區間
       outText(sw ? '🎯 甜蜜點！' : full ? '全力！' : '力道 ' + Math.round(pw * 100) + '%', bx + bw / 2, by - 7, full || sw ? 15 : 12, sw ? '#69f0ae' : full ? '#ffe066' : '#fff', 3);
       const tk = FA.battle.tapAbility(o); if (tk) outText(tk === 'boom' ? '👆 飛行中點畫面引爆' : '👆 飛行中點畫面分身', bx + bw / 2, by + 26, 11, '#fff', 3);
+      ctx.restore();
     }
     ctx.restore();
+    const vCY = CY; W = RW; H = RH; // 以下是螢幕座標的 UI
+    const CYs = V.rot ? RH / 2 : vCY;
 
     // ---- 不受震動影響的 UI ----
     if (V.screenFlash > 0) { ctx.fillStyle = `rgba(255,245,220,${V.screenFlash})`; ctx.fillRect(0, 0, W, H); }
     const boss = b.bodies.find(o => o.boss && o.alive && !o.temp);
-    const topY = CY - b.hh0 * S;
+    const topY = V.rot ? 64 : CY - b.hh0 * S;
     if (boss) { // 首領大血條
       const bw = Math.min(300, W - 60), bx = W / 2 - bw / 2, by = topY - 50, hp = Math.max(0, boss.hp / boss.maxHp), lag = hpLag[boss.i] != null ? hpLag[boss.i] : hp;
       outText('👑 ' + boss.name, W / 2, by - 6, 14, '#ffd0dc', 3);
@@ -901,13 +924,13 @@
       const bn = V.banner, mx = bn.max || 1.2, age = mx - bn.life, k = Math.min(1, age * 6), out = Math.min(1, bn.life * 4), bh = 46;
       ctx.save(); ctx.globalAlpha = out;
       const gr = ctx.createLinearGradient(0, 0, W, 0); gr.addColorStop(0, '#0000'); gr.addColorStop(0.2, '#000c'); gr.addColorStop(0.8, '#000c'); gr.addColorStop(1, '#0000');
-      ctx.fillStyle = gr; ctx.fillRect(0, CY - bh / 2 - 8, W, bh * k);
-      ctx.fillStyle = (bn.col || '#ffe066') + '99'; ctx.fillRect(W * (1 - k) / 2, CY - bh / 2 - 8, W * k, 2); ctx.fillRect(W * (1 - k) / 2, CY + bh / 2 - 10, W * k, 2);
-      outText(bn.txt, W / 2 + (1 - k) * 80, CY + 7, 24, bn.col || '#fff', 5);
+      ctx.fillStyle = gr; ctx.fillRect(0, CYs - bh / 2 - 8, W, bh * k);
+      ctx.fillStyle = (bn.col || '#ffe066') + '99'; ctx.fillRect(W * (1 - k) / 2, CYs - bh / 2 - 8, W * k, 2); ctx.fillRect(W * (1 - k) / 2, CYs + bh / 2 - 10, W * k, 2);
+      outText(bn.txt, W / 2 + (1 - k) * 80, CYs + 7, 24, bn.col || '#fff', 5);
       ctx.restore();
     }
     if (V.edge) { const e = V.edge, a = e.life / e.max, g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.72); g.addColorStop(0, `rgba(${e.col},0)`); g.addColorStop(1, `rgba(${e.col},${0.55 * a})`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
     if (V.cutin) drawCutin(V.cutin, t);
-    if (ui.msg) { ctx.font = `bold 17px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.strokeStyle = '#000a'; ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.strokeText(ui.msg, W / 2, CY + b.hh0 * S + 30); ctx.fillStyle = ui.msgCol || '#fff'; ctx.fillText(ui.msg, W / 2, CY + b.hh0 * S + 30); }
+    if (ui.msg) { ctx.font = `bold 17px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.strokeStyle = '#000a'; ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.strokeText(ui.msg, W / 2, (V.rot ? RH - 14 : CY + b.hh0 * S + 30)); ctx.fillStyle = ui.msgCol || '#fff'; ctx.fillText(ui.msg, W / 2, (V.rot ? RH - 14 : CY + b.hh0 * S + 30)); }
   }
 })(globalThis);

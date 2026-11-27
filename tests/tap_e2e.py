@@ -51,7 +51,7 @@ PICK = '''seat => { const B = FA.online.battle(), av = FA.battle.avail(B, seat).
 
 with sync_playwright() as pw:
     br = pw.chromium.launch(executable_path='/usr/bin/google-chrome', headless=os.environ.get('HEADED') != '1', args=['--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows'])
-    ctx = br.new_context(viewport={'width': 390, 'height': 844})
+    ctx = br.new_context(viewport={'width': 844, 'height': 390})
     ctx.add_init_script("localStorage.setItem('fa_tut', JSON.stringify({skip: 1}))")
     a = open_page(ctx, 'A')
     a.evaluate('localStorage.clear(); localStorage.setItem("fa_tut", JSON.stringify({skip:1}))')

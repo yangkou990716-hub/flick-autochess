@@ -85,7 +85,7 @@
     title: () => `🏆 第 ${round()}/${LD.maxRounds} 回合・商店`,
     fightText: () => '準備 ✓',
     locked: () => false,
-    decorate: () => { bar(); const inf = $('info'); if (inf && inf.innerHTML.includes('佈好陣按「前進」選路線。')) inf.innerHTML = inf.innerHTML.replace('佈好陣按「前進」選路線。', `佈好陣按「準備」；${LD.shopSec} 秒到會自動送出目前的前台＋後台。`); }
+    decorate: () => { bar(); const inf = $('info'); if (inf && inf.innerHTML.includes('佈好陣按「出發」選路線。')) inf.innerHTML = inf.innerHTML.replace('佈好陣按「出發」選路線。', `佈好陣按「準備」；${LD.shopSec} 秒到會自動送出目前的前台＋後台。`); }
   };
 
   // ---------- 自己的 run（存在 localStorage，重新整理接回） ----------

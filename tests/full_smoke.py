@@ -1,6 +1,6 @@
 # 全流程煙霧測試（v1.0 QA）：PORT=8891 python3 tests/full_smoke.py [輸出資料夾=/tmp/fullsmoke] [只跑的段落,逗號分隔]
 # 先在 repo 根目錄開：python3 -m http.server 8891
-# iPhone 尺寸 390x844、dpr 2。網址帶 qafast=1（一發在同一幀算完、敵方 AI 不等待，只影響播放）。
+# iPhone 橫向 844x390、dpr 2（v1.2 起只支援橫向）。網址帶 qafast=1（一發在同一幀算完、敵方 AI 不等待，只影響播放）。
 # 段落：a0 單人 A0 打到結束｜a5 單人 A5 打到結束｜hot 同手機 2 人｜duel 隊伍代碼對戰｜codex 圖鑑每個分頁｜tut 教學重看｜
 #       pause 暫停／繼續／切背景｜reload 重新整理後讀檔續玩｜old 舊版存檔／損毀存檔／localStorage 寫滿｜net 連線 1v1｜league 連線自走棋 3 人
 # 收集所有 console error、pageerror、未處理的 promise（unhandledrejection），有就失敗。
@@ -29,7 +29,7 @@ def hook(p, who):
     return p
 
 def new_ctx(br):
-    ctx = br.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
+    ctx = br.new_context(viewport={'width': 844, 'height': 390}, device_scale_factor=2, is_mobile=True, has_touch=True)
     ctx.add_init_script(INIT)
     return ctx
 
@@ -66,9 +66,8 @@ PLACE = '''() => { const r = FA.debug().run, R = FA.run, U = FA.DATA.units, lv =
 # 我方出手：AI 選角度；一半用真的滑鼠拖曳（含大招鍵），一半直接呼叫（快）
 AIM = '''() => { const b = FA.debug().battle; if (!b || b.phase !== 'aim' || b.turn !== 0) return null;
   const c = FA.ai.choose(b, 0, FA.DATA.enemies.difficulty(8), { s: (b.round * 977 + b.moves[0] * 31) | 0 }); if (!c) return null;
-  const o = b.bodies[c.idx], V = FA.view, w0 = V.toWorld(0, 0), w1 = V.toWorld(1, 0), S = 1 / (w1.x - w0.x);
-  const sx = (o.x - w0.x) * S, sy = (o.y - w0.y) * S, L = c.power * 140;
-  return { idx: c.idx, angle: c.angle, power: c.power, ult: !!c.ult, tap: c.tap || null, sx, sy, ex: (o.x - Math.cos(c.angle) * L - w0.x) * S, ey: (o.y - Math.sin(c.angle) * L - w0.y) * S }; }'''
+  const o = b.bodies[c.idx], V = FA.view, L = c.power * 140, p0 = V.toScreen(o.x, o.y), p1 = V.toScreen(o.x - Math.cos(c.angle) * L, o.y - Math.sin(c.angle) * L); // 橫向時場地轉 90°
+  return { idx: c.idx, angle: c.angle, power: c.power, ult: !!c.ult, tap: c.tap || null, sx: p0.x, sy: p0.y, ex: p1.x, ey: p1.y }; }'''
 
 def my_shot(p, real):
     c = p.evaluate(AIM)
@@ -155,11 +154,11 @@ with sync_playwright() as pw:
         ctx = new_ctx(br); p = hook(ctx.new_page(), 'duel')
         start_single(p, 1)
         play_until(p, lambda s: s['shop'] and not s['modal'] and (s['stage'] or 0) >= 2, 2000, 'duel 準備')
-        p.click('#bExport'); code = p.input_value('#modalBox textarea'); p.click('#modalBox button')
+        p.click('#bMenu'); p.click('#bExport'); code = p.input_value('#modalBox textarea'); p.click('#modalBox button')
         assert len(code) > 20, code
-        p.click('#bDuel'); p.fill('#duelCode', 'xxx'); p.click('#modalBox button.go')
+        p.click('#bMenu'); p.click('#bDuel'); p.fill('#duelCode', 'xxx'); p.click('#modalBox button.go')
         assert '代碼無效' in p.inner_text('#info')
-        p.click('#bDuel'); p.fill('#duelCode', code); p.click('#modalBox button.go')
+        p.click('#bMenu'); p.click('#bDuel'); p.fill('#duelCode', code); p.click('#modalBox button.go')
         wait(lambda: scr(p)['battle'], 5, '對戰開始')
         stage0 = p.evaluate('FA.debug().run.stage')
         s = play_until(p, lambda s: s['modal'] and ('你贏了' in s['head'] or '你輸了' in s['head']), 600, 'duel')
@@ -328,7 +327,7 @@ with sync_playwright() as pw:
         for k in ('viewport-fit=cover', 'user-scalable=no', 'width=device-width'): assert k in vp, ('viewport', k)
         for k in ('apple-mobile-web-app-capable', 'apple-mobile-web-app-status-bar-style', 'theme-color', 'apple-mobile-web-app-title'): assert k in meta, ('meta', k)
         man = p.evaluate("fetch('manifest.json').then(r => r.json())")
-        assert man['display'] == 'standalone' and man['orientation'] == 'portrait'
+        assert man['display'] == 'standalone' and man['orientation'] == 'landscape'
         for ic in man['icons'] + [{'src': p.evaluate("document.querySelector('link[rel=apple-touch-icon]').getAttribute('href')"), 'sizes': '180x180'}]:
             wh = p.evaluate("src => new Promise(ok => { const i = new Image(); i.onload = () => ok(i.naturalWidth + 'x' + i.naturalHeight); i.onerror = () => ok('err'); i.src = src; })", ic['src'])
             assert wh == ic['sizes'], (ic, wh)
@@ -340,25 +339,25 @@ with sync_playwright() as pw:
         assert ev, '長按選單沒擋'
         assert p.evaluate("getComputedStyle(document.body).webkitTouchCallout || 'none'") == 'none'
         assert p.evaluate("getComputedStyle(document.querySelector('#btnNew')).touchAction") == 'manipulation', '按鈕要 touch-action: manipulation（雙擊不放大）'
-        # 各尺寸（SE／標準／Pro Max）：標題、商店不橫向溢出
+        # 各尺寸（SE／標準／Pro Max／最小）橫向：標題、商店不橫向溢出
         start_single(p, 0); play_until(p, lambda s: s['shop'] and not s['modal'], 200, 'ios 商店')
-        for w, h in ((375, 667), (390, 844), (430, 932), (320, 568)):
+        for w, h in ((667, 375), (844, 390), (932, 430), (568, 320)):
             p.set_viewport_size({'width': w, 'height': h}); time.sleep(0.2)
             ow = p.evaluate("() => [...document.querySelectorAll('#shop *')].filter(e => e.offsetParent && e.getBoundingClientRect().right > innerWidth + 1).map(e => (e.id || e.className || e.tagName) + ':' + Math.round(e.getBoundingClientRect().right)).slice(0, 5)")
             print(f'ios {w}x{h} 商店橫向溢出：', ow or '無')
             assert not ow, ow
             p.screenshot(path=f'{OUT}/ios_shop_{w}x{h}.png')
-        p.set_viewport_size({'width': 390, 'height': 844})
-        # 橫向：戰鬥中轉橫 → 提示＋自動暫停
+        p.set_viewport_size({'width': 844, 'height': 390})
+        # 直向：戰鬥中轉直 → 「請轉成橫向」提示＋自動暫停
         play_until(p, lambda s: s['battle'] and s['phase'] == 'aim' and s['turn'] == 0, 400, 'ios 戰鬥')
-        p.set_viewport_size({'width': 844, 'height': 390}); time.sleep(0.3)
-        assert p.is_visible('#uxRotate'), '橫向應顯示提示'
-        assert '暫停' in scr(p)['head'], '橫向應暫停戰鬥'
-        p.screenshot(path=f'{OUT}/ios_landscape.png')
-        p.set_viewport_size({'width': 390, 'height': 844}); time.sleep(0.2)
+        p.set_viewport_size({'width': 390, 'height': 844}); time.sleep(0.3)
+        assert p.is_visible('#uxRotate'), '直向應顯示提示'
+        assert '暫停' in scr(p)['head'], '直向應暫停戰鬥'
+        p.screenshot(path=f'{OUT}/ios_portrait.png')
+        p.set_viewport_size({'width': 844, 'height': 390}); time.sleep(0.2)
         assert not p.is_visible('#uxRotate')
         p.click('#modalBox button.go')
-        print('ios：meta／manifest／圖示／sw 快取清單／長按／雙擊／橫向 OK')
+        print('ios：meta／manifest／圖示／sw 快取清單／長按／雙擊／直向提示 OK')
         ctx.close()
 
     # ---------- 實際播放（不帶 qafast）：畫面每幀都畫，含低階手機降特效模式 ----------

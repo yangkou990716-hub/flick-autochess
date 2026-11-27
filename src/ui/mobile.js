@@ -1,4 +1,4 @@
-// iPhone 相容（Safari／加到主畫面）：捏合縮放、長按選單、standalone 標記、橫向提示（戰鬥中轉橫自動暫停）
+// iPhone 相容（Safari／加到主畫面）：捏合縮放、長按選單、standalone 標記、直向提示（遊戲只支援橫向；戰鬥中轉直自動暫停）
 // 只處理瀏覽器行為，不碰遊戲邏輯；樣式在 style.css「iPhone 相容」段
 (function () {
   const d = document, html = d.documentElement;
@@ -11,11 +11,11 @@
   ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => d.addEventListener(t, e => e.preventDefault(), { passive: false }));
   // 長按：不跳「拷貝／查詢」選單（輸入框除外；商店的長按看詳細由 main.js 自己處理）
   d.addEventListener('contextmenu', e => { if (!editable(e.target)) e.preventDefault(); });
-  // 橫向提示：手機橫拿時蓋一層「請轉回直向」；戰鬥中順便暫停
+  // 直向提示：手機直拿時蓋一層「請轉成橫向」；戰鬥中順便暫停（v1.2 起改為橫向介面，照貨幣戰爭的橫向配置）
   const rot = d.createElement('div'); rot.id = 'uxRotate';
-  rot.innerHTML = '<div><div class="ic">📱</div>請把手機轉回<b>直向</b><br><span>這款遊戲只支援直式畫面</span></div>';
+  rot.innerHTML = '<div><div class="ic">📱</div>請把手機轉成<b>橫向</b><br><span>這款遊戲只支援橫式畫面</span></div>';
   d.body.appendChild(rot);
-  const land = mq('(orientation: landscape) and (max-height: 520px)');
+  const land = mq('(orientation: portrait) and (max-width: 600px)');
   const onRot = () => {
     if (!land.matches) return;
     const bt = d.getElementById('battle'), bp = d.getElementById('bPause'), m = d.getElementById('modal');
@@ -23,5 +23,5 @@
   };
   if (land.addEventListener) land.addEventListener('change', onRot); else if (land.addListener) land.addListener(onRot);
   onRot();
-  (globalThis.FA = globalThis.FA || {}).mobile = { standalone, landscape: () => land.matches };
+  (globalThis.FA = globalThis.FA || {}).mobile = { standalone, portrait: () => land.matches, landscape: () => !land.matches };
 })();

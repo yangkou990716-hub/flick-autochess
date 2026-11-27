@@ -7,7 +7,7 @@ PORT = sys.argv[1] if len(sys.argv) > 1 else '8872'
 async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(executable_path='/usr/bin/google-chrome', args=['--autoplay-policy=no-user-gesture-required'])
-        pg = await b.new_page(viewport={'width': 390, 'height': 844})
+        pg = await b.new_page(viewport={'width': 844, 'height': 390})
         errs = []
         pg.on('pageerror', lambda e: errs.append(str(e)))
         pg.on('console', lambda m: m.type == 'error' and errs.append(m.text))

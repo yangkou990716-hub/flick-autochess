@@ -43,7 +43,7 @@
       row('🎵 音樂', tog('music', !!snd.musicOn)) + row('🔊 音效', tog('sound', !!snd.on)) + row('📳 震動', tog('vibrate', !!S.vibrate), 'iPhone Safari 不支援網頁震動') +
       row('⏩ 播放速度預設', seg('speed', [[1, '1x'], [2, '2x']])) +
       row('🎯 瞄準線', seg('aim', [['short', '短'], ['long', '長']]), '短：只畫到第一次碰撞前') +
-      row('✋ 慣用手', seg('hand', [['left', '左手'], ['right', '右手']]), '大招鈕、前進鈕移到慣用手那側') +
+      row('✋ 慣用手', seg('hand', [['left', '左手'], ['right', '右手']]), '出發鈕、大招鈕移到慣用手那側') +
       row('🌀 減少動態效果', tog('reduceMotion', !!S.reduceMotion), '關掉震動畫面、閃光與裝飾動畫') +
       row('🌐 語言', `<select id="setLang" aria-label="語言">${Object.entries(LANGS).map(([k, n]) => `<option value="${k}" ${S.lang === k ? 'selected' : ''}>${n}</option>`).join('')}</select>`) +
       `<button data-act="log">📝 更新紀錄</button><button data-act="wipe" class="danger">🗑 清除存檔</button>` +

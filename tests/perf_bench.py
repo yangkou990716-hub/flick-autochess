@@ -58,8 +58,8 @@ TEAM = '''() => { const r = FA.debug().run, D = FA.DATA, mk = (id, w) => ({ id, 
 AIM = '''() => { const b = FA.debug().battle; if (!b || b.phase !== 'aim' || b.turn !== 0) return null;
   b.bodies.forEach(o => { if (o.alive) o.energy = 100; }); if (window.__keep) { b.moves = b.movesMax.slice(); b.bodies.forEach(o => { if (!o.__t) { o.__t = 1; o.maxHp *= 6; } o.hp = o.maxHp; }); } // 壓力測試：動數、血量補滿，讓戰鬥一直打下去
   const c = FA.ai.choose(b, 0, FA.DATA.enemies.difficulty(6), { s: (b.round * 977 + b.moves[0] * 31) | 0 }); if (!c) return null;
-  const o = b.bodies[c.idx], V = FA.view, w0 = V.toWorld(0, 0), w1 = V.toWorld(1, 0), S = 1 / (w1.x - w0.x), L = Math.max(0.6, c.power) * 140;
-  return { sx: (o.x - w0.x) * S, sy: (o.y - w0.y) * S, ex: (o.x - Math.cos(c.angle) * L - w0.x) * S, ey: (o.y - Math.sin(c.angle) * L - w0.y) * S }; }'''
+  const o = b.bodies[c.idx], V = FA.view, L = Math.max(0.6, c.power) * 140, p0 = V.toScreen(o.x, o.y), p1 = V.toScreen(o.x - Math.cos(c.angle) * L, o.y - Math.sin(c.angle) * L);
+  return { sx: p0.x, sy: p0.y, ex: p1.x, ey: p1.y }; }'''
 
 def st(p): return p.evaluate('''() => { const v = id => !document.getElementById(id).classList.contains('hidden'), b = FA.debug().battle;
   return { modal: v('modal'), shop: v('shop'), battle: v('battle'), phase: b ? b.phase : null, turn: b ? b.turn : null, head: (document.querySelector('#modalBox h2') || {}).textContent || '' }; }''')
@@ -144,7 +144,7 @@ def bench_enemy_turn(p, cdp):
 with sync_playwright() as pw:
     br = pw.chromium.launch(executable_path='/usr/bin/google-chrome', headless=os.environ.get('HEADED') != '1',
                             args=['--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--js-flags=--expose-gc'])
-    ctx = br.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
+    ctx = br.new_context(viewport={'width': 844, 'height': 390}, device_scale_factor=2, is_mobile=True, has_touch=True)
     ctx.add_init_script(INIT)
     p = ctx.new_page()
     p.on('console', lambda m: (m.type == 'error') and errors.append(m.text))

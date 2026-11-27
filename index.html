@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="彈射自走棋">
 <meta name="format-detection" content="telephone=no">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#14121f">
+<meta name="theme-color" content="#0f4c75">
 <title>彈射自走棋</title>
 <link rel="manifest" href="manifest.json">
 <meta property="og:title" content="彈射自走棋">
@@ -41,17 +41,8 @@
 /* 操作體驗（main.js）：拖曳、長按、教學、戰鬥資訊、加速 */
 .slot,.card{touch-action:none;-webkit-touch-callout:none}
 .card{position:relative}
-.card .ux-own{font-size:10px;color:#9df;line-height:1.2}
-.card .ux-own.up{color:#ffe066;font-weight:bold}
-.card .ux-syn{font-size:9.5px;color:#111;background:#7cf05a;border-radius:6px;margin:1px 2px 0;line-height:1.3}
-.card .ux-syn{font-weight:700;box-shadow:inset 0 1px 0 #fff8}
-.card .ux-syn.near{background:#1d4573;color:#cfe;box-shadow:none}
-.ux-dragging .slot:not(.lock){border-color:#ffc531;border-style:solid}
-.slot.ux-over,.row.ux-over{box-shadow:0 0 0 3px #7cf05a}
-.ux-ghost{position:fixed;z-index:40;pointer-events:none;width:56px;height:56px;margin:-28px 0 0 -28px;opacity:.9;transform:scale(1.1);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;color:#fff;text-shadow:0 1px 2px #000;box-shadow:0 6px 16px #000a}
+.ux-ghost{position:fixed;z-index:40;pointer-events:none;opacity:.9;transform:scale(1.1);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;color:#fff;text-shadow:0 1px 2px #000;box-shadow:0 6px 16px #000a}
 .ux-ghost .u{border-color:#ffc531}
-#uxSell{position:fixed;left:8px;right:8px;bottom:calc(env(safe-area-inset-bottom) + 8px);z-index:35;height:64px;border-radius:14px;border:2px dashed #ff7a5a;background:#3a1420ee;color:#fbb;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:bold}
-#uxSell.ux-over{background:#a0302aee;color:#fff;border-style:solid}
 .ux-detail{text-align:left;font-size:13px;line-height:1.55}.ux-detail .k{color:#ffc531}
 #uxTut{position:fixed;inset:0;z-index:50}
 #uxRing{position:absolute;border:2px solid #ffd54f;border-radius:12px;box-shadow:0 0 0 9999px #020812c4,0 0 14px #ffd54f;transition:all .2s;pointer-events:none}
@@ -118,23 +109,33 @@
   </section>
 
   <section id="shop" class="screen hidden">
-    <div class="top">
-      <span id="tStage"></span><span id="tHp"></span><span id="tGold"></span><span id="tLv"></span>
+    <!-- 橫向佈陣畫面（照《貨幣戰爭》配置）：上＝資訊列（左：位面／小隊血量／金幣／等級，右：裝備道具／圖鑑／選單）；
+         左＝羈絆面板；中＝前台、後台；右＝情報與詳情；下＝備戰區＋按鈕列（左下等級、中刷新鎖定、右下商店／出發）；商店是底部抽屜 -->
+    <header class="hud-top ui-panel">
+      <div class="ht-l"><span id="tStage" class="pill stage"></span><span id="tHp" class="pill hp"></span><span id="tGold" class="pill gold"></span><span id="tLv" class="pill lv"></span></div>
+      <div class="ht-r"><div id="items" class="items" aria-label="裝備與道具"></div><button id="bCodexIn" class="ic-btn" aria-label="策略圖鑑">📖</button><button id="bMenu" class="ic-btn" aria-label="選單">☰</button><button id="bQuit" class="ic-btn" aria-label="存檔並回標題">🏠</button></div>
+    </header>
+    <div class="mid">
+      <aside id="trPanel" class="trpanel ui-panel"><button id="trFold" class="trfold" aria-label="收合羈絆面板">羈絆</button><div id="traits" class="traits"></div></aside>
+      <div class="board">
+        <div class="zone zfront"><div class="zl"><span class="zt"><span class="posic p-front"><i></i><i></i></span>前台</span><b id="zfN"></b><span class="zh">上場彈射</span></div><div id="front" class="row grid"></div></div>
+        <div class="zone zback"><div class="zl"><span class="zt"><span class="posic p-back"><i></i><i></i></span>後台</span><b id="zbN"></b><span class="zh">每回合被動</span></div><div id="back" class="row grid"></div></div>
+      </div>
+      <aside class="side ui-panel"><div id="enemyInfo" class="enemy"></div><div id="strats" class="traits"></div><div id="info" class="info"></div></aside>
     </div>
-    <div id="enemyInfo" class="enemy"></div>
-    <div id="strats" class="traits"></div>
-    <div id="traits" class="traits"></div>
-    <div class="lbl">前台（上場彈射）</div><div id="front" class="row"></div>
-    <div class="lbl">後台（每回合被動）</div><div id="back" class="row"></div>
-    <div class="lbl">備戰區</div><div id="bench" class="row"></div>
-    <div id="items" class="items"></div>
-    <div id="info" class="info"></div>
-    <div id="shopRow" class="shoprow"></div>
-    <div class="ctrls">
-      <button id="bReroll">刷新 2</button><button id="bLock">鎖定</button><button id="bXp">經驗 4</button>
-      <button id="bFight" class="go">前進 ▶</button>
+    <div class="dock">
+      <div class="zone zbench"><div class="zl"><span class="zt">備戰區</span><b id="zcN"></b></div><div id="bench" class="row grid"></div></div>
+      <div id="shopDrawer" class="drawer ui-panel">
+        <div id="shopHead" class="dr-h"></div>
+        <div id="shopRow" class="shoprow"></div>
+      </div>
+      <div class="ctrls">
+        <button id="bXp" class="c-xp">經驗 4</button>
+        <div class="c-mid"><button id="bReroll" class="c-re">刷新 2</button><button id="bLock" class="c-lock">鎖定</button></div>
+        <div class="c-r"><button id="bShop" class="c-shop" aria-label="商店">商店</button><button id="bFight" class="go c-go">出發 ▶</button></div>
+      </div>
     </div>
-    <div class="ctrls sub2"><button id="bExport">📤 匯出隊伍代碼</button><button id="bDuel">⚔ 代碼對戰</button><button id="bQuit" aria-label="存檔並回標題">🏠</button></div>
+    <div id="shopMenu" class="shopmenu ui-panel hidden"><button id="bExport">📤 匯出隊伍代碼</button><button id="bDuel">⚔ 代碼對戰</button><button id="bSetIn">⚙ 設定</button><button id="bMenuX">關閉</button></div>
   </section>
 
   <section id="battle" class="screen hidden">
@@ -146,7 +147,7 @@
     <div id="uxBinfo" class="hidden"></div>
   </section>
 
-  <div id="uxSell" class="hidden">賣出</div>
+  <div id="uxSell" class="hidden"><div class="sz l">出售</div><div class="sz r">出售</div></div>
   <div id="uxTut" class="hidden"><div id="uxRing"></div><div id="uxBubble" role="dialog" aria-live="polite"></div></div>
   <div id="modal" class="modal hidden"><div id="modalBox" class="box"></div></div>
 </div>
