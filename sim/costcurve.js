@@ -1,7 +1,8 @@
 // 費用曲線：node sim/costcurve.js [每組場數=200] [seed=1]
 // 1) 單角色強度：隨機 1 星隊伍（無裝備）換進 1 隻指定角色（指定星級），對隨機 1 星隊伍的勝率 → 依費用平均
 // 2) 純費用隊對打：4 前台全由「c 費 s 星」隨機角色組成，兩兩對打（例：5 費 1 星 vs 1 費 3 星）
-// CFG='{...}' 暫時覆蓋 config（同 simulate.js）；ONLY=1 只跑第 1 部分、ONLY=2 只跑第 2 部分
+// 3) 同角色升星：以同一名前台角色做 3 星對 2 星單挑，3 星方交替置於左右側
+// CFG='{...}' 暫時覆蓋 config（同 simulate.js）；ONLY=1 只跑第 1 部分、ONLY=2 只跑第 2、3 部分
 const path = require('path');
 ['data/config', 'data/units', 'data/traits', 'data/items', 'data/enemies', 'data/run', 'src/core/battle', 'src/core/ai', 'src/core/run']
   .forEach(f => require(path.join(__dirname, '..', f + '.js')));
@@ -48,4 +49,13 @@ if (process.env.ONLY !== '1') {
   const pairs = [[[5, 1], [1, 1]], [[4, 1], [2, 1]], [[3, 1], [1, 1]], [[5, 1], [3, 1]], [[1, 2], [3, 1]], [[2, 2], [4, 1]], [[2, 2], [5, 1]], [[3, 2], [5, 1]], [[1, 3], [5, 1]], [[1, 3], [4, 2]], [[2, 3], [5, 2]], [[5, 2], [3, 2]], [[1, 2], [1, 1]]];
   console.log('\n== 純費用隊（4 前台）對打：左方勝率 ==');
   for (const [a, b] of pairs) console.log(`${a[0]}費${a[1]}星 vs ${b[0]}費${b[1]}星：${(vs(pure(a[0], a[1]), pure(b[0], b[1]), M) * 100).toFixed(0)}%`);
+  const frontIds = ids.filter(id => D.units[id].role !== 'back');
+  let wins = 0;
+  for (let k = 0; k < M; k++) {
+    const id = FA.rng.pick(rs, frontIds);
+    const three = { front: [mk(id, 3)], back: [] };
+    const two = { front: [mk(id, 2)], back: [] };
+    if (k & 1 ? play(two, three) === 1 : play(three, two) === 0) wins++;
+  }
+  console.log(`同角色3星 vs 2星（單挑）：${(wins / M * 100).toFixed(0)}%`);
 }

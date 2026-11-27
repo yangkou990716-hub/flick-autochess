@@ -39,7 +39,9 @@
     maxBack: 4, // ---- 經濟擴充 ----：後台格數（舊存檔 back 只有 3 格，lv() 會補齊）
     // ---- 經濟擴充 ----：商店道具格（每節點 chance 機率出現 1 格，pool：道具 id → 價格）
     shopCons: { chance: 0.1, pool: { furnace: 3 } },
-    shopSize: 5, benchSize: 6, starMult: [1, 1.23, 1.29], maxItems: 3, maxFront: 7,
+    // 升星生命沿用 starMult，攻擊可用 starAtk 覆蓋；舊設定兩者共用 starMult。
+    starMult: [1, 1.23, 1.56], starAtk: [1, 1.23, 1.37],
+    shopSize: 5, benchSize: 6, maxItems: 3, maxFront: 7,
     lossDamage: { base: 3, perEnemy: 2, perStage: 0.4 }, // 舊公式；落敗扣血改依敵方剩餘動數（見 run.endBattle）
     dropChance: 0.35,
     farCap: 5, dodgeCap: 0.5 // 狙擊：助跑加成最多 5 段（500 距離）；幽影：閃避上限
