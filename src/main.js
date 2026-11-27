@@ -227,7 +227,7 @@
     else if (sel && sel.trait) { const T = D.traits[sel.trait]; info = `<b>${tIc(sel.trait)} ${T.name}</b>（只加給${T.name}角色）<br>` + T.tiers.map(tierLine).join('<br>') + counterLine(T); }
     else if (sel && sel.fa) info = facInfo(sel.fa);
     else if (sel && sel.st) { const S = RD.strategies[sel.st]; info = `<b>${S.name}</b>（${RD.tiers[S.tier].name}）<br>${S.desc}`; }
-    else info = `<span class="lbl">雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈 -1、被打倒 -${C.deathCost}，對方動數先歸零就贏；擊倒首領直接贏。贏 +${C.winHeal} 血、輸了扣血；🛡＝鎖血免死。點商店卡片購買；點角色查看／移動；3 隻同星自動升星。佈好陣按「前進」選路線。</span>`;
+    else info = `<span class="lbl shop-hint">雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈 -1、被打倒 -${C.deathCost}，對方動數先歸零就贏；擊倒首領直接贏。贏 +${C.winHeal} 血、輸了扣血；🛡＝鎖血免死。點商店卡片購買；點角色查看／移動；3 隻同星自動升星。佈好陣按「前進」選路線。</span>`;
     $('info').innerHTML = info;
     setHTML($('shopRow'), run.shop.map((id, i) => {
       if (!id) return `<div class="card empty"></div>`;
@@ -454,7 +454,6 @@
     mode = 'run';
     const b = RUN.startBattle(run); if (!b) { run.node = null; show('shop'); renderShop(); return flash('前台至少要放 1 隻'); }
     battle = b; bst = newStats(); V.reset(); ai = null; ui.aim = null; hideBInfo(); show('battle'); V.resize(); save();
-    setTimeout(tutBattle, 60);
     if (run.enemy.boss) { V.banner = { txt: '首領：' + run.enemy.name, life: 1.6 }; FA.sound.play('boss'); }
     else if (run.enemy.reward) V.banner = { txt: '次元撲滿會逃跑！每掉 1/4 血 +' + (RD.piggy.goldPerQuarter || 1) + ' 金', life: 1.6 };
     else if (run.node === 'encounter') V.banner = { txt: '遭遇・' + RD.encounter[run.encLv].name, life: 1.2 };
@@ -783,7 +782,6 @@
     return true;
   }
   const tutShop = () => { if (screen === 'shop' && $('modal').classList.contains('hidden')) tutor('shop'); };
-  const tutBattle = () => { if (screen === 'battle' && battle && mode !== 'guide' && !paused) { tutor('battle'); tutor('turns'); } };
   const tutResult = () => tutor('result');
   const tutPending = type => { if ($('modal').classList.contains('hidden')) return; if (type === 'opener' || type === 'env' || type === 'strategy') tutor('env'); else if (type === 'path') tutor('path'); };
   // 商店情境提示：第一次快升星、第一次羈絆啟動
@@ -794,15 +792,22 @@
     if (!tutSeen.traits && document.querySelector('#traits .tr.act')) tutor('traits');
   }
   // 戰鬥情境提示（每幀檢查，輪到我方瞄準時才跳）：有人被打倒、大招第一次能用、隊上第一次有甜蜜點／飛行中點擊角色
+  let tutAimBattle = null, tutAimShot = -1;
   function tutTick() {
     if (mode === 'guide') return guideTick();
     coach(null);
     if (tutOn || paused || tutSeen.skip || !battle || battle.phase !== 'aim' || battle.turn !== 0 || drag != null || !$('modal').classList.contains('hidden')) return;
-    if (!tutSeen.turns && mode === 'run') return; // 先講完輪流規則，再跳情境提示
-    if (!tutSeen.down && battle.deaths && battle.deaths[0] + battle.deaths[1] > 0) return tutor('down');
-    if (!tutSeen.ult && !$('bUlt').classList.contains('hidden')) return tutor('ult');
-    if (!tutSeen.sweet && abUnit(a => a.type === 'sweetSpot')) return tutor('sweet');
-    if (!tutSeen.tap && abUnit(a => !!a.tap)) tutor('tap');
+    // 每發結束才增加 shotCount，關掉泡泡後可以先完成這次瞄準。
+    const shot = battle.shotCount || 0;
+    if (tutAimBattle === battle && tutAimShot === shot) return;
+    let key;
+    if (mode === 'run' && !tutSeen.battle) key = 'battle';
+    else if (mode === 'run' && !tutSeen.turns) key = 'turns';
+    else if (!tutSeen.down && battle.deaths && battle.deaths[0] + battle.deaths[1] > 0) key = 'down';
+    else if (!tutSeen.ult && !$('bUlt').classList.contains('hidden')) key = 'ult';
+    else if (!tutSeen.sweet && abUnit(a => a.type === 'sweetSpot')) key = 'sweet';
+    else if (!tutSeen.tap && abUnit(a => !!a.tap)) key = 'tap';
+    if (key && tutor(key)) { tutAimBattle = battle; tutAimShot = shot; }
   }
   // 連線大廳：第一次進去時說明
   addEventListener('load', () => ['net', 'lg'].forEach(id => { const el = $(id); if (el) new MutationObserver(() => { if (!el.classList.contains('hidden')) setTimeout(() => { if (!el.classList.contains('hidden')) tutor(id); }, 250); }).observe(el, { attributes: true, attributeFilter: ['class'] }); }));
@@ -849,6 +854,7 @@
   function guideOver(b) {
     const won = b.winner === 0; coach(null);
     setTimeout(() => {
+      if (battle !== b) return;
       battle = null; mode = 'run'; bst = null; hideBInfo();
       const next = guideNext; guideNext = null;
       modal(`<h2 class="res-h ${won ? 'win' : 'lose'}">${won ? '🎯 練習完成' : '練習結束'}</h2><p>正式戰鬥敵人也會出手：雙方輪流彈，<b>先把對方動數打光就贏</b>。</p>`,
@@ -927,7 +933,7 @@
 
   // ---------- 標題 ----------
   function toTitle() {
-    if (mode === 'guide') { mode = 'run'; coach(null); } battle = null; $('modal').classList.add('hidden'); show('title'); $('btnCont').classList.toggle('hidden', !load());
+    if (mode === 'guide') { mode = 'run'; guideNext = null; coach(null); } battle = null; $('modal').classList.add('hidden'); show('title'); $('btnCont').classList.toggle('hidden', !load());
     if (loadErr) { const t = loadErr; loadErr = null; modal(`<h2>⚠ 存檔無法讀取</h2>${t}`, [{ t: '知道了', cls: 'go' }]); }
   }
   $('btnCodex').onclick = () => codex();
@@ -952,7 +958,10 @@
     if (s.dropped) { bst = null; if (raw.mode !== 'duel') run.node = null; setTimeout(() => flash('舊版存檔的戰鬥已放棄，回到商店'), 50); } // 舊規則戰鬥（無總動數）或角色已移除：無法續打
     try {
       save();
-      if (battle) { show('battle'); V.reset(); V.resize(); paused = false; pause(); } else { show('shop'); renderShop(); flow(); }
+      if (battle) { show('battle'); V.reset(); V.resize(); paused = false; pause(); }
+      // 練習關本身不存檔。若已選定戰鬥節點，繼續時直接開打。
+      else if (tutSeen.guide && !run.pending && ['battle', 'boss', 'reward', 'encounter'].includes(run.node)) startFight();
+      else { show('shop'); renderShop(); flow(); }
     } catch (e) { // 修不好的存檔：備份後回標題，不要卡在壞掉的畫面
       console.warn('讀檔失敗', e); hs = null; run = null; battle = null; badSave(raw); toTitle();
     }
