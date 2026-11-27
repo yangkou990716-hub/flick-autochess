@@ -91,7 +91,7 @@
   // ---------- 自己的 run（存在 localStorage，重新整理接回） ----------
   function saveRun(r) { if (!r || !R.code) return; try { localStorage.setItem(RUN_KEY, JSON.stringify({ code: R.code, created: R.created, pid, run: r })); } catch (e) { } }
   function loadRun() {
-    try { const s = JSON.parse(localStorage.getItem(RUN_KEY)); if (s && s.code === R.code && s.pid === pid && s.created === R.created && s.run && s.run.league) return s.run; } catch (e) { }
+    try { const s = JSON.parse(localStorage.getItem(RUN_KEY)); if (s && s.code === R.code && s.pid === pid && s.created === R.created && s.run && s.run.league) return FA.run.migrate ? FA.run.migrate(s.run) : s.run; } catch (e) { } // 舊版存檔先遷移
     return null;
   }
   function ensureRun() {

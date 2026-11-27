@@ -654,7 +654,7 @@
       const json = typeof atob === 'function' ? decodeURIComponent(escape(atob(code.trim()))) : Buffer.from(code.trim(), 'base64').toString('utf8');
       const d = JSON.parse(json), un = a => {
         if (!D().units[a[0]] || D().units[a[0]].noShop) throw 0;
-        return { id: a[0], star: Math.max(1, Math.min(3, a[1] | 0)), weapon: D().weapons[a[2]] ? a[2] : null, items: (a[3] || []).filter(x => D().items[x[0]]).slice(0, 3).map(x => ({ id: x[0], rolls: x[1] })) };
+        return { id: a[0], star: Math.max(1, Math.min(3, a[1] | 0)), weapon: D().weapons[a[2]] ? a[2] : null, items: (Array.isArray(a[3]) ? a[3] : []).map(x => Array.isArray(x) && cleanItem({ id: x[0], rolls: x[1] }, true)).filter(Boolean).slice(0, 3) }; // 詞條夾在範圍內（防竄改代碼）
       };
       return { name: String(d.n || '對手').slice(0, 12), front: d.f.slice(0, 7).map(un), back: d.b.slice(0, C().maxBack || 3).map(un), strats: (d.s || []).filter(s => RD().strategies[s]) };
     } catch (e) { return null; }
@@ -668,6 +668,111 @@
       seed: Math.floor(R().next(r.rng) * 2 ** 31) });
   }
 
+  // ---- 存檔相容 ----：舊版存檔（缺新欄位、已移除的角色／裝備／武器／策略 id、欄位型別壞掉）讀進來前先修好
+  // 回傳修好的 run（原物件就地修改）；完全不能用時回傳 null。notes 會放進 r.econNotes，商店資訊列顯示
+  const RUN_V = 4;
+  const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
+  const clampI = (v, lo, hi, d) => Math.max(lo, Math.min(hi, Math.round(num(v, d))));
+  // 裝備：id 要存在；詞條只留該裝備有的，壞掉／缺的補下限。strict（隊伍代碼匯入，防竄改）才把數值夾在範圍內；
+  // 存檔不夾（之後調整數值範圍時，玩家已拿到的裝備不會被偷偷改掉）
+  function cleanItem(it, strict) {
+    if (!it || typeof it !== 'object' || !D().items[it.id]) return null;
+    const I = D().items[it.id], src = it.rolls && typeof it.rolls === 'object' ? it.rolls : {}, rolls = {};
+    for (const k in I.affix || {}) { const [lo, hi] = I.affix[k], v = num(src[k], lo); rolls[k] = strict ? Math.max(Math.min(lo, hi), Math.min(Math.max(lo, hi), v)) : v; }
+    return { id: it.id, rolls };
+  }
+  function cleanUnit(u, r, lost) {
+    if (!u || typeof u !== 'object') return null;
+    const U = D().units[u.id];
+    if (!U) { lost.push(u); return null; }
+    const out = Object.assign({}, u, { star: clampI(u.star, 1, 3, 1), items: (Array.isArray(u.items) ? u.items : []).map(it => cleanItem(it)).filter(Boolean).slice(0, C().maxItems || 3),
+      weapon: u.weapon && (D().weapons || {})[u.weapon] ? u.weapon : null });
+    if (!(typeof out.uid === 'number' && isFinite(out.uid))) out.uid = r.uid++;
+    return out;
+  }
+  function migrate(r) {
+    if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+    const c = C(), Rd = RD(), notes = [];
+    const asc = clampI(r.asc, 0, (Rd.ascensions || [0]).length - 1, 0);
+    const tpl = newRun(num(r.rng && r.rng.s, 1) | 0, asc);
+    const fresh = { pending: null, over: null, last: null, node: null, env: null, opener: null, afterStrat: null, shopCons: null, affixes: [], affixSeen: true, consumables: [], bossVar: 0 };
+    for (const k in tpl) if (r[k] === undefined || (r[k] === null && Array.isArray(tpl[k]))) r[k] = k in fresh ? fresh[k] : JSON.parse(JSON.stringify(tpl[k]));
+    if (!r.rng || typeof r.rng !== 'object') r.rng = tpl.rng;
+    ['ecoRng', 'affRng'].forEach(k => { if (!r[k] || typeof r[k] !== 'object') r[k] = tpl[k]; });
+    // 數值欄位
+    const P = (Rd.planes || [1]).length;
+    r.asc = asc; r.plane = clampI(r.plane, 1, P, 1); r.level = clampI(r.level, 1, c.levels.length, 1);
+    ['step', 'stage', 'xp', 'uid', 'freeReroll', 'freeLeft', 'extraEnemy', 'lastStand'].forEach(k => { r[k] = Math.max(0, Math.round(num(r[k], tpl[k]))); });
+    r.uid = Math.max(1, r.uid); r.streak = Math.round(num(r.streak, 0)); r.threat = num(r.threat, tpl.threat);
+    r.gold = Math.max(0, Math.round(num(r.gold, tpl.gold))); r.maxHp = Math.max(1, Math.round(num(r.maxHp, tpl.maxHp))); r.hp = clampI(r.hp, 0, Math.max(r.maxHp, 999), r.maxHp);
+    const bosses = D().enemies.bosses[r.plane - 1] || [];
+    r.bossVar = clampI(r.bossVar, 0, Math.max(0, bosses.length - 1), 0);
+    r.encLv = clampI(r.encLv, 0, Math.max(0, (Rd.encounter || [0]).length - 1), 0);
+    r.locked = !!r.locked;
+    // 角色：已移除的換成金幣；陣列長度對齊目前設定（多出來的移到備戰區，放不下的也換金幣）
+    const lost = [], over = [];
+    const size = { front: c.maxFront, back: c.maxBack || 3, bench: c.benchSize };
+    ZONES.forEach(z => {
+      const a = (Array.isArray(r[z]) ? r[z] : []).map(u => cleanUnit(u, r, lost));
+      while (a.length > size[z]) { const u = a.pop(); if (u) over.push(u); }
+      while (a.length < size[z]) a.push(null);
+      r[z] = a;
+    });
+    over.forEach(u => { const k = r.bench.indexOf(null); if (k >= 0) r.bench[k] = u; else r.gold += sellPrice(u); });
+    if (lost.length) { const g = lost.reduce((s, u) => s + 2 * Math.pow(3, clampI(u.star, 1, 3, 1) - 1), 0); r.gold += g; notes.push(`舊存檔：${lost.length} 隻已移除的角色換成 ${g} 金`); }
+    // 物品欄、商店、策略、環境、詞綴、道具
+    r.items = (Array.isArray(r.items) ? r.items : []).map(it => cleanItem(it)).filter(Boolean);
+    r.weapons = (Array.isArray(r.weapons) ? r.weapons : []).filter(w => (D().weapons || {})[w]);
+    r.consumables = (Array.isArray(r.consumables) ? r.consumables : []).filter(id => CD()[id]);
+    const hadShop = Array.isArray(r.shop), shop = hadShop ? r.shop.slice(0, c.shopSize) : [];
+    while (shop.length < c.shopSize) shop.push(null);
+    r.shop = shop.map(id => (id && D().units[id] && !D().units[id].noShop ? id : null)); // 已移除的角色卡變空格（買光的空格照舊）
+    if (!hadShop) rollShop(r, true);
+    r.strats = (Array.isArray(r.strats) ? r.strats : []).filter(id => (Rd.strategies || {})[id]);
+    if (r.env && !(Rd.envs || {})[r.env]) r.env = null;
+    if (r.opener && !(Rd.openers || {})[r.opener]) r.opener = null;
+    r.affixes = (Array.isArray(r.affixes) ? r.affixes : []).filter(id => AFX()[id]);
+    if (!r.affixes.length) r.affixSeen = true;
+    ['timed', 'futures'].forEach(k => { r[k] = (Array.isArray(r[k]) ? r[k] : []).filter(t => t && typeof t === 'object'); });
+    r.timed.forEach(t => { if (t.unit && !D().units[t.unit]) delete t.unit; });
+    r.futures = r.futures.filter(f => !f.tier || (Rd.tiers || {})[f.tier]);
+    if (!r.lvPaid || typeof r.lvPaid !== 'object') r.lvPaid = {};
+    if (r.shopCons && !(r.shopCons.id && CD()[r.shopCons.id])) r.shopCons = null;
+    if (r.node && !((Rd.nodeInfo || {})[r.node] || r.node === 'boss')) r.node = null;
+    if (r.over && r.over !== 'win' && r.over !== 'lose') r.over = null;
+    // 待選擇：類型或選項失效就清掉（玩家回到商店按「前進」重新選路線）
+    const p = r.pending;
+    if (p) {
+      const dict = { opener: Rd.openers, env: Rd.envs, path: Rd.nodeInfo, supply: Rd.supplies, strategy: Rd.strategies, armory: D().items }[p.type];
+      let ok = Array.isArray(p.options) && p.options.length > 0;
+      if (ok && dict) ok = p.options.every(o => o === 'boss' || dict[o]);
+      else if (ok && p.type === 'encounter') ok = p.options.every(o => (Rd.encounter || [])[o]);
+      else if (ok && p.type === 'carrier') ok = p.options.every(o => o && (o.sup ? (Rd.supplies || {})[o.sup] : D().units[o.u] && cleanItem(o.it)));
+      else if (ok) ok = false;
+      if (!ok) { r.pending = null; notes.push('舊存檔：待選擇的項目已失效，請重新選路線'); }
+    }
+    if (notes.length) r.econNotes = (Array.isArray(r.econNotes) ? r.econNotes : []).concat(notes);
+    r.v = RUN_V;
+    return r;
+  }
+  // 存檔裡的戰鬥能不能續打：要有總動數制欄位、棋子 id 都還存在；和目前版本的戰鬥物件比對欄位，
+  // 缺的欄位若是單值（數字／布林／null，例如狀態旗標）或空陣列／空物件就用新版預設補上，缺了有內容的結構（舊規則）就放棄這場戰鬥
+  let refB = null;
+  const isEmpty = v => v == null || typeof v !== 'object' || (Array.isArray(v) ? !v.length : !Object.keys(v).length);
+  function fillFrom(o, ref) {
+    for (const k in ref) if (!(k in o)) { if (!isEmpty(ref[k])) return false; o[k] = ref[k] == null || typeof ref[k] !== 'object' ? ref[k] : Array.isArray(ref[k]) ? [] : {}; }
+    return true;
+  }
+  function battleOk(b) {
+    if (!b || typeof b !== 'object' || !Array.isArray(b.moves) || !Array.isArray(b.bodies) || !b.bodies.length || !b.rng || !Array.isArray(b.sides)) return false;
+    if (!['aim', 'moving', 'over'].includes(b.phase)) return false;
+    try {
+      if (!refB) { const u = { id: shopIds()[0], star: 1, items: [], weapon: null }; refB = FA.battle.create({ pFront: [u], pBack: [], eFront: [u], eBack: [], rules: [], env: {}, seed: 1 }); }
+      if (!fillFrom(b, refB) || !b.sides.every(sd => sd && typeof sd === 'object' && fillFrom(sd, refB.sides[0]))) return false;
+      return b.bodies.every(o => o && typeof o === 'object' && isFinite(o.x) && isFinite(o.y) && (o.boss || o.temp || D().units[o.id]) && fillFrom(o, refB.bodies[0]));
+    } catch (e) { return false; }
+  }
+
   FA.run = { newRun, rollShop, reroll, buyXp, buy, sell, move, equip, equipWeapon, merge, makeItem, startBattle, endBattle, enemyTeam,
     bossInfo: r => D().enemies.bosses[r.plane - 1][r.bossVar || 0], sellPrice, unitCost, lv, isBoss, steps, unitAt, choose, advance, sfx, efx, nodeOptions,
     exportTeam, importTeam, duelBattle, shopIds,
@@ -676,4 +781,5 @@
   Object.assign(FA.run, { factionFx, rerollCost, teamUnits }); // ---- 陣營 ----
   Object.assign(FA.run, { askStrategy }); // ---- 連線自走棋（src/core/league.js）----
   Object.assign(FA.run, { buyShopCons, shopOdds, takeNotes, econExt, econAtk, hasFx, envOptions, activeTraitN }); // ---- 經濟擴充 ----
+  Object.assign(FA.run, { migrate, battleOk, cleanItem, RUN_V }); // ---- 存檔相容 ----
 })(globalThis);

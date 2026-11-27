@@ -44,8 +44,10 @@
   V._vis = vis; // 測試用：視覺變形狀態
 
   // ---- 粒子 ----
-  const MAXP = 520;
-  const add = p => { if (V.parts.length < MAXP) V.parts.push(p); };
+  // 粒子上限：一般 420；低階手機（lowFx，見 V.draw）降到 220，水面焦散改半解析度、4 幀更新一次
+  const MAXP = 420, MAXP_LOW = 220, MAXT = 32; // MAXT：同時顯示的飄字上限
+  V.lowFx = false; V.drawMs = 0;
+  const add = p => { if (V.parts.length < (V.lowFx ? MAXP_LOW : MAXP)) V.parts.push(p); };
   const burst = (x, y, col, n, sp, o) => { for (let i = 0; i < n; i++) { const a = Math.random() * TAU, s = sp * (0.3 + Math.random()); add(Object.assign({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5 + Math.random() * 0.4, max: 0.9, col, k: 'dot', sz: 2 + Math.random() * 2.5, drag: 0.9 }, o)); } };
   const sparks = (x, y, col, n, sp) => burst(x, y, col, n, sp, { k: 'streak', life: 0.25 + Math.random() * 0.2, max: 0.45, drag: 0.86, add: true });
   const smoke = (x, y, r, n) => { for (let i = 0; i < n; i++) { const a = Math.random() * TAU, d = Math.random() * r * 0.5, s = 30 + Math.random() * 60; add({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 20, life: 0.7 + Math.random() * 0.6, max: 1.3, col: '#5a5068', k: 'smoke', sz: r * (0.18 + Math.random() * 0.15), drag: 0.95 }); } };
@@ -56,6 +58,7 @@
   const fx = o => { if (V.fx.length < 60) V.fx.push(o); };
   const nearPillar = (b, x, y) => { let k = -1, bd = 1e9; (b.pillars || []).forEach((p, i) => { const d = Math.hypot(p.x - x, p.y - y) - p.r; if (d < bd) { bd = d; k = i; } }); return bd < 30 ? k : -1; };
   const textPush = (x, y, txt, col, size, life, o) => V.texts.push(Object.assign({ x, y, txt, life, max: life, col, size, tier: 1, vy: 32 }, o));
+  const capTexts = () => { if (V.texts.length > MAXT) V.texts.splice(0, V.texts.length - MAXT); }; // 連鎖爆炸一次冒幾十個數字：留最新的
 
   // ---- 大招發動特效 ----
   function ultBurst(b, o, type, x, y) {
@@ -263,14 +266,16 @@
       else if (e.t === 'round') V.banner = { txt: e.extra ? '加時！' : `第 ${e.n} 輪${e.start ? (e.team === 0 ? '・我方先手' : '・敵方先手') : ''}`, life: e.start ? 1.4 : 1.0, max: e.start ? 1.4 : 1.0 };
       else if (e.t === 'skip') V.banner = { txt: (e.team === 0 ? '我方' : '敵方') + '全員暈眩，跳過', life: 1.2, max: 1.2 };
     }
-    b.events = [];
+    b.events = []; capTexts();
   };
 
+  // 原地移除過期項目（不每幀配置新陣列）
+  const keep = a => { let n = 0; for (let i = 0; i < a.length; i++) if (a[i].life > 0) a[n++] = a[i]; a.length = n; return a; };
   V.update = dt => {
     for (const p of V.parts) { p.x += p.vx * dt; p.y += p.vy * dt; const d = Math.pow(p.drag, dt * 60); p.vx *= d; p.vy *= d; if (p.k === 'ember') p.vy -= 40 * dt; p.life -= dt; }
-    V.parts = V.parts.filter(p => p.life > 0);
-    for (const t of V.texts) { t.y -= t.vy * dt; t.life -= dt; } V.texts = V.texts.filter(t => t.life > 0);
-    const dec = a => { for (const r of a) r.life -= dt; return a.filter(r => r.life > 0); };
+    keep(V.parts);
+    for (const t of V.texts) { t.y -= t.vy * dt; t.life -= dt; } keep(V.texts);
+    const dec = a => { for (const r of a) r.life -= dt; return keep(a); };
     for (const r of V.rings) if (r.dl > 0) { r.dl -= dt; r.life += dt; }
     V.rings = dec(V.rings); V.bolts = dec(V.bolts); V.flashes = dec(V.flashes); V.decals = dec(V.decals); V.walls = dec(V.walls); V.fx = dec(V.fx); V.ripples = dec(V.ripples);
     for (const k in spawnIn) if ((spawnIn[k] -= dt) <= 0) delete spawnIn[k];
@@ -393,29 +398,34 @@
     const wc = document.createElement('canvas');
     return { c, wc, wx: wc.getContext('2d'), pat: null, n: 0 };
   }
-  // 每幀水面：焦散兩層＋反光帶畫在 1x 低解析離屏（隔幀更新），再疊到擂台；波紋直接畫
+  // 每幀水面：焦散兩層＋反光帶畫在離屏（裝置解析度、圓角遮罩先烘進去，隔幀更新），再 1:1 疊到擂台（不縮放、不用 clip：低階手機省最多）；波紋直接畫
   function drawWater(b, th, t) {
     const L = CX - b.hw * S, T = CY - b.hh * S, w = b.hw * S * 2, h = b.hh * S * 2;
     if (!causA) causA = buildCaus();
-    const A = causA, ww = Math.ceil(w), hh = Math.ceil(h), x = A.wx;
-    if (A.wc.width !== ww || A.wc.height !== hh) { A.wc.width = ww; A.wc.height = hh; A.pat = null; A.n = 0; }
+    const A = causA, ww = Math.ceil(w), hh = Math.ceil(h), x = A.wx, q = V.waterRes || (V.lowFx ? 0.5 : 1), pw = Math.ceil(ww * q), ph = Math.ceil(hh * q);
+    if (A.wc.width !== pw || A.wc.height !== ph) { A.wc.width = pw; A.wc.height = ph; A.pat = null; A.n = 0; }
     if (!A.pat) A.pat = x.createPattern(A.c, 'repeat');
-    if ((A.n++ & 1) === 0) {
-      const pat = A.pat; x.clearRect(0, 0, ww, hh); x.fillStyle = pat;
+    if ((A.n++ % (V.waterEvery || (V.lowFx ? 4 : 3))) === 0) {
+      const pat = A.pat; x.setTransform(q, 0, 0, q, 0, 0); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, ww, hh); x.fillStyle = pat;
       if (pat.setTransform) {
-        pat.setTransform(new DOMMatrix().translate(Math.round((t * 9) % CS), Math.round((t * 6) % CS))); x.globalAlpha = th.key === 'n' ? 0.075 : 0.045; x.fillRect(0, 0, ww, hh);
-        pat.setTransform(new DOMMatrix().translate(Math.round(40 - (t * 7) % (CS * 1.4)), Math.round(17 + (t * 10) % (CS * 1.4))).scale(1.4)); x.globalAlpha = th.key === 'n' ? 0.05 : 0.03; x.fillRect(0, 0, ww, hh);
+        const M = A.m || (A.m = new DOMMatrix());
+        M.a = 1; M.b = 0; M.c = 0; M.d = 1; M.e = Math.round((t * 9) % CS); M.f = Math.round((t * 6) % CS); pat.setTransform(M); x.globalAlpha = th.key === 'n' ? 0.075 : 0.045; x.fillRect(0, 0, ww, hh);
+        M.a = M.d = 1.4; M.e = Math.round(40 - (t * 7) % (CS * 1.4)); M.f = Math.round(17 + (t * 10) % (CS * 1.4)); pat.setTransform(M); x.globalAlpha = th.key === 'n' ? 0.05 : 0.03; x.fillRect(0, 0, ww, hh);
       } else { x.globalAlpha = 0.06; x.fillRect(0, 0, ww, hh); }
       const sx = -160 + ((t * 38) % (ww + 320)), g = x.createLinearGradient(sx - 70, 0, sx + 70, 140);
       g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,0.05)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.globalAlpha = 1; x.fillStyle = g; x.fillRect(Math.max(0, sx - 260), 0, 520, hh);
+      // 圓角遮罩
+      x.globalCompositeOperation = 'destination-in'; x.fillStyle = '#fff'; x.beginPath(); x.moveTo(18, 0); x.arcTo(w, 0, w, h, 18); x.arcTo(w, h, 0, h, 18); x.arcTo(0, h, 0, 0, 18); x.arcTo(0, 0, w, 0, 18); x.closePath(); x.fill(); x.globalCompositeOperation = 'source-over';
     }
-    ctx.save(); rrect(L, T, w, h, 18); ctx.clip(); ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(A.wc, L, T, ww, hh);
-    // 波紋
-    ctx.lineWidth = 1.5;
-    for (const r of V.ripples) {
-      const k = 1 - r.life / r.max, e = 1 - Math.pow(1 - k, 2), rad = Math.max(1, (0.25 + 0.75 * e) * r.r * S), px = CX + r.x * S, py = CY + r.y * S;
-      ctx.globalAlpha = r.a * (1 - k); ctx.strokeStyle = '#dff8ff'; ctx.beginPath(); ctx.ellipse(px, py, rad, rad * 0.86, 0, 0, TAU); ctx.stroke();
-      if (k < 0.7) { ctx.globalAlpha *= 0.6; ctx.beginPath(); ctx.ellipse(px, py, rad * 0.62, rad * 0.53, 0, 0, TAU); ctx.stroke(); }
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(A.wc, L, T, ww, hh); ctx.globalCompositeOperation = 'source-over';
+    // 波紋（裁在擂台內）
+    if (V.ripples.length) {
+      rrect(L, T, w, h, 18); ctx.clip(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#dff8ff';
+      for (const r of V.ripples) {
+        const k = 1 - r.life / r.max, e = 1 - Math.pow(1 - k, 2), rad = Math.max(1, (0.25 + 0.75 * e) * r.r * S), px = CX + r.x * S, py = CY + r.y * S;
+        ctx.globalAlpha = r.a * (1 - k); ctx.beginPath(); ctx.ellipse(px, py, rad, rad * 0.86, 0, 0, TAU); ctx.stroke();
+        if (k < 0.7) { ctx.globalAlpha *= 0.6; ctx.beginPath(); ctx.ellipse(px, py, rad * 0.62, rad * 0.53, 0, 0, TAU); ctx.stroke(); }
+      }
     }
     ctx.restore();
   }
@@ -576,10 +586,51 @@
     ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x - r * .3, y - 2, r * .1, 0, TAU); ctx.arc(x + r * .3, y - 2, r * .1, 0, TAU); ctx.fill();
   }
 
+  // 棋子名字標籤（描邊文字）快取成小圖：每幀十幾次 strokeText＋fillText 在低階手機很貴
+  const labelCache = new Map();
+  function labelSprite(txt, col) {
+    const k = txt + '|' + col + '|' + dpr; let L = labelCache.get(k);
+    if (!L) {
+      if (labelCache.size > 200) labelCache.clear();
+      const m = document.createElement('canvas').getContext('2d'); m.font = `700 10px ${FONT}`;
+      const w = Math.ceil(m.measureText(txt).width + 8), h = 16, c = document.createElement('canvas'); c.width = Math.ceil(w * dpr); c.height = Math.ceil(h * dpr);
+      const x = c.getContext('2d'); x.scale(dpr, dpr); x.font = `700 10px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'alphabetic'; x.lineJoin = 'round'; x.strokeStyle = '#000c'; x.lineWidth = 3;
+      x.strokeText(txt, w / 2, 12); x.fillStyle = col; x.fillText(txt, w / 2, 12);
+      labelCache.set(k, L = { c, w, h });
+    }
+    return L;
+  }
   function rrect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  // 棋子身上的小標（⚡、👆、♪3、☠2…）：內容少、每幀都畫，快取成小圖（emoji 文字描邊在低階手機特別貴）
+  const otCache = new Map();
+  function outTextC(txt, x, y, size, col, lw) {
+    const k = txt + '|' + size + '|' + col + '|' + lw + '|' + dpr; let L = otCache.get(k);
+    if (!L) {
+      if (otCache.size > 120) otCache.clear();
+      const f = `900 ${size}px ${FONT}`, m = document.createElement('canvas').getContext('2d'); m.font = f;
+      const pad = Math.ceil((lw || 3) + 2), w = Math.ceil(m.measureText(txt).width + pad * 2), h = Math.ceil(size * 1.5 + pad * 2), c = document.createElement('canvas');
+      c.width = Math.ceil(w * dpr); c.height = Math.ceil(h * dpr); const q = c.getContext('2d'); q.scale(dpr, dpr);
+      q.font = f; q.textAlign = 'center'; q.textBaseline = 'alphabetic'; q.lineJoin = 'round'; q.strokeStyle = '#000'; q.lineWidth = lw || Math.max(3, size / 5);
+      const by = pad + size * 1.1; q.strokeText(txt, w / 2, by); q.fillStyle = col; q.fillText(txt, w / 2, by);
+      otCache.set(k, L = { c, w, h, by });
+    }
+    ctx.drawImage(L.c, x - L.w / 2, y - L.by, L.w, L.h);
+  }
+  // 能量滿的光暈：預先畫好的放射漸層小圖（每幀 12 個放射漸層填色 → 12 次貼圖）
+  const glowCache = {};
+  function glowSprite(rgb) {
+    let c = glowCache[rgb]; if (c) return c;
+    c = glowCache[rgb] = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d'), g = x.createRadialGradient(64, 64, 64 * 0.41, 64, 64, 64);
+    g.addColorStop(0, `rgba(${rgb},0.6)`); g.addColorStop(1, `rgba(${rgb},0)`); x.fillStyle = g; x.fillRect(0, 0, 128, 128); return c;
+  }
   function outText(txt, x, y, size, col, lw) { ctx.font = `900 ${size}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#000'; ctx.lineWidth = lw || Math.max(3, size / 5); ctx.strokeText(txt, x, y); ctx.fillStyle = col; ctx.fillText(txt, x, y); }
 
-  V.draw = (b, ui, dt) => {
+  V.draw = (b, ui, dt) => { const t0 = performance.now(); drawFrame(b, ui, dt);
+    // 低階手機自動降特效：繪製時間移動平均 > 12ms 就開 lowFx（粒子上限減半、水面半解析度），< 5ms 再關（遲滯避免來回切）
+    const ms = performance.now() - t0; V.drawMs = V.drawMs * (ms > V.drawMs ? 0.85 : 0.97) + ms * (ms > V.drawMs ? 0.15 : 0.03); // 變慢反應快、變快反應慢
+    if (!V.lowFx && V.drawMs > 12) V.lowFx = true; else if (V.lowFx && V.drawMs < 5) V.lowFx = false;
+  };
+  function drawFrame(b, ui, dt) {
     lastB = b;
     const t = performance.now() / 1000, th = theme(b), bgKey = th.key + '|' + b.hw + 'x' + b.hh + '|' + b.rules.join() + '|' + W + 'x' + H;
     ctx.clearRect(0, 0, W, H);
@@ -647,7 +698,7 @@
       if (sp > 60) { const a = Math.atan2(o.vy * 0.36, o.vx), st = Math.min(0.3, sp / 3500); ctx.rotate(a); ctx.scale(1 + st, 1 - st * 0.3); ctx.rotate(-a); }
       const w = r * 1.18 * k * (1 + Math.max(0, v.q) * 0.5), h = r * 0.46 * k; ctx.globalAlpha = 0.8 * k; ctx.drawImage(shC, -w, -h, w * 2, h * 2); ctx.restore(); });
     ctx.globalAlpha = 1;
-    const SP = FA.sprites;
+    const SP = FA.sprites, canSel = b.phase === 'aim' && b.turn === 0 ? FA.battle.avail(b, 0) : null;
     b.bodies.forEach(o => {
       if (o.hurt > 0) o.hurt -= dt * 3;
       const x = CX + o.x * S, y = CY + o.y * S; let r = o.r * S;
@@ -658,7 +709,7 @@
       }
       const si = spawnIn[o.i]; if (si) { const k = 1 - si / 0.7, q = k - 1; r = Math.max(1, r * (1 + 2.70158 * q * q * q + 1.70158 * q * q)); }
       const sp0 = Math.hypot(o.vx, o.vy); if (dt && sp0 > 200) { ripT[o.i] = (ripT[o.i] || 0) + dt; if (ripT[o.i] > 0.08) { ripT[o.i] = 0; ripple(o.x, o.y, o.r * 1.6, 0.6, 0.3); } }
-      const sel = b.phase === 'aim' && b.turn === 0 && o.team === 0 && !o.temp && FA.battle.avail(b, 0).includes(o);
+      const sel = !!canSel && o.team === 0 && !o.temp && canSel.includes(o);
       if (sel && aimO !== o) { // 可彈提示：旋轉虛線圈
         ctx.strokeStyle = '#ffe066aa'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.lineDashOffset = -t * 20; ctx.beginPath(); ctx.arc(x, y, r + 6 + Math.sin(t * 5) * 1.5, 0, TAU); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
       }
@@ -670,14 +721,14 @@
         ctx.strokeStyle = `rgba(${col},0.9)`; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, r + 5, -Math.PI / 2, -Math.PI / 2 + TAU * pw); ctx.stroke();
       }
       if (o.ab && !o.temp) { // ---- 神技 ----：可二次操作👆、節奏層數♪
-        if (o.ab.tap && (sel || (b.phase === 'moving' && b.mover === o.i && !o.tapUsed))) { const mv = b.phase === 'moving'; ctx.globalAlpha = mv ? 0.6 + 0.4 * Math.sin(t * 12) : 0.85; outText('👆', x + r * 0.9, y - r * 0.9, mv ? 18 : 13, '#fff', 3); ctx.globalAlpha = 1;
+        if (o.ab.tap && (sel || (b.phase === 'moving' && b.mover === o.i && !o.tapUsed))) { const mv = b.phase === 'moving'; ctx.globalAlpha = mv ? 0.6 + 0.4 * Math.sin(t * 12) : 0.85; outTextC('👆', x + r * 0.9, y - r * 0.9, mv ? 18 : 13, '#fff', 3); ctx.globalAlpha = 1;
           if (mv) { ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = 2; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.arc(x, y, r + 8 + Math.sin(t * 12) * 2, 0, TAU); ctx.stroke(); ctx.setLineDash([]); } }
-        if (o.ab.type === 'rhythm' && o.stacks) outText('♪' + o.stacks, x - r * 0.9, y - r * 0.9, 13, o.stacks >= o.ab.boomAt ? '#ffd740' : '#fff', 3);
-        if (o.ab.type === 'sweetSpot' && sel && aimO !== o) outText('🎯', x + r * 0.9, y - r * 0.9, 12, '#fff', 3);
+        if (o.ab.type === 'rhythm' && o.stacks) outTextC('♪' + o.stacks, x - r * 0.9, y - r * 0.9, 13, o.stacks >= o.ab.boomAt ? '#ffd740' : '#fff', 3);
+        if (o.ab.type === 'sweetSpot' && sel && aimO !== o) outTextC('🎯', x + r * 0.9, y - r * 0.9, 12, '#fff', 3);
       }
       const UM = FA.DATA.config.ult.max, en = Math.min(1, (o.energy || 0) / UM), full = en >= 1 && !o.temp && !o.ultOn, foe = o.team !== 0, pul = 0.5 + 0.5 * Math.sin(t * 7 + o.i);
       const ecol = foe ? '255,70,90' : '255,215,80';
-      if (full) { const g = ctx.createRadialGradient(x, y, r * 0.8, x, y, r * (1.8 + pul * 0.3)); g.addColorStop(0, `rgba(${ecol},${0.3 + pul * 0.3})`); g.addColorStop(1, `rgba(${ecol},0)`); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * (1.8 + pul * 0.3), 0, TAU); ctx.fill(); }
+      if (full) { const R2 = r * (1.8 + pul * 0.3); ctx.globalAlpha = (0.3 + pul * 0.3) / 0.6; ctx.drawImage(glowSprite(ecol), x - R2, y - R2, R2 * 2, R2 * 2); ctx.globalAlpha = 1; }
       if (o.ultOn === 'phase' && SP) { const tr = V.trails[o.i] || []; ctx.save(); for (let j = tr.length - 3, n = 0; j >= 0 && n < 3; j -= 3, n++) { ctx.globalAlpha = 0.28 - n * 0.08; SP.draw(ctx, o, CX + tr[j][0] * S, CY + tr[j][1] * S, r, t); } ctx.restore(); ctx.globalAlpha = 1; }
       if (o.ultOn) ultAura(o, x, y, r, t, dt);
       if (SP) { // 2.5D：跳起位移＋速度拉伸＋碰撞壓扁回彈（只是畫面，碰撞判定不變）
@@ -685,7 +736,8 @@
         ctx.save(); ctx.translate(x, y - lift);
         if (sp0 > 60) { const a = Math.atan2(o.vy, o.vx), k = Math.min(0.09, sp0 / 10000); ctx.rotate(a); ctx.scale(1 + k, 1 - k * 0.7); ctx.rotate(-a); }
         if (Math.abs(v.q) > 0.004) { ctx.rotate(v.ang); ctx.scale(1 - v.q, 1 + v.q * 0.65); ctx.rotate(-v.ang); }
-        SP.draw(ctx, o, 0, 0, r, t); ctx.restore();
+        const r0 = o.r * S; if (r !== r0) ctx.scale(r / r0, r / r0); // 復活彈出：縮放畫固定半徑（sprites 依半徑快取，半徑每幀變會一直重建）
+        SP.draw(ctx, o, 0, 0, r0, t); ctx.restore();
       } else plainBody(o, x, y, r);
       if (si) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = si / 0.7; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); ctx.restore(); }
       if (!o.temp && !o.boss || o.boss) { // 能量環
@@ -696,7 +748,7 @@
           ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineJoin = 'round'; const sd = Math.floor(t * 12) * 13 + o.i * 7;
           for (let j = 0; j < 2; j++) { const a = (sd * 0.37 + j * 3.1) % TAU, a2 = a + 0.9, R1 = r + 3; ctx.strokeStyle = `rgba(${ecol},0.6)`; ctx.lineWidth = 3; lightning(x + Math.cos(a) * R1, y + Math.sin(a) * R1, x + Math.cos(a2) * R1, y + Math.sin(a2) * R1, sd + j * 31, r * 0.5); ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2; ctx.stroke(); }
           ctx.restore();
-          const by = y - r - 10 + Math.sin(t * 5 + o.i) * 2; outText(foe ? '⚡大招' : '⚡', x, by, foe ? 11 : 14, foe ? '#ff8a9a' : '#ffe066', 3);
+          const by = y - r - 10 + Math.sin(t * 5 + o.i) * 2; outTextC(foe ? '⚡大招' : '⚡', x, by, foe ? 11 : 14, foe ? '#ff8a9a' : '#ffe066', 3);
         } else { ctx.strokeStyle = o.ultOn ? (ULT[o.ultOn] || ULT0).col : foe ? '#ff9a7a' : '#7fd8ff'; ctx.beginPath(); ctx.arc(x, y, r + 3, -Math.PI / 2, -Math.PI / 2 + TAU * (o.ultOn ? 1 : en)); ctx.stroke(); }
       }
       if (o.shield > 0) { // 護盾泡泡
@@ -707,8 +759,8 @@
       if (o.temp) return;
       if (o.weapon && FA.DATA.weapons[o.weapon]) { if (SP && SP.badge) SP.badge(ctx, FA.DATA.weapons[o.weapon].icon, x + r * 0.9, y - r * 0.05, 7.5); else { ctx.font = `12px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillText(FA.DATA.weapons[o.weapon].icon, x + r * .95, y + r * .2); } }
       if (o.stunned) { ctx.font = `13px ${FONT}`; ctx.textAlign = 'center'; ctx.fillText('❄', x + Math.sin(t * 4) * 8, y - r * 1.45 - 6); }
-      if (o.poison) { outText('☠' + o.poison.turns, x - r * 1.05, y - r * 0.6, 10, '#c5ef8a', 3); }
-      if (o.fear) { outText('😱', x + r * 1.05, y - r * 0.6, 11, '#b388ff', 3); }
+      if (o.poison) { outTextC('☠' + o.poison.turns, x - r * 1.05, y - r * 0.6, 10, '#c5ef8a', 3); }
+      if (o.fear) { outTextC('😱', x + r * 1.05, y - r * 0.6, 11, '#b388ff', 3); }
       if (o.veil) { ctx.save(); ctx.globalAlpha = 0.5 + 0.2 * Math.sin(t * 5 + o.i); ctx.strokeStyle = '#d1c4e9'; ctx.lineWidth = 2; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.arc(x, y, r + 6, 0, TAU); ctx.stroke(); ctx.restore(); }
       // 血條（含延遲白條）
       const hp = Math.max(0, o.hp / o.maxHp); if (hpLag[o.i] == null || hpLag[o.i] < hp) hpLag[o.i] = hp; else hpLag[o.i] = Math.max(hp, hpLag[o.i] - dt * 0.6);
@@ -718,8 +770,8 @@
       const hc = o.team === 0 ? (hp > 0.3 ? '#5fe36a' : '#ffcf3a') : '#ff5a5a'; ctx.fillStyle = hc; ctx.fillRect(bx, by, bw * hp, bh);
       ctx.fillStyle = '#ffffff40'; ctx.fillRect(bx, by, bw * hp, bh / 2);
       if (!o.boss) {
-        ctx.font = `700 10px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#000c'; ctx.lineWidth = 3;
-        const nm = o.name + (o.star > 1 ? '★'.repeat(o.star) : ''); ctx.strokeText(nm, x, by + bh + 11); ctx.fillStyle = o.star >= 3 ? '#ffe066' : o.star === 2 ? '#e3f2fd' : '#fff'; ctx.fillText(nm, x, by + bh + 11);
+        const nm = o.name + (o.star > 1 ? '★'.repeat(o.star) : ''), lb = labelSprite(nm, o.star >= 3 ? '#ffe066' : o.star === 2 ? '#e3f2fd' : '#fff');
+        ctx.drawImage(lb.c, x - lb.w / 2, by + bh - 1, lb.w, lb.h);
       }
     });
 
@@ -747,20 +799,23 @@
       ctx.globalAlpha = a * 0.5; ctx.strokeStyle = '#fff176'; ctx.lineWidth = 7; lightning(x1, y1, x2, y2, sd, 16); ctx.stroke();
       ctx.globalAlpha = a; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; lightning(x1, y1, x2, y2, sd, 16); ctx.stroke(); });
     ctx.restore();
-    // 粒子
-    for (const p of V.parts) {
-      const px = CX + p.x * S, py = CY + p.y * S, a = Math.min(1, p.life / p.max * 2);
-      if (p.k === 'smoke') { ctx.globalAlpha = Math.min(0.35, p.life / p.max * 0.5); ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(px, py, p.sz * S * (1.6 - p.life / p.max), 0, TAU); ctx.fill(); continue; }
-      if (p.add) ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = a;
-      if (p.k === 'streak') { ctx.strokeStyle = p.col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px - p.vx * S * 0.03, py - p.vy * S * 0.03); ctx.stroke(); }
-      else if (p.k === 'bubble') { ctx.strokeStyle = p.col; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(px, py, p.sz, 0, TAU); ctx.stroke(); }
-      else if (p.k === 'plus') { ctx.fillStyle = p.col; ctx.fillRect(px - 3, py - 1, 6, 2); ctx.fillRect(px - 1, py - 3, 2, 6); }
-      else if (p.k === 'shard') { ctx.fillStyle = p.col; ctx.beginPath(); ctx.moveTo(px, py - 3); ctx.lineTo(px + 2, py); ctx.lineTo(px, py + 3); ctx.lineTo(px - 2, py); ctx.fill(); }
-      else if (p.k === 'ember') { ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(px, py, 1.8, 0, TAU); ctx.fill(); }
-      else { ctx.fillStyle = p.col; const s = p.sz * (0.4 + 0.6 * p.life / p.max); ctx.fillRect(px - s / 2, py - s / 2, s, s); }
-      ctx.globalCompositeOperation = 'source-over';
+    // 粒子：先畫一般混色、再一次切到疊加畫發光粒子（少切 globalCompositeOperation）
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass) ctx.globalCompositeOperation = 'lighter';
+      for (const p of V.parts) {
+        if (!p.add !== !pass) continue;
+        const px = CX + p.x * S, py = CY + p.y * S, a = Math.min(1, p.life / p.max * 2);
+        if (p.k === 'smoke') { ctx.globalAlpha = Math.min(0.35, p.life / p.max * 0.5); ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(px, py, p.sz * S * (1.6 - p.life / p.max), 0, TAU); ctx.fill(); continue; }
+        ctx.globalAlpha = a;
+        if (p.k === 'streak') { ctx.strokeStyle = p.col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px - p.vx * S * 0.03, py - p.vy * S * 0.03); ctx.stroke(); }
+        else if (p.k === 'bubble') { ctx.strokeStyle = p.col; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(px, py, p.sz, 0, TAU); ctx.stroke(); }
+        else if (p.k === 'plus') { ctx.fillStyle = p.col; ctx.fillRect(px - 3, py - 1, 6, 2); ctx.fillRect(px - 1, py - 3, 2, 6); }
+        else if (p.k === 'shard') { ctx.fillStyle = p.col; ctx.beginPath(); ctx.moveTo(px, py - 3); ctx.lineTo(px + 2, py); ctx.lineTo(px, py + 3); ctx.lineTo(px - 2, py); ctx.fill(); }
+        else if (p.k === 'ember') { ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(px, py, 1.8, 0, TAU); ctx.fill(); }
+        else { ctx.fillStyle = p.col; const s = p.sz * (0.4 + 0.6 * p.life / p.max); ctx.fillRect(px - s / 2, py - s / 2, s, s); }
+      }
     }
+    ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
     // 傷害數字
     V.texts.forEach(tx => {
@@ -823,5 +878,5 @@
     if (V.edge) { const e = V.edge, a = e.life / e.max, g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.72); g.addColorStop(0, `rgba(${e.col},0)`); g.addColorStop(1, `rgba(${e.col},${0.55 * a})`); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
     if (V.cutin) drawCutin(V.cutin, t);
     if (ui.msg) { ctx.font = `bold 17px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.strokeStyle = '#000a'; ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.strokeText(ui.msg, W / 2, CY + b.hh0 * S + 30); ctx.fillStyle = ui.msgCol || '#fff'; ctx.fillText(ui.msg, W / 2, CY + b.hh0 * S + 30); }
-  };
+  }
 })(globalThis);
