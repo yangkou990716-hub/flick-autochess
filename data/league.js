@@ -10,7 +10,7 @@
     turnSec: 30, // 對戰每發限時（秒），超過由 AI 代打
     aiDelay: 1.5, // 離線玩家／幽靈出手前的等待（秒）
     // 輸家扣血＝base＋ceil(對方剩餘動數 / config.deathCost) × perLeft＋floor(回合 / roundDiv)
-    loss: { base: 2, perLeft: 3, roundDiv: 2 }, // 模擬 4 人平均淘汰約 2 人／15 回合（sim/league_sim.js）
+    loss: { base: 2, perLeft: 4, roundDiv: 2 }, // 模擬 4 人平均約 14 回合、淘汰約 2.8 人（sim/league_sim.js）（sim/league_sim.js）
     stratEvery: 3, stratFirst: 1, // 第 1、4、7、10、13 回合商店發投資策略 3 選 1
     // 每回合戰後掉落：itemChance 機率 1 件基礎裝備，否則 gold 金
     drop: { itemChance: 0.5, gold: 2 },
