@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-<defs><linearGradient id="coral" x2="1"><stop stop-color="#bd5948"/><stop offset=".48" stop-color="#ff9a70"/><stop offset="1" stop-color="#b64c45"/></linearGradient><linearGradient id="cream" x2="0" y2="1"><stop stop-color="#fff8e8"/><stop offset="1" stop-color="#d8bd92"/></linearGradient><filter id="shadow"><feGaussianBlur stdDeviation="6"/></filter></defs>
-<ellipse cx="128" cy="230" rx="76" ry="13" fill="#174c63" opacity=".22" filter="url(#shadow)"/>
-<path d="M77 58Q128 34 179 58V207Q128 228 77 207Z" fill="url(#cream)" stroke="#98704d" stroke-width="5"/>
-<g stroke="#fff1d7" stroke-width="5"><path d="M66 72Q128 42 190 72L190 100Q128 130 66 100Z" fill="url(#coral)"/><path d="M66 111Q128 82 190 111L190 139Q128 169 66 139Z" fill="#fff2d9" stroke="#b96c53"/><path d="M66 150Q128 120 190 150L190 178Q128 207 66 178Z" fill="url(#coral)"/></g>
-<ellipse cx="128" cy="58" rx="55" ry="22" fill="#fff5df" stroke="#b98c5a" stroke-width="5"/><ellipse cx="128" cy="58" rx="26" ry="9" fill="#64bfc3" stroke="#e5d2aa" stroke-width="4"/>
-<g fill="#f2cf70"><circle cx="91" cy="86" r="5"/><circle cx="166" cy="124" r="5"/><circle cx="94" cy="163" r="5"/></g>
-<path d="M83 198Q128 215 173 198" fill="none" stroke="#a36b4a" stroke-width="4"/>
-</svg>

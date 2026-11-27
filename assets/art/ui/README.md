@@ -1,25 +1,61 @@
-# 第 4 批：場地＋介面素材
+# art-a batch 4 UI 九宮格切線建議
 
-方向 A：地中海度假泳池；採水粉／不透明水彩質感，主色為珊瑚橘、奶油白、地中海藍、薄荷綠與金色。所有介面圖檔不含文字，供遊戲依語系疊字。
+方向 A：手繪水粉、地中海度假泳池。
+以下為建議的 9-slice（九宮格）切線，以像素表示：`left, top, right, bottom`。
+這些值保守地避開外框花飾、金邊與角落裝飾，適合在 UI 中做縮放。
 
-## 場地
-- `assets/art/arena/arena-riviera.svg`：一般戰場，1120×1680；以既有 `assets/art/samples/arena-A.png` 作為來源圖層，不覆寫樣品。
-- `assets/art/arena/arena-boss-dusk.svg`：暮色暗紅首領戰場，1120×1680；以同一場地構圖套用暗紅色調與首領中央徽記。
-- `assets/art/arena/pillar-swim-ring.svg`：泳圈柱，256×256，透明背景。
-- `assets/art/arena/pillar-spikes.svg`：尖刺柱，256×256，透明背景。
+## 建議切線
 
-## 介面
-- `panel-bg.svg`：640×640 面板底圖。
-- `button-primary-coral.svg`、`button-secondary-sea.svg`：480×160 主／次按鈕。
-- `shop-frame-1-stone.svg` 至 `shop-frame-5-gold.svg`：512×640 商店卡框，依序為石、翠、藍、紫晶、金箔感。
-- `strategy-frame-silver.svg`、`strategy-frame-gold.svg`、`strategy-frame-prismatic.svg`：512×640 策略卡框。
-- `synergy-capsule.svg`：360×128 羈絆膠囊底圖。
+- `panel-bg.png` — `96, 96, 96, 96`
+- `button-primary-coral.png` — `96, 32, 96, 32`
+- `button-secondary-sea.png` — `96, 32, 96, 32`
+- `synergy-capsule.png` — `72, 24, 72, 24`
+- `shop-frame-1.png` — `84, 84, 84, 108`
+- `shop-frame-2.png` — `84, 84, 84, 108`
+- `shop-frame-3.png` — `84, 84, 84, 108`
+- `shop-frame-4.png` — `84, 84, 84, 108`
+- `shop-frame-5.png` — `84, 84, 84, 108`
+- `strategy-frame-silver.png` — `84, 84, 84, 108`
+- `strategy-frame-gold.png` — `84, 84, 84, 108`
+- `strategy-frame-prismatic.png` — `84, 84, 84, 108`
 
-## 九宮格切線（左上為原點，單位 px）
-- 面板 640×640：X = 64、576；Y = 64、576。四角保留 64×64，邊緣可延伸，中央可平鋪／拉伸。
-- 主／次按鈕 480×160：X = 48、432；Y = 40、120。四角保留 48×40，中央水平拉伸。
-- 商店／策略卡框 512×640：X = 76、436；Y = 86、538。四角保留 76×86，側框與上下飾條可延伸，卡面中央保持透明。
-- 羈絆膠囊 360×128：X = 54、306；Y = 36、92。兩端保留 54×36，中段水平拉伸。
+## 不建議做九宮格的素材
 
-## 待補項目
-本次依「圖太多先做場地和按鈕、卡框」的優先順序交付場地、障礙柱、面板、按鈕、商店卡框、策略卡框與羈絆膠囊。節點圖示 5 種、標題畫面背景與透明 Logo 留待下一批補齊。
+以下素材多屬完整插圖、場地或單體圖示，通常不做 9-slice：
+
+- `assets/art/arena/arena-riviera.png`
+- `assets/art/arena/arena-boss-dusk.png`
+- `assets/art/arena/pillar-swim-ring.png`
+- `assets/art/arena/pillar-spikes.png`
+- `node-battle.png`
+- `node-shop.png`
+- `node-treasure.png`
+- `node-rest.png`
+- `node-boss.png`
+- `title-bg.png`
+- `title-logo.png`
+
+## 尺寸一覽
+
+### Arena
+- `arena-riviera.png` — 1120×1680
+- `arena-boss-dusk.png` — 1120×1680
+- `pillar-swim-ring.png` — 256×256（透明）
+- `pillar-spikes.png` — 256×256（透明）
+
+### UI
+- `panel-bg.png` — 640×640（透明）
+- `button-primary-coral.png` — 480×160（透明）
+- `button-secondary-sea.png` — 480×160（透明）
+- `shop-frame-1.png` ~ `shop-frame-5.png` — 512×640（透明）
+- `strategy-frame-silver.png` — 512×640（透明）
+- `strategy-frame-gold.png` — 512×640（透明）
+- `strategy-frame-prismatic.png` — 512×640（透明）
+- `synergy-capsule.png` — 360×128（透明）
+- `node-battle.png` — 128×128（透明）
+- `node-shop.png` — 128×128（透明）
+- `node-treasure.png` — 128×128（透明）
+- `node-rest.png` — 128×128（透明）
+- `node-boss.png` — 128×128（透明）
+- `title-bg.png` — 1080×1920
+- `title-logo.png` — 1024×512（透明）
