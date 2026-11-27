@@ -36,10 +36,10 @@
   const seg = (k, opts) => `<div class="seg" role="radiogroup">${opts.map(([v, t]) => `<button role="radio" aria-checked="${S[k] === v}" class="${S[k] === v ? 'on' : ''}" data-sk="${k}" data-sv="${v}">${S[k] === v ? '✓ ' : ''}${t}</button>`).join('')}</div>`;
   const tog = (id, on) => `<button class="tg ${on ? 'on' : ''}" role="switch" aria-checked="${on}" data-tg="${id}">${on ? '開' : '關'}</button>`;
   const row = (lbl, ctl, hint) => `<div class="setrow"><div><b>${lbl}</b>${hint ? `<div class="lbl">${hint}</div>` : ''}</div>${ctl}</div>`;
-  function settings(back) {
+  function settings(back, scrollTop = 0) {
     const snd = FA.sound || {};
     $('modalBox').className = 'box setbox';
-    $('modalBox').innerHTML = `<h2>⚙ 設定</h2>` +
+    $('modalBox').innerHTML = `<h2>⚙ 設定</h2><div class="setbody">` +
       row('🎵 音樂', tog('music', !!snd.musicOn)) + row('🔊 音效', tog('sound', !!snd.on)) + row('📳 震動', tog('vibrate', !!S.vibrate), 'iPhone Safari 不支援網頁震動') +
       row('⏩ 播放速度預設', seg('speed', [[1, '1x'], [2, '2x']])) +
       row('🎯 瞄準線', seg('aim', [['short', '短'], ['long', '長']]), '短：只畫到第一次碰撞前') +
@@ -47,8 +47,10 @@
       row('🌀 減少動態效果', tog('reduceMotion', !!S.reduceMotion), '關掉震動畫面、閃光與裝飾動畫') +
       row('🌐 語言', `<select id="setLang" aria-label="語言">${Object.entries(LANGS).map(([k, n]) => `<option value="${k}" ${S.lang === k ? 'selected' : ''}>${n}</option>`).join('')}</select>`) +
       `<button data-act="log">📝 更新紀錄</button><button data-act="wipe" class="danger">🗑 清除存檔</button>` +
-      `<div class="lbl ver">彈射自走棋 v${VERSION}</div><button data-act="close" class="go">完成</button>`;
+      `<div class="lbl ver">彈射自走棋 v${VERSION}</div></div><footer class="setfooter"><button data-act="close" class="go">完成</button></footer>`;
     $('modal').classList.remove('hidden');
+    const body = $('modalBox').querySelector('.setbody');
+    body.scrollTop = scrollTop;
     $('setLang').onchange = e => { S.lang = e.target.value; save(); applyBody(); };
     $('modalBox').onclick = e => {
       const t = e.target.closest('button'); if (!t) return;
@@ -61,7 +63,7 @@
       else if (t.dataset.act === 'log') return changelog(() => settings(back));
       else if (t.dataset.act === 'wipe') return wipe(() => settings(back));
       else if (t.dataset.act === 'close') { $('modal').classList.add('hidden'); if (back) back(); return; }
-      applyBody(); FA.ui.setBtns && FA.ui.setBtns(); settings(back);
+      applyBody(); FA.ui.setBtns && FA.ui.setBtns(); settings(back, body.scrollTop);
     };
   }
   // 清除存檔：兩次確認
