@@ -1,7 +1,7 @@
 // 連線對戰（Firebase Realtime Database）
 // 同步方式：只同步「輸入」（每發 {by, idx, angle, power, ult, n}），每支手機用固定步長物理自己算同一場戰鬥；
 // 房主每發結束寫狀態 hash（snap）＋完整快照（snapData），其他人比對 hash，不一致就讀快照覆蓋。
-// 掉線：onDisconnect 標記離線；輪到離線玩家時由房主手機用 FA.ai.choose 代打並寫入 moves；回來就接手。
+// 掉線：onDisconnect 標記離線；輪到離線玩家時由房主手機用分幀 AI 代打並寫入 moves；回來就接手。
 // 切出 App／重新整理：記住房號自動重連，從快照＋後續 moves 重建。房主掉線時由下一位在線玩家接手。
 // 二次操作（飛行中點畫面）：出手方先在本機預演這一發（pre），點下去（或飛完沒點）才送出 move，多帶 tap:{t 物理步數, x, y}；
 //   各端用同一個 t 在同一步套用，結果完全相同。對手看到的動畫會晚「點擊前的飛行時間」開始。
@@ -42,7 +42,7 @@
   // ---------- 狀態 ----------
   const R = { code: null, ref: null, hostId: null, players: {}, state: null, battle: null, result: null, offs: [], ld: {} }; // ld：各欄位是否已載入
   let B = null, gen = 0, mySeat = -1, applied = 0, moveMap = {}, snapInfo = null, writing = false, building = false;
-  let aiT = 0, aiBusy = false, resyncs = 0, overShown = false, err = '', lobbyBusy = false, pre = null; // pre：自己這一發的本機預演（二次操作用）
+  let aiT = 0, aiJob = null, aiBusy = false, resyncs = 0, overShown = false, err = '', lobbyBusy = false, pre = null; // pre：自己這一發的本機預演（二次操作用）
   const ui = { aim: null, msg: '', ultArmed: false };
   const isHost = () => R.hostId === pid;
   const mv = n => moveMap[mkey(gen, n)];
@@ -193,7 +193,7 @@
   }
 
   // ---------- 進房：監聽 ----------
-  function detach() { R.offs.forEach(([r, ev, cb]) => r.off(ev, cb)); R.offs = []; Object.assign(R, { code: null, ref: null, hostId: null, players: {}, state: null, battle: null, result: null, ld: {} }); }
+  function detach() { aiJob = null; R.offs.forEach(([r, ev, cb]) => r.off(ev, cb)); R.offs = []; Object.assign(R, { code: null, ref: null, hostId: null, players: {}, state: null, battle: null, result: null, ld: {} }); }
   function listen(ref, ev, cb) { ref.on(ev, cb); R.offs.push([ref, ev, cb]); }
   function enterRoom(code, rebuild) {
     detach();
@@ -345,16 +345,23 @@
   // 房主：輪到離線玩家 → 等一下（給對方回來的機會）再用 AI 代打
   let turnT = 0, turnKey = ''; // 回合計時：每發各自計，超過 TURN_LIMIT 秒沒出手由房主 AI 代打這一發
   function aiTick(dt) {
-    if (!B || building || B.phase !== 'aim') return;
+    if (!B || building || B.phase !== 'aim') { aiJob = null; return; }
     const key = gen + '_' + applied; if (key !== turnKey) { turnKey = key; turnT = 0; aiT = 0; }
     turnT += dt;
-    if (!isHost() || mv(applied) || aiBusy) return;
+    if (!isHost() || mv(applied) || aiBusy || writing) { aiJob = null; return; }
     const c = ctrlOf(B.turn);
-    if (online(c)) { aiT = 0; if (turnT < TURN_LIMIT) return; }
+    if (online(c)) { aiT = 0; if (turnT < TURN_LIMIT) { aiJob = null; return; } }
     else if ((aiT += dt) < AI_DELAY) return;
+    const n = applied;
+    if (!aiJob || aiJob.battle !== B || aiJob.key !== key || aiJob.turn !== B.turn) {
+      // 獨立亂數，不動到戰鬥本身的 rng
+      const rng = { s: (R.battle.seed ^ Math.imul(n + 1, 0x9e3779b1) ^ gen) | 0 };
+      aiJob = { battle: B, key, turn: B.turn, work: FA.ai.chooseAsync(B, B.turn, D.enemies.difficulty(AI_LV), rng) };
+    }
+    if (!aiJob.work.step()) return;
+    const ch = aiJob.work.result; aiJob = null;
+    if (!ch) return;
     aiBusy = true;
-    const n = applied, ch = FA.ai.choose(B, B.turn, D.enemies.difficulty(AI_LV), { s: (R.battle.seed ^ Math.imul(n + 1, 0x9e3779b1) ^ gen) | 0 }); // 獨立亂數，不動到戰鬥本身的 rng
-    if (!ch) { aiBusy = false; return; }
     writeMove(withTap({ g: gen, n, by: 'ai:' + c, idx: ch.idx, angle: ch.angle, power: ch.power, ult: !!ch.ult }, ch.tap)).catch(() => { }).then(() => { aiBusy = false; });
   }
 

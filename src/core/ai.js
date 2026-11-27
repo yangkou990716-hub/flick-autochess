@@ -9,7 +9,8 @@
   // 總動數制：擊倒對手＝對方動數 -deathCost，自己被打倒同理，所以擊殺／陣亡以「動數價值」move 計分
   const W = { own: 0.9, move: 60, killHp: 0.15, dieHp: 0.15, combo: 35, freeze: 45, poison: 0.7, spike: 1.6, zone: 0.4, expose: 20, ring: 12, win: 2000, lose: 2000, ultHold: 15, fear: 30, rhythm: 35, beat: 30 };
 
-  function evalShot(b, team, idx, ang, pw, ult, tap, expert) {
+  const CHUNK = 16; // 每批固定物理步數；批次之間才檢查畫面預算
+  function* evalShotWork(b, team, idx, ang, pw, ult, tap, expert, sliced) {
     const c = clone(b);
     if (!FA.battle.launch(c, idx, ang, pw, ult, tap)) return -1e9;
     // 全場都慢於最低傷害速度時，直接歸零（仍會觸發「停下時」能力），省下尾段滑行的計算
@@ -18,6 +19,7 @@
     const slow = usesLines ? FA.DATA.config.stopV : FA.DATA.config.minHitSpeed;
     for (let k = 0; !FA.battle.step(c) && k < EVAL_STEPS; k++) {
       if ((k & 3) === 3 && !c.pending.length && c.bodies.every(o => !o.alive || (o.vx * o.vx + o.vy * o.vy) < slow * slow)) c.bodies.forEach(o => { o.vx = o.vy = 0; });
+      if (sliced && (k + 1) % CHUNK === 0) yield;
     }
     const cfg = FA.DATA.config, dc = cfg.deathCost, foe = 1 - team, noRev = b.sides[foe].noRevive;
     let s = 0, foesLeft = 0, kills = 0, deaths = 0, bossDown = false;
@@ -60,6 +62,10 @@
     const z0 = b.zones.length;
     for (let i = z0; i < c.zones.length; i++) if (c.zones[i].team === team) s += (c.zones[i].dmg || 0) * W.zone;
     return s;
+  }
+
+  function evalShot(b, team, idx, ang, pw, ult, tap, expert) {
+    return evalShotWork(b, team, idx, ang, pw, ult, tap, expert, false).next().value;
   }
 
   // 反彈球（長方形牆）：把目標對四面牆做鏡射，直接瞄鏡像點
@@ -127,7 +133,7 @@
     return best ? { t: 48, x: best.x, y: best.y } : null;
   }
   // 高手的二次操作：先不點跑一次，記錄每個時間點的位置，挑「炸最多人」或「分身最近的敵人」的幾個時機，再逐一預演
-  function tapPlans(b, team, c) {
+  function* tapPlans(b, team, c, sliced) {
     const x0 = clone(b), m = x0.bodies[c[0]], kind = FA.battle.tapAbility(m); if (!kind) return [];
     if (!FA.battle.launch(x0, c[0], c[1], c[2], false)) return [];
     const R = m.ab.r || 130, snaps = [];
@@ -140,6 +146,7 @@
         else foes.forEach(o => { const d = Math.hypot(o.x - mv.x, o.y - mv.y); if (d > mv.r + o.r + 20) snaps.push({ v: -d / 300 - o.hp / o.maxHp, t: k + 1, x: o.x + o.vx * 0.05, y: o.y + o.vy * 0.05 }); });
       }
       if (done) break;
+      if (sliced && k % CHUNK === 0) yield;
     }
     snaps.sort((p, q) => q.v - p.v);
     const out = [], seen = new Set();
@@ -148,7 +155,7 @@
   }
   const isSkill = m => m.ab && ['sweetSpot', 'trickShot', 'cueBall', 'remoteBomb', 'phantom', 'rhythm'].includes(m.ab.type);
 
-  function choose(b, team, diff, r) {
+  function* chooseWork(b, team, diff, r, sliced) {
     const mine = FA.battle.avail(b, team);
     const allies = b.bodies.filter(o => o.alive && !o.temp && o.team === team);
     const foes = b.bodies.filter(o => o.alive && !o.temp && o.team !== team);
@@ -158,16 +165,17 @@
     const kill = (m, f) => (f.hp + f.shield) / Math.max(1, FA.battle.atkOf(m)); // 越小越容易擊殺
     const cat = { combo: [], direct: [], bank: [], push: [], ring: [] };
     const rings = (b.pillars || []).filter(p => p.kind === 'ring');
-    mine.forEach(m => {
-      foes.forEach(f => {
+    for (const m of mine) {
+      for (const f of foes) {
         const a = Math.atan2(f.y - m.y, f.x - m.x), d = Math.hypot(f.x - m.x, f.y - m.y);
         const h = kill(m, f) + d / 400 + (blocked(b, m, f.x, f.y, f) ? 1.5 : 0) + (spikeOnPath(b, m, f.x, f.y) ? 2 : 0) + jit();
         cat.direct.push({ c: [m.i, a, 1], h }, { c: [m.i, a, 0.72], h: h + 0.4 });
         bankAngles(b, m, f).forEach(ba => cat.bank.push({ c: [m.i, ba, 1], h: kill(m, f) + 0.5 + jit() }));
         rings.forEach(p => { const ra = pillarAngle(m, p, f); if (ra != null) cat.ring.push({ c: [m.i, ra, 1], h: kill(m, f) * 0.85 + 0.3 + jit() }); });
-      });
-      allies.forEach(al => {
-        if (al === m) return;
+        if (sliced) yield;
+      }
+      for (const al of allies) {
+        if (al === m) continue;
         const linked = (m.link && m.link === al.id) || (al.link && al.link === m.id);
         foes.forEach(f => {
           const fd = Math.hypot(f.x - al.x, f.y - al.y); if (fd > 280) return;
@@ -179,8 +187,9 @@
         });
         if (linked && !b.comboUsed[Math.min(m.i, al.i) + '-' + Math.max(m.i, al.i)])
           cat.combo.push({ c: [m.i, Math.atan2(al.y - m.y, al.x - m.x), 0.85], h: 1 + jit() });
-      });
-    });
+        if (sliced) yield;
+      }
+    }
     for (const k in cat) cat[k].sort((x, y) => x.h - y.h);
     // 配額：聯動優先，其次直打、反彈、推隊友，剩下隨機
     const quota = { combo: Math.min(cat.combo.length, Math.max(1, Math.round(N * 0.1))), ring: Math.min(cat.ring.length, Math.max(1, Math.round(N * 0.15))), direct: Math.max(1, Math.round(N * 0.45)), bank: Math.round(N * 0.12), push: Math.round(N * 0.1) };
@@ -190,25 +199,37 @@
     ['direct', 'ring', 'bank', 'push', 'combo'].forEach(k => cat[k].forEach(e => { if (list.length < N - 1 && !list.includes(e.c)) list.push(e.c); }));
     while (list.length < N) list.push([FA.rng.pick(r, mine).i, FA.rng.range(r, -Math.PI, Math.PI), FA.rng.range(r, 0.6, 1)]);
     const EX = !!diff.expert;
-    if (EX) mine.forEach(m => { // 高手：替神技角色加專屬候選（甜蜜點力道、3～4 次反彈、撞球連撞線）
-      const t = m.ab && m.ab.type; if (!t) return;
+    if (EX) for (const m of mine) { // 高手：替神技角色加專屬候選（甜蜜點力道、3～4 次反彈、撞球連撞線）
+      const t = m.ab && m.ab.type; if (!t) continue;
       const near = foes.slice().sort((p, q) => Math.hypot(p.x - m.x, p.y - m.y) - Math.hypot(q.x - m.x, q.y - m.y)).slice(0, 3);
       if (t === 'sweetSpot') { const mid = (m.ab.lo + m.ab.hi) / 2; near.forEach(f => { list.push([m.i, Math.atan2(f.y - m.y, f.x - m.x), mid, 1]); bankAngles(b, m, f).forEach(a => list.push([m.i, a, mid, 1])); }); }
       if (t === 'trickShot') foes.forEach(f => multiBank(b, m, f, m.ab.n, m.ab.n + 1).slice(0, 3).forEach(o => list.push([m.i, o.a, 1, 1])));
       if (t === 'cueBall') near.forEach(f => foes.forEach(e => { if (e === f) return; const d = Math.hypot(e.x - f.x, e.y - f.y) || 1; if (d > 420) return; const ux = (e.x - f.x) / d, uy = (e.y - f.y) / d, px = f.x - ux * (m.r + f.r), py = f.y - uy * (m.r + f.r);
         const a = Math.atan2(py - m.y, px - m.x); if (Math.cos(a) * ux + Math.sin(a) * uy > 0.9) list.push([m.i, a, 1, 1]); }));
       if (t === 'remoteBomb' || t === 'phantom') near.forEach(f => { const a = Math.atan2(f.y - m.y, f.x - m.x); list.push([m.i, a, 1, 1], [m.i, a + 0.18, 1, 1], [m.i, a - 0.18, 1, 1]); });
-    });
+      if (sliced) yield;
+    }
     // 二次操作：普通 AI 一律用固定時機（simpleTap）；高手之後再搜尋最佳時機
     const tapOf = c => simpleTap(b, b.bodies[c[0]]);
     const taps = list.map(c => tapOf(c));
-    const sc = list.map((c, k) => evalShot(b, team, c[0], c[1], c[2], false, taps[k], EX));
+    const sc = [];
+    for (let k = 0; k < list.length; k++) {
+      const [idx, angle, power] = list[k];
+      sc.push(yield* evalShotWork(b, team, idx, angle, power, false, taps[k], EX, sliced));
+      if (sliced) yield;
+    }
     if (EX) { // 高手：每個二次操作角色取分數前 3 的候選，搜尋點擊時機
       const byU = {};
       list.forEach((c, k) => { if (FA.battle.tapAbility(b.bodies[c[0]])) (byU[c[0]] = byU[c[0]] || []).push(k); });
-      for (const u in byU) byU[u].sort((x, y) => sc[y] - sc[x]).slice(0, 3).forEach(k => {
-        tapPlans(b, team, list[k]).forEach(tp => { const v = evalShot(b, team, list[k][0], list[k][1], list[k][2], false, tp, EX); if (v > sc[k]) { sc[k] = v; taps[k] = tp; } });
-      });
+      for (const u in byU) for (const k of byU[u].sort((x, y) => sc[y] - sc[x]).slice(0, 3)) {
+        const [idx, angle, power] = list[k];
+        const plans = yield* tapPlans(b, team, list[k], sliced);
+        for (const tp of plans) {
+          const v = yield* evalShotWork(b, team, idx, angle, power, false, tp, EX, sliced);
+          if (v > sc[k]) { sc[k] = v; taps[k] = tp; }
+          if (sliced) yield;
+        }
+      }
     }
     let bi = -1, bs = -1e9;
     sc.forEach((v, k) => { if (v > bs) { bs = v; bi = k; } });
@@ -219,7 +240,12 @@
     if (full.size) {
       const hold = b.moves[team] <= 3 ? 0 : W.ultHold;
       const top = list.map((c, k) => k).filter(k => full.has(list[k][0])).sort((x, y) => sc[y] - sc[x]).slice(0, Math.max(2, Math.min(4, N >> 3)));
-      top.forEach(k => { const c = list[k], v = evalShot(b, team, c[0], c[1], c[2], true, taps[k], EX) - hold; if (v > bs) { bs = v; best = c; useUlt = true; bestTap = taps[k]; } });
+      for (const k of top) {
+        const c = list[k];
+        const v = (yield* evalShotWork(b, team, c[0], c[1], c[2], true, taps[k], EX, sliced)) - hold;
+        if (v > bs) { bs = v; best = c; useUlt = true; bestTap = taps[k]; }
+        if (sliced) yield;
+      }
     }
     const bm = b.bodies[best[0]], an = EX && isSkill(bm) ? diff.aimNoise * 0.35 : diff.aimNoise; // 高手玩神技角色瞄得更準
     const noise = (FA.rng.next(r) + FA.rng.next(r) - 1) * an;
@@ -228,5 +254,73 @@
     return res;
   }
 
-  FA.ai = { choose, evalShot, bankAngles, pillarAngle, multiBank, simpleTap };
+  function choose(b, team, diff, r) {
+    return chooseWork(b, team, diff, r, false).next().value;
+  }
+
+  // step 回傳是否完成。時間只用來讓出畫面，不能影響候選順序或結果。
+  function frameTask(work, onDone) {
+    let done = false;
+    return {
+      result: null,
+      step(msBudget = 6) {
+        if (done || msBudget <= 0) return done;
+        const deadline = performance.now() + msBudget;
+        do {
+          const next = work.next();
+          if (next.done) {
+            this.result = next.value;
+            if (onDone) onDone();
+            done = true;
+            break;
+          }
+        } while (performance.now() < deadline);
+        return done;
+      }
+    };
+  }
+
+  // 放棄工作不會推進原本的亂數。單人模式的選招亂數與戰鬥亂數是同一份。
+  function chooseAsync(b, team, diff, r) {
+    const snapshot = clone(b);
+    const random = r === b.rng ? snapshot.rng : { s: r.s };
+    return frameTask(chooseWork(snapshot, team, diff, random, true), () => { r.s = random.s; });
+  }
+
+  // 敵方路線預演沿用 battle.predict 的取樣與截線規則，並用同一套戰鬥物理分批取樣。
+  // 玩家拖曳時仍走原本的同步預演；敵方將完成的路線交給既有繪圖快取。
+  function* predictWork(c, idx, angle, power) {
+    const BT = FA.battle;
+    if (!BT.launch(c, idx, angle, power)) return null;
+    const o = c.bodies[idx], pts = [[o.x, o.y]];
+    const lineMaker = o.ab && (o.ab.type === 'rampDrop' || o.ab.type === 'ropeDrop');
+    let cut = -1, after = 0, hit = -1, hitPts = null, px = o.x, py = o.y, end = null;
+    for (let k = 0; k < 1500; k++) {
+      if (k && k % CHUNK === 0) yield;
+      const done = BT.step(c);
+      if (end) { if (done || !o.alive) break; continue; }
+      if (hit < 0) {
+        const j = c.bodies.findIndex((q, n) => n !== idx && !q.temp && q.alive && !q.hopT && (Math.abs(q.vx) > 1 || Math.abs(q.vy) > 1));
+        if (j >= 0) { hit = j; hitPts = [[c.bodies[j].x, c.bodies[j].y]]; }
+      }
+      if (cut < 0 && (hit >= 0 || o.wallHits > Math.max(1, o.bounces))) cut = pts.length;
+      if (cut >= 0) { after += Math.hypot(o.x - px, o.y - py); if (hit >= 0) { const q = c.bodies[hit]; hitPts.push([q.x, q.y]); } }
+      px = o.x; py = o.y;
+      if (k % 2 === 0 || cut >= 0) pts.push([o.x, o.y]);
+      if (done || !o.alive) break;
+      if (after > 80) {
+        if (!lineMaker) break;
+        end = [o.x, o.y];
+      }
+    }
+    pts.push(end || [o.x, o.y]);
+    const line = c.zones.find(z => (z.kind === 'ramp' || z.kind === 'rope') && z.team === c.turn && z.placed === c.shotCount);
+    return { pts, cut: cut < 0 ? pts.length - 1 : cut, hit: hitPts, r: o.r, line };
+  }
+
+  function predictAsync(b, idx, angle, power) {
+    return frameTask(predictWork(clone(b), idx, angle, power));
+  }
+
+  FA.ai = { choose, chooseAsync, predictAsync, evalShot, bankAngles, pillarAngle, multiBank, simpleTap };
 })(globalThis);
