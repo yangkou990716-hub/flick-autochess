@@ -41,6 +41,31 @@
       c.beginPath(); c.moveTo(r * 0.7, r * 0.5); c.quadraticCurveTo(r * 1.5, r * 0.6, r * 1.6, r * 1.2); c.quadraticCurveTo(r * 1.2, r * 0.9, r * 0.5, r * 0.85); c.closePath(); c.fill();
     }, body(c, r) { c.strokeStyle = '#fff59d'; c.lineWidth = r * 0.07; c.lineJoin = 'round'; P(c, () => { c.moveTo(-r * 0.5, r * 0.2); c.lineTo(-r * 0.15, r * 0.45); c.lineTo(r * 0.05, r * 0.2); c.lineTo(r * 0.4, r * 0.5); }); c.stroke(); } }
   };
+  // 四個配件分別用斜角板、交棒、鉗口和救生浮標辨識。
+  Object.assign(DEC, {
+    rampmaker: { front(c, r) {
+      P(c, () => { c.moveTo(-r * .43, r * .54); c.lineTo(r * .38, r * .54); c.lineTo(r * .38, r * .10); c.closePath(); });
+      c.fillStyle = '#ffdb91'; c.fill(); outline(c, r * .075, '#854720');
+    } },
+    relay: { front(c, r) {
+      P(c, () => { c.moveTo(-r * .57, r * .57); c.lineTo(r * .52, r * .22); });
+      c.lineCap = 'round'; c.strokeStyle = '#8f2453'; c.lineWidth = r * .3; c.stroke();
+      c.strokeStyle = '#fff1a7'; c.lineWidth = r * .19; c.stroke();
+    } },
+    salvage: { back(c, r) {
+      c.strokeStyle = '#37495f'; c.lineCap = 'round'; c.lineWidth = r * .22;
+      for (const sign of [-1, 1]) {
+        P(c, () => { c.moveTo(sign * r * .5, -r * .73); c.lineTo(sign * r * .84, -r * 1.24); c.lineTo(sign * r * .56, -r * 1.42); });
+        c.stroke();
+      }
+    } },
+    buoykeeper: { front(c, r) {
+      P(c, () => c.arc(0, r * .52, r * .28, 0, TAU));
+      c.strokeStyle = '#ff9074'; c.lineWidth = r * .15; c.stroke();
+      P(c, () => { c.arc(0, r * .52, r * .28, -.4, .4); c.moveTo(-r * .25, r * .62); c.arc(0, r * .52, r * .28, 2.76, 3.52); });
+      c.strokeStyle = '#fff5d8'; c.lineWidth = r * .13; c.stroke();
+    } }
+  });
   FA.spriteDecor = FA.spriteDecor || {};
   for (const k in DEC) FA.spriteDecor[k] = DEC[k];
 })(globalThis);

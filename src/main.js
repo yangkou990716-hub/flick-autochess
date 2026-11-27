@@ -89,7 +89,8 @@
     const b = U.back; if (!b) return '';
     return { atkPct: `${b.trait ? D.traits[b.trait].name + '角色' : '前台'}攻擊+${pct(b.val)}`, shield: `每回合前台護盾+${b.val}`, heal: `每回合前台回血+${b.val}`,
       zap: `每回合電擊隨機敵人（${pct(b.mult)}攻擊）`, gravity: '每回合把敵人往中間吸', cannon: `每回合炮擊隨機敵人（${pct(b.mult)}攻擊爆炸）`, revive: `第一隻被打倒的隊友當場以 ${pct(b.pct)} 生命撐住（不扣動數）`, mark: `每回合標記 1 名敵人，受傷 +${pct(b.amp || 0)}（${b.turns || 0} 回合）`,
-      snipe: `每回合狙擊生命最低的敵人（${pct(b.mult)}攻擊）`, veil: `每 2 回合讓 ${b.n} 名前台隊友隱身：下次被撞必定閃避（3 星 +1 名）` }[b.type];
+      snipe: `每回合狙擊生命最低的敵人（${pct(b.mult)}攻擊）`, veil: `每 2 回合讓 ${b.n} 名前台隊友隱身：下次被撞必定閃避（3 星 +1 名）`,
+      relayReserve: `每場一次：我方第一隻被打倒的前台棋子，將至多 ${b.amount} 點能量轉給存活隊友中能量最高且未滿的人` }[b.type];
   }
   // ---- 大招 ----：角色的大招（units.ult 覆蓋，否則看第一個羈絆）
   const UC = C.ult || { max: 100, gainLaunch: 25, gainHit: 15, gainHurt: 10 };

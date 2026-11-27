@@ -13,7 +13,9 @@
     const c = clone(b);
     if (!FA.battle.launch(c, idx, ang, pw, ult, tap)) return -1e9;
     // 全場都慢於最低傷害速度時，直接歸零（仍會觸發「停下時」能力），省下尾段滑行的計算
-    const slow = FA.DATA.config.minHitSpeed;
+    const ab = c.bodies[idx].ab;
+    const usesLines = (ab && (ab.type === 'rampDrop' || ab.type === 'ropeDrop')) || c.zones.some(z => z.kind === 'ramp' || z.kind === 'rope');
+    const slow = usesLines ? FA.DATA.config.stopV : FA.DATA.config.minHitSpeed;
     for (let k = 0; !FA.battle.step(c) && k < EVAL_STEPS; k++) {
       if ((k & 3) === 3 && !c.pending.length && c.bodies.every(o => !o.alive || (o.vx * o.vx + o.vy * o.vy) < slow * slow)) c.bodies.forEach(o => { o.vx = o.vy = 0; });
     }

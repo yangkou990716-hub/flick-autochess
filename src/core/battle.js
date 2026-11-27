@@ -33,7 +33,7 @@
       pierceLeft: 0, boomUsed: false, burnUsed: false, splitDone: false, healed: false, relaunched: false, fricMul: 1, exposed: 0, exposeAmp: 0, fx: {},
       down: false, sx: 0, sy: 0, ringBuff: 0, energy: 0, ultType: '', ultOn: '', ultUsed: 0, ultStop: 0, ultMassMul: 1,
       farDmg: 0, dodge: 0, trav: 0, ox: 0, oy: 0, homed: false, tether: -1, fear: 0, veil: 0, decoyUsed: false,
-      hitCos: 1, preSp: 0, hitShot: false, sweet: 0, cueNext: 0, caromBy: -1, caromDmg: 0, stacks: 0, tapUsed: false, skillDmg: 0, skillEn: 0 }; // ---- 神技 ----
+      baseItem: null, itemMuted: false, hitCos: 1, preSp: 0, hitShot: false, sweet: 0, cueNext: 0, caromBy: -1, caromDmg: 0, stacks: 0, tapUsed: false, skillDmg: 0, skillEn: 0 }; // ---- 神技 ----
   }
 
   function makeBody(inst, team, sideMods, traitsActive, env) {
@@ -68,6 +68,12 @@
       if (b.ab.type === 'glide') b.fricMul *= b.ab.mul;
       if (b.ab.type === 'trickShot') b.bounces += b.ab.extra || 0;
     }
+    const item = (inst.items || []).find(it => (D().items[it.id] || {}).tier === 'base');
+    if (item) {
+      const rolls = item.rolls || {}, scale = key => 1 - (rolls[key] || 0) / (1 + (mods[key] || 0));
+      b.baseItem = { id: item.id, atk: scale('atkPct'), hp: scale('hpPct'), speed: scale('speedPct'),
+        bounces: rolls.bounces || 0, wallAdd: rolls.wallAdd || 0, lifesteal: rolls.lifesteal || 0 };
+    }
     return b;
   }
 
@@ -97,6 +103,7 @@
       if (bk.type === 'gravity') side.gravity += bk.pull * (1 + 0.3 * (u.star - 1));
       if (bk.type === 'cannon') side.cannon.push({ dmg: U.atk * k * bk.mult, r: bk.r });
       if (bk.type === 'mark') { side.mark = Math.max(side.mark, bk.turns); side.markAmp = Math.max(side.markAmp, bk.amp + 0.05 * (u.star - 1)); }
+      if (bk.type === 'relayReserve') side.relayReserve = Math.max(side.relayReserve || 0, bk.amount);
       if (bk.type === 'snipe') side.snipe.push(U.atk * k * bk.mult);
       if (bk.type === 'veil') side.veil += bk.n + (u.star >= 3 ? 1 : 0);
       if (bk.type === 'revive') { side.revive += 1; side.revivePct = Math.max(side.revivePct, bk.pct + 0.1 * (u.star - 1)); }
@@ -189,7 +196,16 @@
     for (let k = 0; k < s.stormZap; k++) { const f = alive(b, foe); if (f.length) { const t = rng.pick(b.rng, f); b.events.push({ t: 'zap', x: t.x, y: t.y }); dealDamage(b, t, s.stormDmg, null, 'zap'); } }
     if (s.gravity) { b.events.push({ t: 'pull', x: 0, y: 0, r: b.R }); shift(b, foe, 0, 0, s.gravity * 0.15); }
     if (b.env.storm) { const a = rng.range(b.rng, 0, 6.283), rr = rng.range(b.rng, 0, 0.5), x = Math.cos(a) * rr * b.hw, y = Math.sin(a) * rr * b.hh; b.events.push({ t: 'pull', x, y, r: b.R * 0.8 }); shift(b, null, x, y, b.env.storm * 0.1); }
-    if (b.turn === 0 && b.shotCount > 0 && b.rules.includes('shrink')) { b.hw = Math.max(b.hw0 * 0.65, b.hw - 10); b.hh = Math.max(b.hh0 * 0.65, b.hh - 14); b.R = b.hw; relax(b); b.events.push({ t: 'shrink' }); }
+    if (b.turn === 0 && b.shotCount > 0 && b.rules.includes('shrink')) {
+      const hw = b.hw, hh = b.hh;
+      b.hw = Math.max(b.hw0 * 0.65, b.hw - 10); b.hh = Math.max(b.hh0 * 0.65, b.hh - 14); b.R = b.hw;
+      const ramp = b.zones.find(z => z.kind === 'ramp');
+      if (ramp) {
+        if (ramp.edge === 'x') ramp.x += Math.sign(ramp.x) * (b.hw - hw);
+        else ramp.y += Math.sign(ramp.y) * (b.hh - hh);
+      }
+      relax(b); b.events.push({ t: 'shrink' });
+    }
     if (b.affix) affixTurn(b); // ---- 敵人詞綴 ----
     if (b.bodies.some(o => o.down)) { reviveDowned(b); if (checkEnd(b)) return; } // 回合開始的毒／電擊／炮擊打倒：當下扣動數並復活，避免卡住
     if (!alive(b, foe).length || !alive(b, b.turn).length) return checkEnd(b);
@@ -245,10 +261,52 @@
     b.stepN = 0; b.tapLog = null; b.teamHit = false; b.tapQ = tapAbility(x) ? cleanTap(tap) : null; // 二次操作：預先排好的點擊（重播／連線／AI）
     x.ox = x.x; x.oy = x.y;
     b.zones.forEach(z => z.hit = {});
+    b.relayGiven = false; b.itemTaken = false;
+    b.ropePush = b.zones.some(z => z.kind === 'rope' && z.team !== x.team) ? {} : null;
+    if (x.ab && x.ab.type === 'ropeDrop') b.ropeAngle = angle;
     b.phase = 'moving'; b.mover = idx; b.simT = 0; b.chain = 0; b.hits = 0; b.pending = []; b.ghost = {}; b.echoUsed = false; b.stopDone = false;
     b.events.push({ t: 'launch', i: idx });
     bondLaunch(b, x);
     return true;
+  }
+
+  function transferEnergy(b, from, to, cap) {
+    const amount = Math.min(cap, from.energy, C().ult.max - to.energy);
+    if (amount <= 0) return;
+    from.energy -= amount;
+    to.energy += amount;
+    b.events.push({ t: 'relayEnergy', x: to.x, y: to.y, amount });
+  }
+
+  function reserveEnergy(b, downed) {
+    const side = b.sides[downed.team];
+    if (!side.relayReserve || downed.boss) return;
+    const cap = side.relayReserve;
+    side.relayReserve = 0;
+    let recipient = null;
+    for (const o of b.bodies) {
+      if (o === downed || !o.alive || o.temp || o.boss || o.team !== downed.team || o.energy >= C().ult.max) continue;
+      if (!recipient || o.energy > recipient.energy) recipient = o;
+    }
+    if (recipient) transferEnergy(b, downed, recipient, cap);
+  }
+
+  function applyItemStats(o, enabled) {
+    const item = o.baseItem, sign = enabled ? 1 : -1;
+    const ratio = scale => enabled ? 1 / scale : scale;
+    o.atk *= ratio(item.atk); o.baseAtk *= ratio(item.atk);
+    o.speed *= ratio(item.speed);
+    const maxHp = o.maxHp * ratio(item.hp);
+    o.hp = Math.min(maxHp, o.hp * ratio(item.hp)); o.maxHp = maxHp;
+    o.bounces += sign * item.bounces; o.wallAdd += sign * item.wallAdd; o.lifesteal += sign * item.lifesteal;
+  }
+
+  function confiscate(b, src, tgt) {
+    if (!src.ab || src.ab.type !== 'confiscate' || src !== b.bodies[b.mover] || b.itemTaken || !tgt.baseItem) return;
+    b.itemTaken = true;
+    if (!tgt.itemMuted) applyItemStats(tgt, false);
+    tgt.itemMuted = true;
+    b.events.push({ t: 'confiscate', x: tgt.x, y: tgt.y, item: tgt.baseItem.id });
   }
 
   // ---- 傷害 ----
@@ -284,6 +342,7 @@
     if (tgt.hp <= 0) {
       tgt.hp = 0; tgt.alive = false; tgt.vx = tgt.vy = 0;
       if (!tgt.temp) { b.deaths[tgt.team]++; if (!b.sides[tgt.team].noRevive) tgt.down = true; }
+      if (!tgt.temp) reserveEnergy(b, tgt);
       b.events.push({ t: 'death', x: tgt.x, y: tgt.y, team: tgt.team, color: tgt.color });
     }
     if (tgt.pigQ != null) pigDamaged(b, tgt);
@@ -318,6 +377,7 @@
       if (!o.alive || o.team === team || o === except || o.temp) return;
       const dx = cx - o.x, dy = cy - o.y, d = Math.hypot(dx, dy) || 1;
       if (d > r || Math.hypot(o.vx, o.vy) > 350) return;
+      if (b.ropePush) delete b.ropePush[o.i];
       const k = force / Math.sqrt(o.m); o.vx += dx / d * k; o.vy += dy / d * k;
       if (dmg) dealDamage(b, o, dmg, src, 'magnet');
     });
@@ -346,6 +406,7 @@
     const mult = (1 + per * (Math.min(src.wallHits, src.bounces) + lotStack(b, src))) * (src.ringBuff ? 1.2 : 1), atk = atkOf(src), ab = src.ab;
     // 幽影：閃避（隱身必閃）——閃掉碰撞傷害與所有附加效果
     if (!tgt.temp && (tgt.veil || tgt.dodge) && (tgt.veil || rng.next(b.rng) < tgt.dodge)) { tgt.veil = 0; b.events.push({ t: 'dodge', x: tgt.x, y: tgt.y }); return; }
+    confiscate(b, src, tgt);
     const far = src.farDmg ? 1 + src.farDmg * Math.min(cfg.farCap || 5, src.trav / 100) : 1, pinK = ab && ab.type === 'pin' ? 1 + ab.bonus : 1; // 狙擊：助跑距離加成
     // ---- 神技 ----：甜蜜點／花式／正中／擦邊／節奏 的本次撞擊倍率
     let sk = 1, post = null; const K = 1 + 0.12 * ((src.star || 1) - 1); // 星級：技巧加成部分 +12%/星
@@ -440,14 +501,73 @@
     if (o.ab && o.ab.type === 'split' && !o.splitDone && i === b.mover) { o.splitDone = true; spawnShards(b, o); }
   }
 
+  const isLine = z => z.kind === 'ramp' || z.kind === 'rope';
+
+  function placeLine(b) {
+    const mv = b.bodies[b.mover], ab = mv && mv.ab;
+    if (!mv || !mv.alive || !ab) return;
+    if (ab.type !== 'rampDrop' && ab.type !== 'ropeDrop') return;
+    b.stopDone = true;
+    const line = { x: mv.x, y: mv.y, team: mv.team, placed: b.shotCount, len: ab.length, left: 1 };
+    if (ab.type === 'rampDrop') {
+      const dx = b.hw - Math.abs(mv.x), dy = b.hh - Math.abs(mv.y);
+      if (Math.min(dx, dy) > ab.range) return;
+      const edge = line.edge = dx <= dy ? 'x' : 'y', vert = edge === 'x';
+      const other = vert ? 'y' : 'x', wall = vert ? b.hw : b.hh, limit = vert ? b.hh : b.hw;
+      const sign = Math.sign(mv[edge]) || 1, span = ab.length * Math.SQRT1_2;
+      const dir = Math.abs(mv[other]) > limit - span ? -Math.sign(mv[other]) : Math.sign(mv[other] - mv[vert ? 'oy' : 'ox']) || 1;
+      line[edge] = sign * (wall - span / 2);
+      line[other] += dir * span / 2;
+      line.ux = (vert ? -sign : dir) * Math.SQRT1_2;
+      line.uy = (vert ? dir : -sign) * Math.SQRT1_2;
+      line.kind = 'ramp';
+    } else {
+      line.kind = 'rope';
+      const angle = b.ropeAngle || 0;
+      line.ux = -Math.sin(angle); line.uy = Math.cos(angle);
+    }
+    b.zones = b.zones.filter(z => z.kind !== line.kind);
+    b.zones.push(line);
+    b.events.push({ t: line.kind + 'Placed', x: line.x, y: line.y });
+  }
+
+  // 對固定步長內的位移求交點，避免高速棋子穿過細線。
+  function crossLine(b, o, i, line, px, py, dt) {
+    if (!line.left) return;
+    const isRamp = line.kind === 'ramp', nx = -line.uy, ny = line.ux;
+    const d0 = (px - line.x) * nx + (py - line.y) * ny;
+    const change = (o.x - px) * nx + (o.y - py) * ny;
+    const side = Math.sign(d0) || -Math.sign(change), dn = change * side;
+    if (dn >= 0) return;
+    const distance = isRamp ? o.r : 0, fraction = Math.max(0, (Math.abs(d0) - distance) / -dn);
+    if (fraction > 1) return;
+    const x = px + (o.x - px) * fraction, y = py + (o.y - py) * fraction;
+    if (Math.abs((x - line.x) * line.ux + (y - line.y) * line.uy) > line.len / 2) return;
+    const vn = -(o.vx * nx + o.vy * ny) * side;
+    if (vn <= 0) return;
+    line.left = 0;
+    o.x = x; o.y = y;
+    if (isRamp) {
+      wallBounce(b, o, i, -nx * side, -ny * side, vn, 'ramp');
+      o.x += o.vx * dt * (1 - fraction); o.y += o.vy * dt * (1 - fraction);
+    } else o.vx = o.vy = 0;
+    b.events.push({ t: isRamp ? 'rampBounce' : 'ropeCatch', x, y });
+  }
+
   // ---- 物理一步；回傳 true 代表全部停止 ----
   function step(b) {
     const cfg = C(), dt = cfg.dt, bs = b.bodies;
     b.simT += dt; b.stepN = (b.stepN || 0) + 1;
     if (b.tapQ && b.tapQ.t === b.stepN) doTap(b, b.tapQ);
     const fr = Math.exp(-cfg.friction * (b.env.frictionMul || 1) * dt), ld = cfg.linDecel * (b.env.frictionMul || 1) * dt;
+    let ramp, rope;
+    for (const z of b.zones) {
+      if (z.kind === 'ramp') ramp = z;
+      if (z.kind === 'rope' && z.team !== b.turn) rope = z;
+    }
     for (let i = 0; i < bs.length; i++) {
       const o = bs[i]; if (!o.alive) continue;
+      const px = o.x, py = o.y;
       o.x += o.vx * dt; o.y += o.vy * dt;
       const sp = hyp(o.vx, o.vy);
       if (o.farDmg) o.trav += sp * dt;
@@ -455,6 +575,8 @@
         const ns = o.fricMul === 1 ? Math.max(0, sp * fr - ld) : Math.max(0, sp * Math.pow(fr, o.fricMul) - ld * o.fricMul);
         o.vx *= ns / sp; o.vy *= ns / sp;
       }
+      if (ramp && i === b.mover) crossLine(b, o, i, ramp, px, py, dt);
+      if (rope && b.ropePush && b.ropePush[i]) crossLine(b, o, i, rope, px, py, dt);
       // 長方形牆
       const lx = b.hw - o.r, ly = b.hh - o.r;
       if (o.x > lx) { o.x = lx; if (o.vx > 0) wallBounce(b, o, i, 1, 0, o.vx, 'wall'); } else if (o.x < -lx) { o.x = -lx; if (o.vx < 0) wallBounce(b, o, i, -1, 0, -o.vx, 'wall'); }
@@ -470,7 +592,7 @@
     }
     // 火焰地板
     if (b.zones.length) b.zones.forEach(z => bs.forEach(o => {
-      if (z.left <= 0 || !o.alive || o.temp || o.team === z.team || z.hit[o.i]) return;
+      if (isLine(z) || z.left <= 0 || !o.alive || o.temp || o.team === z.team || z.hit[o.i]) return;
       if (hyp(o.x - z.x, o.y - z.y) >= z.r + o.r) return;
       z.hit[o.i] = 1;
       if (z.kind === 'mine') { z.left = 0; explode(b, z.x, z.y, z.br, z.dmg, z.team, null, false); }
@@ -506,6 +628,10 @@
         a.vx -= jm * ia * nx; a.vy -= jm * ia * ny; c.vx += jm * ic * nx; c.vy += jm * ic * ny;
         const px = a.x + nx * a.r, py = a.y + ny * a.r;
         b.events.push({ t: 'bump', x: px, y: py, s: Math.max(sa, sc) });
+        if (rope && b.ropePush) {
+          if (a.team === rope.team) b.ropePush[i] = !same && sc > 0 && !a.temp;
+          if (c.team === rope.team) b.ropePush[j] = !same && sa > 0 && !c.temp;
+        }
         if (!same) {
           const mh = cfg.minHitSpeed;
           if (a.ab && a.ab.type === 'heavyPush' && sa > mh) { c.vx += nx * jm * ic * (a.ab.mult - 1); c.vy += ny * jm * ic * (a.ab.mult - 1); }
@@ -517,6 +643,12 @@
           if (sa > mh) onHit(b, a, c, sa);
           if (sc > mh && c.alive && a.alive) onHit(b, c, a, sc);
         } else {
+          const mv = bs[b.mover], ally = mv === a ? c : mv === c ? a : null;
+          if (ally && mv.ab && mv.ab.type === 'relayTouch' && !b.relayGiven && !ally.temp && !ally.boss &&
+              (mv === a ? sa : sc) > 0 && ally.energy < cfg.ult.max) {
+            b.relayGiven = true;
+            transferEnergy(b, mv, ally, mv.ab.amount);
+          }
           // 撞隊友：被撞方加速（羽毛）、聯動組合技
           if (c.ab && c.ab.type === 'allyBoost' && sa > 100) { c.vx *= c.ab.mult; c.vy *= c.ab.mult; b.events.push({ t: 'boost', x: c.x, y: c.y }); }
           [[a, c, sa], [c, a, sc]].forEach(([h, t, s]) => { const hp = h.ultOn === 'heal' ? 0.4 : (h.ab && h.ab.type === 'healTouch' ? h.ab.pct : 0); if (hp && s > 80 && !t.healed && !t.temp) { t.healed = true; t.hp = Math.min(t.maxHp, t.hp + t.maxHp * hp); b.events.push({ t: 'heal', x: t.x, y: t.y }); } });
@@ -534,7 +666,7 @@
       if (b.simT >= p.at) { b.pending.splice(k, 1); explode(b, p.x, p.y, p.r, p.dmg, p.team, bs[p.src], false); }
     }
     const moving = bs.some(o => o.alive && (Math.abs(o.vx) > cfg.stopV || Math.abs(o.vy) > cfg.stopV));
-    if (b.simT > cfg.maxSimSec) { bs.forEach(o => { o.vx = o.vy = 0; }); return true; }
+    if (b.simT > cfg.maxSimSec) { bs.forEach(o => { o.vx = o.vy = 0; }); return finishMotion(b); }
     if (!moving) {
       const mv = bs[b.mover];
       if (mv && mv.alive && mv.ultOn && !mv.ultStop && ultStop(b, mv)) return false;
@@ -555,6 +687,7 @@
         bs.forEach(o => {
           if (!o.alive || o.temp || o.team === mv.team) return;
           const dx = o.x - mv.x, dy = o.y - mv.y, d = hyp(dx, dy) || 1; if (d > mv.ab.r + o.r) return;
+          if (b.ropePush) delete b.ropePush[o.i];
           const k = mv.ab.push / Math.sqrt(o.m); o.vx += dx / d * k; o.vy += dy / d * k; dealDamage(b, o, dmg, mv, 'blast');
         });
         return false;
@@ -581,9 +714,14 @@
         b.stopDone = true; pull(b, mv.x, mv.y, mv.ab.r, mv.ab.pull * (1 + mv.pullMul), mv.team, null, atkOf(mv) * mv.ab.mult, mv); return false;
       }
       bs.forEach(o => { o.vx = o.vy = 0; });
-      return b.pending.length === 0;
+      if (!b.pending.length) return finishMotion(b);
     }
     return false;
+  }
+
+  function finishMotion(b) {
+    if (!b.stopDone) placeLine(b);
+    return true;
   }
 
   function alive(b, team) { return b.bodies.filter(o => o.alive && !o.temp && o.team === team); }
@@ -663,7 +801,8 @@
     if (mv) { mv.acted = true; b.moves[t]--; ultEnd(mv); rhythmEnd(b, t); }
     b.tapQ = null;
     if (b.bodies.some(o => o.temp)) { b.bodies = b.bodies.filter(o => !o.temp); b.bodies.forEach((o, i) => o.i = i); }
-    b.zones.forEach(z => z.left--); b.zones = b.zones.filter(z => z.left > 0);
+    b.zones = b.zones.filter(z => isLine(z) ? z.left > 0 && (z.team !== t || z.placed === b.shotCount - 1) : --z.left > 0);
+    b.bodies.forEach(o => { if (o.team === t && o.itemMuted) { applyItemStats(o, true); o.itemMuted = false; } });
     b.bodies.forEach(o => { if (o.team === t && b.round > b.maxRounds) o.stunned = false; o.wallHits = 0; });
     b.phase = 'aim'; b.mover = -1;
     reviveDowned(b);
@@ -740,9 +879,11 @@
     const c = JSON.parse(JSON.stringify(b)); c.events = [];
     if (!launch(c, idx, angle, power)) return null;
     const o = c.bodies[idx], pts = [[o.x, o.y]], EXTRA = 80;
-    let cut = -1, after = 0, hit = -1, hitPts = null, px = o.x, py = o.y;
+    const lineMaker = o.ab && (o.ab.type === 'rampDrop' || o.ab.type === 'ropeDrop');
+    let cut = -1, after = 0, hit = -1, hitPts = null, px = o.x, py = o.y, end = null;
     for (let k = 0; k < 1500; k++) {
       const done = step(c);
+      if (end) { if (done || !o.alive) break; continue; }
       if (hit < 0) {
         const j = c.bodies.findIndex((q, n) => n !== idx && !q.temp && q.alive && !q.hopT && (Math.abs(q.vx) > 1 || Math.abs(q.vy) > 1));
         if (j >= 0) { hit = j; hitPts = [[c.bodies[j].x, c.bodies[j].y]]; }
@@ -751,10 +892,15 @@
       if (cut >= 0) { after += Math.hypot(o.x - px, o.y - py); if (hit >= 0) { const q = c.bodies[hit]; hitPts.push([q.x, q.y]); } }
       px = o.x; py = o.y;
       if (k % 2 === 0 || cut >= 0) pts.push([o.x, o.y]);
-      if (after > EXTRA || done || !o.alive) break;
+      if (done || !o.alive) break;
+      if (after > EXTRA) {
+        if (!lineMaker) break;
+        end = [o.x, o.y];
+      }
     }
-    pts.push([o.x, o.y]);
-    return { pts, cut: cut < 0 ? pts.length - 1 : cut, hit: hitPts, r: o.r };
+    pts.push(end || [o.x, o.y]);
+    const line = c.zones.find(z => isLine(z) && z.team === c.turn && z.placed === c.shotCount);
+    return { pts, cut: cut < 0 ? pts.length - 1 : cut, hit: hitPts, r: o.r, line };
   }
 
   // ---- 徽章 ----：裝備裡的徽章讓角色多 1 個羈絆（原本就有的不重複算）

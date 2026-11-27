@@ -52,11 +52,11 @@
     berserker: { name: '狂戰士', cost: 3, traits: ['heavy', 'swift'], role: 'front', hp: 185, atk: 34, mass: 1.6, r: 26, speed: 1.05, color: '#d6453d',
       ability: { type: 'rage', max: 0.6, desc: '血越少攻擊越高（最多 +60%）' },
       link: { with: 'medic', combo: { type: 'healAll', pct: 0.15, name: '戰地急救' } } },
-    detonator: { name: '引爆者', cost: 4, traits: ['blast'], role: 'front', hp: 185, atk: 35, mass: 1.4, r: 26, speed: 1, color: '#e0402f',
-      ability: { type: 'explodeOnHit', r: 95, mult: 0.29, desc: '每次撞到敵人都爆炸' },
+    detonator: { name: '引爆者', cost: 4, traits: ['blast'], role: 'front', hp: 185, atk: 30, mass: 1.4, r: 26, speed: 1, color: '#e0402f',
+      ability: { type: 'explodeOnHit', r: 95, mult: 0.22, desc: '每次撞到敵人都爆炸' },
       link: { with: 'tesla', combo: { type: 'pullBlast', r: 220, mult: 1.4, name: '電磁爆縮' } } },
-    spring: { name: '彈簧王', cost: 4, traits: ['bounce', 'wall'], role: 'front', hp: 185, atk: 31, mass: 1.3, r: 27, speed: 1.1, color: '#2ec4b6',
-      ability: { type: 'bigBounce', per: 0.32, extra: 2, desc: '每次撞牆加成 +32%，可多疊 2 次' },
+    spring: { name: '彈簧王', cost: 4, traits: ['bounce', 'wall'], role: 'front', hp: 185, atk: 29, mass: 1.3, r: 27, speed: 1.1, color: '#2ec4b6',
+      ability: { type: 'bigBounce', per: 0.23, extra: 2, desc: '每次撞牆加成 +23%，可多疊 2 次' },
       link: { with: 'splitter', combo: { type: 'blast', r: 130, mult: 1.2, name: '彈幕' } } },
     bullet: { name: '彈頭', cost: 5, traits: ['swift', 'blast'], role: 'front', hp: 164, atk: 26, mass: 1.3, r: 22, speed: 1.3, color: '#ffc531',
       ability: { type: 'pierce', n: 1, desc: '穿過第 1 個撞到的敵人繼續飛' },
@@ -150,6 +150,20 @@
     phantom: { name: '幻影劍士', cost: 5, traits: ['shade', 'finesse'], role: 'front', hp: 165, atk: 27, mass: 1.1, r: 24, speed: 1.2, color: '#5c6bc0',
       ability: { type: 'phantom', tap: 'split', mult: 1.0, minSp: 650, desc: '👆 飛行中點畫面：在當下位置分出一個幻影，朝你點的位置衝出（1 倍攻擊）；本體照原路線繼續' },
       tip: '一發打兩個目標：本體瞄一隻，飛到半路時點另一隻敵人，幻影就會從那裡衝過去。點得越晚離目標越近越準；也可以在撞到第一隻之後再點，補刀殘血。',
-      link: { with: 'shadow', combo: { type: 'fearBlast', r: 200, val: 0.4, name: '幻影殺' } } }
+      link: { with: 'shadow', combo: { type: 'fearBlast', r: 200, val: 0.4, name: '幻影殺' } } },
+    // ---- 夜間泳池擂台：四隻新角色 ----
+    rampmaker: { name: '斜角匠', cost: 1, traits: ['mech', 'bounce'], role: 'front', hp: 153, atk: 31, mass: 1.25, r: 22, speed: 1, color: '#f2a55f',
+      ability: { type: 'rampDrop', length: 75, range: 55, desc: '停在距離牆面 55 以內時放置長 75 的斜面。任一隊主動彈出的棋子可借它反彈一次，最晚在我方下次出手結束時移除。' },
+      tip: '朝牆斜射，讓停下時放出的斜面朝敵陣。下次出手先看反彈預覽，再決定是否借力。' },
+    relay: { name: '接力員', cost: 2, traits: ['swift', 'mech'], role: 'both', hp: 166, atk: 33, mass: 1.1, r: 22, speed: 1.1, color: '#f27392',
+      ability: { type: 'relayTouch', amount: 20, desc: '自己出手時，每發首次撞到能量未滿的隊友，把自己的能量轉給他，最多 20 點。' },
+      back: { type: 'relayReserve', amount: 10 },
+      tip: '順路擦到差一點就能放大招的隊友，把你的能量交給他。' },
+    salvage: { name: '回收鉗', cost: 4, traits: ['mech', 'snipe'], role: 'front', hp: 172, atk: 33, mass: 1.25, r: 24, speed: 1.1, color: '#718da8',
+      ability: { type: 'confiscate', desc: '自己出手時，每發首次命中有基礎裝備的敵人，停用他第一件基礎裝備的數值，直到敵隊下一發結束。徽章與羈絆照常。' },
+      tip: '瞄準依靠鐵拳、護符或疾行靴的主攻手，在對手出手前先扣押裝備。' },
+    buoykeeper: { name: '浮標手', cost: 3, traits: ['wall', 'heavy'], role: 'front', hp: 190, atk: 30, mass: 1.65, r: 26, speed: 0.96, color: '#52bed3',
+      ability: { type: 'ropeDrop', length: 120, desc: '停下時沿瞄準方向的垂直線放長 120 的浮繩。敵隊出手時，第一隻被敵人撞過繩子的隊友會在穿線點停下，傷害照算。最晚在我方下次出手結束時移除。' },
+      tip: '把落點選在前排身後，讓浮繩橫在隊友容易被撞飛的方向上。' }
   };
 })(globalThis);
