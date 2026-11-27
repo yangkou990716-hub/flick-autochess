@@ -11,12 +11,12 @@
     ],
     // 難度等級（開局選）：敵人強化、扣血加重、開局血量；affixN 敵人詞綴數（affixSoft 只抽 soft）
     ascensions: [
-      { name: 'A0 新手', desc: '敵人生命/攻擊不加成', threat: 0, lossAdd: 0, hp: 80, wrench: 'wrench' },
-      { name: 'A1', desc: '敵人生命/攻擊 +12%', threat: 0.12, lossAdd: 0, hp: 80, wrench: 'wrench' },
-      { name: 'A2', desc: '敵人 +18%，敵人詞綴 1（溫和）', threat: 0.18, lossAdd: 0, hp: 80, affixN: 1, affixSoft: true, wrench: 'wrench' },
-      { name: 'A3', desc: '敵人 +24%，戰敗多扣 2 血，敵人詞綴 1', threat: 0.24, lossAdd: 2, hp: 80, affixN: 1, wrench: 'wrench1' },
-      { name: 'A4', desc: '敵人 +30%，戰敗多扣 3 血，敵人詞綴 2', threat: 0.3, lossAdd: 3, hp: 80, affixN: 2, wrench: 'wrench1' },
-      { name: 'A5 地獄', desc: '敵人 +20%，戰敗多扣 4 血，開局 75 血，敵人詞綴 3', threat: 0.2, lossAdd: 4, hp: 75, affixN: 3, wrench: 'wrench1' }
+      { name: 'A0 新手', desc: '敵人生命/攻擊 -3%', threat: -0.03, lossAdd: 0, hp: 80, wrench: 'wrench' },
+      { name: 'A1', desc: '敵人生命/攻擊 -2.5%', threat: -0.025, lossAdd: 0, hp: 80, wrench: 'wrench' },
+      { name: 'A2', desc: '敵人 +4.5%，敵人詞綴 1（溫和）', threat: 0.045, lossAdd: 0, hp: 80, affixN: 1, affixSoft: true, wrench: 'wrench' },
+      { name: 'A3', desc: '敵人 +9%，戰敗多扣 2 血，敵人詞綴 1', threat: 0.09, lossAdd: 2, hp: 80, affixN: 1, wrench: 'wrench1' },
+      { name: 'A4', desc: '敵人 +11.5%，戰敗多扣 3 血，敵人詞綴 2', threat: 0.115, lossAdd: 3, hp: 80, affixN: 2, wrench: 'wrench1' },
+      { name: 'A5 地獄', desc: '敵人 +11%，戰敗多扣 4 血，開局 75 血，敵人詞綴 3', threat: 0.11, lossAdd: 4, hp: 75, affixN: 3, wrench: 'wrench1' }
     ],
     nodeWeights: { battle: 4, encounter: 3, reward: 2, supply: 1 },
     nodeInfo: {

@@ -45,12 +45,13 @@
         hp: B.hp * sc * HM, maxHp: B.hp * sc * HM, atk: B.atk * sc, baseAtk: B.atk * sc, bounces: cfg.baseBounces, speed: 0.9,
         ultType: 'nova', zapMult: B.zap || 0, ab: B.ability ? Object.assign({}, B.ability) : null, split: B.split ? Object.assign({}, B.split) : null });
     }
-    const U = D().units[inst.id], m = cfg.starMult[inst.star - 1];
+    const U = D().units[inst.id], star = inst.star - 1;
+    const hpMult = cfg.starMult[star], atkMult = (cfg.starAtk || cfg.starMult)[star];
     const mods = addMods({}, sideMods);
     (inst.items || []).forEach(it => addMods(mods, it.rolls));
     if (inst.weapon) addMods(mods, D().weapons[inst.weapon].mods);
     unitTraits(inst).forEach(t => { if (traitsActive[t]) addMods(mods, traitsActive[t].mods); });
-    const hp = U.hp * m * (1 + (mods.hpPct || 0)) * (cfg.hpMul || 1), atk = U.atk * m * (1 + (mods.atkPct || 0));
+    const hp = U.hp * hpMult * (1 + (mods.hpPct || 0)) * (cfg.hpMul || 1), atk = U.atk * atkMult * (1 + (mods.atkPct || 0));
     const b = Object.assign(base, { id: inst.id, name: U.name, star: inst.star, traits: unitTraits(inst), color: U.color,
       r: (U.r + (inst.star - 1) * 2) * rm, m: Math.max(0.3, U.mass * (1 + (mods.massPct || 0))), hp, maxHp: hp, atk, baseAtk: atk,
       speed: U.speed * (1 + (mods.speedPct || 0)), bounces: cfg.baseBounces + (mods.bounces || 0), wallAdd: mods.wallAdd || 0,
@@ -95,16 +96,17 @@
     bondSide(side, all, tt);
     back.filter(Boolean).forEach(u => {
       const U = D().units[u.id]; if (!U || !U.back || U.role === 'front') return;
-      const k = cfg.starMult[u.star - 1], bk = U.back;
+      const star = u.star - 1, bk = U.back;
+      const hpMult = cfg.starMult[star], atkMult = (cfg.starAtk || cfg.starMult)[star];
       if (bk.type === 'atkPct') { const v = bk.val * (1 + 0.5 * (u.star - 1)); bodies.forEach(b => { if (!bk.trait || b.traits.includes(bk.trait)) { b.atk *= 1 + v; b.baseAtk = b.atk; } }); }
-      if (bk.type === 'shield') side.turnShield += bk.val * k;
-      if (bk.type === 'heal') side.turnHeal += bk.val * k;
-      if (bk.type === 'zap') side.zap += U.atk * k * bk.mult;
+      if (bk.type === 'shield') side.turnShield += bk.val * hpMult;
+      if (bk.type === 'heal') side.turnHeal += bk.val * hpMult;
+      if (bk.type === 'zap') side.zap += U.atk * atkMult * bk.mult;
       if (bk.type === 'gravity') side.gravity += bk.pull * (1 + 0.3 * (u.star - 1));
-      if (bk.type === 'cannon') side.cannon.push({ dmg: U.atk * k * bk.mult, r: bk.r });
+      if (bk.type === 'cannon') side.cannon.push({ dmg: U.atk * atkMult * bk.mult, r: bk.r });
       if (bk.type === 'mark') { side.mark = Math.max(side.mark, bk.turns); side.markAmp = Math.max(side.markAmp, bk.amp + 0.05 * (u.star - 1)); }
       if (bk.type === 'relayReserve') side.relayReserve = Math.max(side.relayReserve || 0, bk.amount);
-      if (bk.type === 'snipe') side.snipe.push(U.atk * k * bk.mult);
+      if (bk.type === 'snipe') side.snipe.push(U.atk * atkMult * bk.mult);
       if (bk.type === 'veil') side.veil += bk.n + (u.star >= 3 ? 1 : 0);
       if (bk.type === 'revive') { side.revive += 1; side.revivePct = Math.max(side.revivePct, bk.pct + 0.1 * (u.star - 1)); }
     });

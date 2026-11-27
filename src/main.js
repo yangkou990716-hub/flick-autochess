@@ -102,10 +102,11 @@
   }
   const starTip = U => U.ability && ['sweetSpot', 'cueBall', 'trickShot', 'rhythm', 'remoteBomb', 'phantom'].includes(U.ability.type) ? '<span class="lbl">（技巧加成部分 2 星 +12%、3 星 +24%）</span>' : '';
   function unitInfo(u) {
-    const U = D.units[u.id], m = C.starMult[u.star - 1];
+    const U = D.units[u.id], star = u.star - 1;
+    const hpMult = C.starMult[star], atkMult = (C.starAtk || C.starMult)[star];
     const role = { front: '前台', back: '後台', both: '兩用（站位賦能）' }[U.role];
     let s = `<b>${U.name} ${'★'.repeat(u.star)}</b>　<span class="k">${U.cost}費</span>　${U.traits.map(t => D.traits[t].name).join('・')}${U.faction ? '　' + facName(u.id) : ''}　${role}<br>`;
-    s += `生命 ${Math.round(U.hp * m)}｜攻擊 ${Math.round(U.atk * m)}｜速度 ${U.speed}｜重量 ${U.mass}｜大小 ${U.r}<br>`;
+    s += `生命 ${Math.round(U.hp * hpMult)}｜攻擊 ${Math.round(U.atk * atkMult)}｜速度 ${U.speed}｜重量 ${U.mass}｜大小 ${U.r}<br>`;
     if (U.ability && U.role !== 'back') s += `<span class="k">${U.role === 'both' ? '前台' : '能力'}：</span>${U.ability.desc}<br>`;
     if (U.tip) s += `<span class="k" style="color:#ffd740">🎯 怎麼玩好：</span>${U.tip}${starTip(U)}<br>`; // ---- 神技 ----
     if (U.back && U.role !== 'front') s += `<span class="k">後台：</span>${backText(U)}<br>`;
