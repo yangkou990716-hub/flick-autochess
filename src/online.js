@@ -76,7 +76,7 @@
   // 目前單人局的隊伍（優先用記憶體裡的局，沒有就讀存檔）
   function myRun() {
     const d = FA.debug && FA.debug(); if (d && d.run) return d.run;
-    try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) return s.hs ? s.hs.players[s.hs.cur].run : s.run; } catch (e) { }
+    try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s) { const r = s.hs ? s.hs.players[s.hs.cur].run : s.run; return FA.run.migrate ? FA.run.migrate(r) : r; } } catch (e) { } // 舊版存檔先遷移（已移除的角色等）
     return null;
   }
   function myTeam() {

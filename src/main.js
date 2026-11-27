@@ -14,10 +14,50 @@
 
   // ---------- 存檔 ----------
   let lgHost = null; // ---- 連線自走棋 ----：商店借給 src/league.js 用時的回呼（存檔、準備、離開）
-  const save = () => { if (lgHost) { try { lgHost.save(run); } catch (e) { } return; } try { if (run) localStorage.setItem(KEY, JSON.stringify(hs ? { hs, battle, mode, bst } : { run, battle, mode, bst })); } catch (e) { } };
-  const load = () => { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } };
+  // ---- 存檔保護 ----：寫入失敗（空間滿、私密瀏覽）先清掉可丟的資料再試，還是不行就提示；讀到損毀的存檔先備份到 KEY_bad 再提示
+  const BAD = KEY + '_bad';
+  let saveWarnAt = -1e9, loadErr = null;
+  function toast(t, ms) {
+    let el = $('uxToast');
+    if (!el) { el = document.createElement('div'); el.id = 'uxToast'; el.style.cssText = 'position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 10px);z-index:70;margin:0 auto;max-width:360px;padding:10px 14px;border-radius:12px;background:#3a1420f2;border:1px solid #ff7a5a;color:#ffd7cf;font-size:14px;line-height:1.5;text-align:center;box-shadow:0 8px 20px #000a;pointer-events:none;transition:opacity .3s'; document.body.appendChild(el); }
+    el.innerHTML = t; el.style.opacity = '1'; clearTimeout(el._t); el._t = setTimeout(() => { el.style.opacity = '0'; }, ms || 3500);
+  }
+  function writeKey(k, v) {
+    try { localStorage.setItem(k, v); return true; } catch (e) {
+      try { localStorage.removeItem(BAD); localStorage.setItem(k, v); return true; } catch (e2) { } // 先丟掉損毀存檔的備份再試一次
+      if (performance.now() - saveWarnAt > 15000) { saveWarnAt = performance.now(); toast('⚠ 存檔失敗：手機儲存空間不足（或私密瀏覽）。<br>請清出空間，關掉 App 前進度可能遺失'); }
+      return false;
+    }
+  }
+  const save = () => { if (lgHost) { try { lgHost.save(run); } catch (e) { } return; } if (!run) return; let j; try { j = JSON.stringify(hs ? { hs, battle, mode, bst } : { run, battle, mode, bst }); } catch (e) { return; } writeKey(KEY, j); };
+  const load = () => {
+    let raw = null; try { raw = localStorage.getItem(KEY); } catch (e) { return null; }
+    if (raw == null) return null;
+    try { const s = JSON.parse(raw); if (s && typeof s === 'object' && (s.run || s.hs)) return s; throw new Error('格式不符'); }
+    catch (e) { badSave(raw); return null; }
+  };
+  function badSave(raw) { // 損毀：備份、移除，回標題時提示一次
+    try { localStorage.setItem(BAD, typeof raw === 'string' ? raw : JSON.stringify(raw)); } catch (e) { }
+    try { localStorage.removeItem(KEY); } catch (e) { }
+    loadErr = '存檔資料損毀，無法繼續上一局（已另外備份）。請開新遊戲。';
+  }
+  // 舊版存檔遷移（src/core/run.js 的 RUN.migrate）：補新欄位、換掉已移除的角色／裝備、檢查戰鬥能不能續打
+  function migrateSave(s) {
+    if (s.hs) {
+      if (!Array.isArray(s.hs.players) || !s.hs.players.length) return null;
+      s.hs.players = s.hs.players.filter(p => p && (p.run = RUN.migrate(p.run)));
+      if (!s.hs.players.length) return null;
+      s.hs.cur = Math.max(0, Math.min(s.hs.players.length - 1, s.hs.cur | 0));
+      s.hs.players.forEach((p, i) => { p.name = String(p.name || 'P' + (i + 1)); p.seen = p.seen | 0; p.done = !!p.done; });
+    } else if (!(s.run = RUN.migrate(s.run))) return null;
+    if (s.battle && !RUN.battleOk(s.battle)) { s.battle = null; s.dropped = true; }
+    if (s.bst && typeof s.bst !== 'object') s.bst = null;
+    return s;
+  }
   const clearSave = () => { try { localStorage.removeItem(KEY); } catch (e) { } };
 
+  // 商店每次操作都整個重畫：內容沒變的區塊就不重設 innerHTML（省 DOM 解析、樣式重算與重排；低階手機差很多）
+  const setHTML = (el, h) => { if (el._h !== h || el.innerHTML === '') { el._h = h; el.innerHTML = h; } };
   function show(id) { screen = id; ['title', 'shop', 'battle'].forEach(s => $(s).classList.toggle('hidden', s !== id)); bgm(); }
   // 背景音樂跟著畫面：首領戰看場上有沒有首領
   const bgm = () => FA.sound.music(screen === 'battle' ? (battle && battle.bodies.some(o => o.boss) ? 'boss' : 'battle') : screen);
@@ -154,26 +194,26 @@
     $('enemyInfo').innerHTML = `${env ? `🌐${env.name}：${env.desc}` : ''}　利息 +${Math.min(C.interestMax + s.interestAdd + (e.interestAdd || 0), Math.floor(run.gold / C.interestPer))}` +
       (boss ? `　<b>首領：${RUN.bossInfo(run).name}</b>` : '') + (run.streak ? `　${run.streak > 0 ? '連勝' : '連敗'} ${Math.abs(run.streak)}` : '') + (run.threat && mode !== 'league' ? `　<span style="color:#f88">敵強化 ${run.threat > 0 ? "+" : ""}${pct(run.threat)}</span>` : '');
     $('enemyInfo').innerHTML += affixChips(); // ---- 敵人詞綴 ----
-    $('strats').innerHTML = run.strats.map(id => { const S = RD.strategies[id], T = RD.tiers[S.tier]; return `<span class="st-chip" style="border-color:${T.color};color:${T.color}" data-st="${id}">${S.name}</span>`; }).join('');
+    setHTML($('strats'), run.strats.map(id => { const S = RD.strategies[id], T = RD.tiers[S.tier]; return `<span class="st-chip" style="border-color:${T.color};color:${T.color}" data-st="${id}">${S.name}</span>`; }).join(''));
     const onTeam = run.front.slice(0, lv.front).concat(run.back.slice(0, lv.back)).filter(Boolean).map(u => u.id);
     const tt = FA.battle.traitTiers(onTeam, teamEmb());
-    $('traits').innerHTML = (Object.keys(D.traits).map(k => {
+    setHTML($('traits'), (Object.keys(D.traits).map(k => {
       const T = D.traits[k], n = tt.counts[k] || 0, a = tt.active[k];
       if (!n) return '';
       return `<span class="tr ${a ? 'act' : ''}" style="${a ? 'background:' + T.color : ''}" data-tr="${k}">${T.name} ${n}/${(T.tiers.find(t => t.n > n) || T.tiers[T.tiers.length - 1]).n}${a && a.lottery ? '🎰' : ''}</span>`;
-    }).join('') + factionChips(onTeam)) || '<span class="lbl">羈絆：同羈絆角色湊 2 隻起有小加成</span>';
+    }).join('') + factionChips(onTeam)) || '<span class="lbl">羈絆：同羈絆角色湊 2 隻起有小加成</span>');
     ['front', 'back', 'bench'].forEach(z => {
       const lim = z === 'front' ? lv.front : z === 'back' ? lv.back : C.benchSize;
       const len = z === 'front' ? Math.max(6, lv.front) : run[z].length;
-      $(z).innerHTML = run[z].slice(0, len).map((u, i) => {
+      setHTML($(z), run[z].slice(0, len).map((u, i) => {
         const isSel = sel && sel.zone === z && sel.i === i;
         return `<div class="slot ${i >= lim ? 'lock' : ''} ${isSel ? 'sel' : ''} ${sel && sel.zone && !isSel && i < lim ? 'tgt' : ''}" data-z="${z}" data-i="${i}">${u ? unitHTML(u) : (i >= lim ? '🔒' : '')}</div>`;
-      }).join('');
+      }).join(''));
     });
     const inv = run.items.map((it, i) => `<span class="item ${sel && sel.item === i ? 'sel' : ''}" data-it="${i}">${D.items[it.id].icon}${D.items[it.id].name}</span>`)
       .concat(run.weapons.map((w, i) => `<span class="item wp ${sel && sel.wp === i ? 'sel' : ''}" data-wp="${i}">${D.weapons[w].icon}${D.weapons[w].name}</span>`));
     inv.push(...consChips()); // ---- 道具 ----
-    $('items').innerHTML = inv.length ? inv.join('') : '<span class="lbl">裝備/武器：補給、遭遇、撲滿、首領取得</span>';
+    setHTML($('items'), inv.length ? inv.join('') : '<span class="lbl">裝備/武器：補給、遭遇、撲滿、首領取得</span>');
     let info = '';
     if (sel && sel.zone && RUN.unitAt(run, sel)) { const u = RUN.unitAt(run, sel); info = unitInfo(u) + `<button id="bSell">賣出 +${RUN.sellPrice(u, run)}</button>　<span class="lbl">點空位移動／點角色交換</span>`; }
     else if (sel && sel.cs != null && (run.consumables || [])[sel.cs]) info = consInfo(sel.cs); // ---- 道具 ----
@@ -184,11 +224,11 @@
     else if (sel && sel.st) { const S = RD.strategies[sel.st]; info = `<b>${S.name}</b>（${RD.tiers[S.tier].name}）<br>${S.desc}`; }
     else info = `<span class="lbl">雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈 -1、被打倒 -${C.deathCost}，對方動數先歸零就贏；擊倒首領直接贏。贏 +${C.winHeal} 血、輸了扣血；🛡＝鎖血免死。點商店卡片購買；點角色查看／移動；3 隻同星自動升星。佈好陣按「前進」選路線。</span>`;
     $('info').innerHTML = info;
-    $('shopRow').innerHTML = run.shop.map((id, i) => {
+    setHTML($('shopRow'), run.shop.map((id, i) => {
       if (!id) return `<div class="card empty"></div>`;
       const U = D.units[id], cc = ['#888', '#3fb950', '#4ea0ff', '#b072ff', '#ffb000'][U.cost - 1];
       return `<div class="card cost-${U.cost}" data-b="${i}" style="border-color:${cc}">${icon(id, 1, 48) ? `<img src="${icon(id, 1, 48)}" style="width:${Math.round(30 + U.r * 0.55)}px;height:${Math.round(30 + U.r * 0.55)}px;display:block;margin:-5px auto -3px">` : `<div class="dot" style="background:${U.color};width:${U.r * 1.2}px;height:${U.r * 1.2}px"></div>`}${U.name}<br><span class="c">${RUN.unitCost(run, id)} 金</span><div class="t">${U.traits.map(t => `<span class="cdot" style="background:${D.traits[t].color}"></span>${D.traits[t].name}`).join(' ')}</div>${cardHint(id, onTeam, tt)}</div>`;
-    }).join('');
+    }).join(''));
     $('bReroll').textContent = run.freeLeft ? `免費刷新` : `刷新 ${RUN.rerollCost(run)}`;
     $('bReroll').disabled = !run.freeLeft && run.gold < RUN.rerollCost(run); $('bXp').disabled = run.gold < C.xpCost || run.level >= C.levels.length;
     $('bLock').classList.toggle('on', run.locked); $('bLock').textContent = run.locked ? '已鎖定' : '鎖定';
@@ -473,12 +513,14 @@
   }
   function hideBInfo() { $('uxBinfo').classList.add('hidden'); binfoT = 0; }
 
+  let hudHTML = '';
   function hud() {
     const b = battle, hp = t => Math.round(FA.battle.hpSum(b, t));
     if (mode === 'duel') run.enemy = { name: '對戰：' + duelName };
     const env = run.env && mode !== 'duel' ? '🌐' + RD.envs[run.env].name : '';
-    $('bhud').innerHTML = `<div class="ux-hl">位面${run.plane}｜${run.enemy.name}${b.rules.length ? '｜' + b.rules.map(r => D.enemies.ruleText[r]).join('、') : ''}　${env}</div>` + movesHUD(b);
-    if (b.affix && mode !== 'duel') $('bhud').innerHTML += `<div style="color:#f8a;font-size:12px">☠ ${b.affix.ids.map(id => D.enemies.affixes[id].name).join('・')}</div>`; // ---- 敵人詞綴 ----
+    let hh = `<div class="ux-hl">位面${run.plane}｜${run.enemy.name}${b.rules.length ? '｜' + b.rules.map(r => D.enemies.ruleText[r]).join('、') : ''}　${env}</div>` + movesHUD(b);
+    if (b.affix && mode !== 'duel') hh += `<div style="color:#f8a;font-size:12px">☠ ${b.affix.ids.map(id => D.enemies.affixes[id].name).join('・')}</div>`; // ---- 敵人詞綴 ----
+    if (hh !== hudHTML) { hudHTML = hh; $('bhud').innerHTML = hh; } // 每幀都會呼叫：內容沒變就不重設（省 DOM 解析與重排）
     const ready = b.phase === 'aim' && b.turn === 0 && FA.battle.avail(b, 0).some(o => o.energy >= UC.max);
     if (!ready) ui.ultArmed = false;
     ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！剩 ${Math.max(0, b.moves[0])} 動` : b.phase === 'over' ? (b.winner === 0 ? '勝利！' : '落敗…')
@@ -504,7 +546,7 @@
   }
   function enemyThink(dt) {
     if (!ai) ai = { t: 0, c: null };
-    ai.t += dt;
+    ai.t += dt; if (QF) ai.ff = true;
     if (ai.ff && ai.t < 0.45) ai.t = 0.45;
     if (ai.t >= 0.45 && !ai.c) {
       const st = mode === 'duel' ? 15 : run.stage + 1 + (run.node === 'encounter' ? RD.encounter[run.encLv].add : 0);
@@ -576,16 +618,18 @@
   speedBtn();
 
   let last = performance.now(), acc = 0;
+  const QF = /[?&]qafast=1/.test(location.search); // 測試用：一發在同一幀算完、敵方 AI 不等待（tests/full_smoke.py）
   function frame(now) {
     const dt0 = Math.min(0.05, (now - last) / 1000); last = now;
     const spd = FA.settings.speed > 1 ? 2 : 1, dt = dt0 * spd; // 加速只加快播放：物理仍是固定步長，結果不變
     if (screen === 'battle' && battle) {
       if (!paused && !tutOn) {
         if (battle.phase === 'moving') {
-          if (V.hitstop > 0) V.hitstop -= dt;
+          if (V.hitstop > 0 && !QF) V.hitstop -= dt;
           else {
             acc += dt; let n = 0;
-            while (acc >= C.dt && n++ < 16 * spd) {
+            if (QF) acc = 1e9;
+            while (acc >= C.dt && n++ < (QF ? 20000 : 16 * spd)) {
               acc -= C.dt;
               if (FA.battle.step(battle)) { FA.battle.endShot(battle); acc = 0; consume(battle); afterShot(); break; }
             }
@@ -771,7 +815,10 @@
   })();
 
   // ---------- 標題 ----------
-  function toTitle() { battle = null; $('modal').classList.add('hidden'); show('title'); $('btnCont').classList.toggle('hidden', !load()); }
+  function toTitle() {
+    battle = null; $('modal').classList.add('hidden'); show('title'); $('btnCont').classList.toggle('hidden', !load());
+    if (loadErr) { const t = loadErr; loadErr = null; modal(`<h2>⚠ 存檔無法讀取</h2>${t}`, [{ t: '知道了', cls: 'go' }]); }
+  }
   $('btnCodex').onclick = () => codex();
   const setBtns = () => { $('btnSound').textContent = FA.sound.on ? '🔊 音效開' : '🔇 音效關'; $('btnMusic').textContent = FA.sound.musicOn ? '🎵 音樂開' : '🎵 音樂關'; $('btnMusic').classList.toggle('off', !FA.sound.musicOn); $('uxVib').textContent = FA.settings.vibrate ? '📳 震動開' : '📴 震動關'; };
   const toggleVib = () => { FA.settings.vibrate = !FA.settings.vibrate; saveSet(); setBtns(); vib(30); };
@@ -790,10 +837,18 @@
     modal('<h2>輪到 P1</h2>', [{ t: '開始', cls: 'go', f: () => { show('shop'); renderShop(); flow(); } }]);
   } })).concat([{ t: '取消' }])));
   $('btnCont').onclick = () => {
-    const s = load(); if (!s) return;
-    hs = s.hs || null; run = hs ? hs.players[hs.cur].run : s.run; battle = s.battle; mode = s.mode || 'run'; sel = null; bst = s.bst || (battle ? newStats() : null);
-    if (battle && !Array.isArray(battle.moves)) { battle = null; bst = null; if (mode === 'duel') mode = 'run'; else run.node = null; save(); setTimeout(() => flash('舊版存檔的戰鬥已放棄，回到商店'), 50); } // 舊規則戰鬥（無總動數）無法續打
-    if (battle) { show('battle'); V.reset(); V.resize(); paused = false; pause(); } else { show('shop'); renderShop(); flow(); }
+    const raw = load(); if (!raw) return toTitle();
+    let s = null; try { s = migrateSave(raw); } catch (e) { s = null; }
+    if (!s) { badSave(raw); return toTitle(); }
+    hs = s.hs || null; run = hs ? hs.players[hs.cur].run : s.run; battle = s.battle; mode = ['run', 'duel'].includes(s.mode) ? s.mode : 'run'; sel = null; bst = s.bst || (battle ? newStats() : null);
+    if (mode === 'duel' && !battle) mode = 'run';
+    if (s.dropped) { bst = null; if (raw.mode !== 'duel') run.node = null; setTimeout(() => flash('舊版存檔的戰鬥已放棄，回到商店'), 50); } // 舊規則戰鬥（無總動數）或角色已移除：無法續打
+    try {
+      save();
+      if (battle) { show('battle'); V.reset(); V.resize(); paused = false; pause(); } else { show('shop'); renderShop(); flow(); }
+    } catch (e) { // 修不好的存檔：備份後回標題，不要卡在壞掉的畫面
+      console.warn('讀檔失敗', e); hs = null; run = null; battle = null; badSave(raw); toTitle();
+    }
   };
   toTitle();
   setTimeout(() => tutor('intro', TUT.intro), 300);

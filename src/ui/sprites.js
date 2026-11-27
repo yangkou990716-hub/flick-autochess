@@ -230,7 +230,7 @@
   const runList = list => (c, r, col) => list.forEach(e => { c.save(); if (typeof e === 'function') e(c, r, col); else { const f = PARTS[e[0]]; f && f(c, r, Object.assign({ col }, e[1])); } c.restore(); });
   function compile(spec) { const o = { halo: !!spec.halo }; ['back', 'body', 'front', 'top'].forEach(k => { if (typeof spec[k] === 'function') o[k] = spec[k]; else if (spec[k] && spec[k].length) o[k] = runList(spec[k]); }); return o; }
   const compiled = {};
-  function define(id, spec) { LOOK[id] = spec; delete compiled[id]; cache.clear(); for (const k in iconCache) delete iconCache[k]; }
+  function define(id, spec) { LOOK[id] = spec; delete compiled[id]; cache.clear(); dropIcons(); }
   function lookOf(id) {
     if (DECOR[id]) return DECOR[id]; // 外部函式式覆蓋
     if (compiled[id]) return compiled[id];
@@ -433,8 +433,18 @@
     const U = FA.DATA && FA.DATA.units[id]; if (!U) return '';
     const cv = document.createElement('canvas'), d = 2; cv.width = cv.height = px * d; const c = cv.getContext('2d'); c.scale(d, d);
     const r = px / 3.6; draw(c, { id, color: U.color, star: star || 1, team: 0, i: 0, hp: 1, maxHp: 1 }, px / 2, px / 2 + r * 0.25, r, 0.5);
-    return iconCache[k] = cv.toDataURL();
+    return iconCache[k] = shortUrl(cv.toDataURL());
   }
+  // dataURL（每張數 KB）轉成 blob: 短網址：商店每次重畫都把圖示塞進 innerHTML，長字串解析很慢；同一網址瀏覽器也只解碼一次
+  function shortUrl(d) {
+    try {
+      if (typeof URL === 'undefined' || !URL.createObjectURL || typeof Blob === 'undefined') return d;
+      const bin = atob(d.slice(d.indexOf(',') + 1)), u8 = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      return URL.createObjectURL(new Blob([u8], { type: 'image/png' }));
+    } catch (e) { return d; }
+  }
+  const dropIcons = () => { for (const k in iconCache) { const u = iconCache[k]; if (u && u.startsWith('blob:')) try { URL.revokeObjectURL(u); } catch (e) { } delete iconCache[k]; } };
 
   FA.sprites = { draw, icon, badge, define, parts: PARTS, looks: LOOK, traitLooks: TRAIT_LOOK, kit: { paint, ink, gloss, flame, star5, gem, mix },
     clear: () => { cache.clear(); for (const k in compiled) delete compiled[k]; }, mix, hex, lum };

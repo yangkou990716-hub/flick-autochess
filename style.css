@@ -193,3 +193,18 @@ button.on{background:linear-gradient(180deg,#ffe27a,#f2b522 60%,#c88a00);color:#
 
 @media (max-width:360px),(max-height:700px){.card .t{font-size:9px}.card{min-height:68px}.u>span:first-child{font-size:11px}#title h1{font-size:38px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* ---- iPhone 相容（src/ui/mobile.js）：雙擊不放大、長按不跳選單、彈窗用動態視窗高度、捲動不連帶整頁回彈、橫向提示 ---- */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{-webkit-touch-callout:none;touch-action:manipulation}
+*{touch-action:manipulation}
+input,textarea,select{-webkit-touch-callout:default}
+.screen,.box,.modal{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.box{max-height:85dvh}
+#uxRotate{display:none}
+@media (orientation:landscape) and (max-height:520px){
+  #uxRotate{display:flex;position:fixed;inset:0;z-index:100;align-items:center;justify-content:center;text-align:center;padding:20px;
+    background:radial-gradient(circle at 50% 40%,#17355c,#050d1c);color:#e8f4ff;font-size:20px;line-height:1.6}
+  #uxRotate .ic{font-size:54px;display:inline-block;animation:uxRot 1.6s ease-in-out infinite}
+  #uxRotate span{font-size:14px;color:#9fb8d0}
+}
+@keyframes uxRot{0%,30%{transform:rotate(-90deg)}60%,100%{transform:rotate(0)}}
