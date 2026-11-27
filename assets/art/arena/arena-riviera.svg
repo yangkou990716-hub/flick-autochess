@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1680" viewBox="0 0 1120 1680">
+<title>Riviera pool arena</title>
+<image href="../samples/arena-A.png" x="0" y="0" width="1120" height="1680" preserveAspectRatio="xMidYMid slice"/>
+<rect width="1120" height="1680" fill="#fff1d5" opacity=".035"/>
+<path d="M18 18H1102V1662H18Z" fill="none" stroke="#e6c27e" stroke-width="12" opacity=".65"/>
+</svg>
