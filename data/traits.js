@@ -16,22 +16,22 @@
   };
   FA.DATA.lotteryRules = { perShot: 2, goldCap: 2, shotCap: 1, name: { none: '沒中', dmg: '本發傷害', stack: '撞牆加成多 1 層', shot: '大獎！多 1 動', gold: '特別獎 +1 金' }, onName: { wall: '撞牆', boom: '爆炸', pull: '吸附' } };
   FA.DATA.traits = {
-    blast: { name: '爆破', color: '#ff6b3d', tiers: [{ n: 2, mods: { blastMul: 0.1 }, lottery: LOT.blast2 }, { n: 4, mods: { blastMul: 0.3, atkPct: 0.05 }, lottery: LOT.blast4 }, { n: 6, mods: { blastMul: 0.45, atkPct: 0.08 }, lottery: LOT.blast6 }] },
+    blast: { name: '爆破', color: '#ff6b3d', tiers: [{ n: 2, mods: { blastMul: 0.1 }, lottery: LOT.blast2 }, { n: 4, mods: { blastMul: 0.27, atkPct: 0.05 }, lottery: LOT.blast4 }, { n: 6, mods: { blastMul: 0.45, atkPct: 0.08 }, lottery: LOT.blast6 }] },
     magnet: { name: '磁力', color: '#6b8cff', tiers: [{ n: 2, mods: { pullMul: 0.3, atkPct: 0.1 }, lottery: LOT.magnet2 }, { n: 4, mods: { pullMul: 0.7, atkPct: 0.12 }, lottery: LOT.magnet4 }] },
-    wall: { name: '鐵壁', color: '#7fbf5a', tiers: [{ n: 2, mods: { shieldPct: 0.1 } }, { n: 4, mods: { shieldPct: 0.06, hpPct: 0.02 } }, { n: 6, mods: { shieldPct: 0.2 } }] },
+    wall: { name: '鐵壁', color: '#7fbf5a', tiers: [{ n: 2, mods: { shieldPct: 0.1 } }, { n: 4, mods: { shieldPct: 0.02, hpPct: 0.02 } }, { n: 6, mods: { shieldPct: 0.2 } }] },
     swift: { name: '疾風', color: '#7fe3ff', tiers: [{ n: 2, mods: { speedPct: 0.05 } }, { n: 4, mods: { speedPct: 0.04 } }] },
     heavy: { name: '重裝', color: '#b08d57', tiers: [{ n: 2, mods: { massPct: 0.2, hpPct: 0.1 } }, { n: 4, mods: { massPct: 0.4, hpPct: 0.26 } }] },
-    toxic: { name: '毒素', color: '#9ccc65', tiers: [{ n: 2, mods: { poisonMul: 1.0, hpPct: 0.14 } }, { n: 3, mods: { poisonMul: 1.2, hpPct: 0.16 } }] },
-    mech: { name: '機械', color: '#90a4ae', tiers: [{ n: 2, mods: { atkPct: 0.1, massPct: 0.1 } }, { n: 4, mods: { atkPct: 0.25, massPct: 0.3, hpPct: 0.12 } }] },
-    bounce: { name: '彈跳', color: '#2ec4b6', tiers: [{ n: 2, mods: { wallAdd: 0.15 }, lottery: LOT.bounce2 }, { n: 4, mods: { wallAdd: 0.24, bounces: 1 }, lottery: LOT.bounce4 }] },
+    toxic: { name: '毒素', color: '#9ccc65', tiers: [{ n: 2, mods: { poisonMul: 1.0, hpPct: 0.14 } }, { n: 3, mods: { poisonMul: 1.1, hpPct: 0.11 } }] },
+    mech: { name: '機械', color: '#90a4ae', tiers: [{ n: 2, mods: { atkPct: 0.1, massPct: 0.1 } }, { n: 4, mods: { atkPct: 0.18, massPct: 0.3, hpPct: 0.1 } }] },
+    bounce: { name: '彈跳', color: '#2ec4b6', tiers: [{ n: 2, mods: { wallAdd: 0.15 }, lottery: LOT.bounce2 }, { n: 4, mods: { wallAdd: 0.18, bounces: 1 }, lottery: LOT.bounce4 }] },
     // ---- 第七輪擴充 ----：beats 剋制／weakTo 被剋（圖鑑顯示），why 說明
     snipe: { name: '狙擊', color: '#ff5370', beats: ['wall'], weakTo: ['magnet', 'shade'], why: '長距離助跑的高額單發能壓過護盾與減傷；被吸到身邊就沒助跑距離，單發大傷害也怕被閃避',
-      tiers: [{ n: 2, mods: { farDmg: 0.02 } }, { n: 4, mods: { farDmg: 0.05, atkPct: 0.05 } }] },
+      tiers: [{ n: 2, mods: { farDmg: 0.02 } }, { n: 4, mods: { farDmg: 0.035, atkPct: 0.03 } }] },
     shade: { name: '幽影', color: '#9575cd', beats: ['snipe', 'heavy'], weakTo: ['blast', 'toxic'], why: '閃避只對碰撞有效，專克靠單發撞擊的流派；爆炸、中毒、電擊等範圍與持續傷害閃不掉',
-      tiers: [{ n: 2, mods: { dodge: 0.07 } }, { n: 4, mods: { dodge: 0.14, hpPct: 0.06 } }] },
+      tiers: [{ n: 2, mods: { dodge: 0.07 } }, { n: 4, mods: { dodge: 0.07, hpPct: 0.02 } }] },
     // ---- 第八輪擴充 ----：神技（高操作上限）：只有「技巧觸發」（甜蜜點、正中、花式、節奏 4 層、引爆、分身）時才有加成
     finesse: { name: '神技', color: '#ffd740', beats: ['heavy'], weakTo: ['shade', 'magnet'], why: '精準一擊能把重裝的大塊頭當母球打飛、連撞；但閃避會讓瞄好的那一下落空，被吸附也會打亂算好的路線',
-      tiers: [{ n: 2, mods: { skillDmg: 0.15 } }, { n: 4, mods: { skillDmg: 0.3, skillEn: 20 } }] }
+      tiers: [{ n: 2, mods: { skillDmg: 0.15 } }, { n: 4, mods: { skillDmg: 0.35, skillEn: 20 } }] }
   };
   // 大招：角色依第一個羈絆決定（units 可用 ult 欄位覆蓋）
   FA.DATA.traitUlt = { blast: 'nova', magnet: 'vortex', wall: 'bulwark', swift: 'phase', heavy: 'quake', toxic: 'plague', bounce: 'ricochet', mech: 'overdrive', snipe: 'deadeye', shade: 'eclipse' };
@@ -64,7 +64,7 @@
   for (const k in FA.DATA.factions) FA.DATA.factions[k].members.forEach(id => { if (FA.DATA.units && FA.DATA.units[id]) FA.DATA.units[id].faction = k; });
 
   // ---- 徽章 ----（裝備的一種，佔 1 格；穿上的角色多 1 個該羈絆（計數 +1）＋小數值。run.js 會併進 items，tier:'emblem'）
-  const EMB = { blast: { blastMul: 0.05 }, magnet: { pullMul: 0.1 }, wall: { shieldPct: 0.04 }, swift: { speedPct: 0.03 }, heavy: { massPct: 0.08 }, toxic: { poisonMul: 0.2 }, mech: { atkPct: 0.04 }, bounce: { wallAdd: 0.04 }, snipe: { farDmg: 0.01 }, shade: { dodge: 0.03 }, finesse: { skillDmg: 0.05, atkPct: 0.03 } };
+  const EMB = { blast: { blastMul: 0.05 }, magnet: { pullMul: 0.1 }, wall: { shieldPct: 0.03 }, swift: { speedPct: 0.01 }, heavy: { massPct: 0.1, hpPct: 0.04 }, toxic: { poisonMul: 0.2 }, mech: { atkPct: 0.04 }, bounce: { wallAdd: 0.04 }, snipe: { farDmg: 0.01 }, shade: { dodge: 0.03 }, finesse: { skillDmg: 0.05, atkPct: 0.03 } };
   FA.DATA.emblems = {};
   for (const k in EMB) {
     const affix = {}; for (const m in EMB[k]) affix[m] = [EMB[k][m], EMB[k][m]];

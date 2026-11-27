@@ -16,12 +16,12 @@
     // 每個位面一個首領；終局首領會分裂
     // 每個位面 2 種首領隨機出現；ability/zap/split/rules 可自由組合
     bosses: [
-      [{ name: '圓環魔王', hp: 650, atk: 40, mass: 4, r: 42, color: '#b0306e', rules: ['spikes'] },
-       { name: '毒沼領主', hp: 700, atk: 36, mass: 3.5, r: 40, color: '#558b2f', rules: ['swamp'], ability: { type: 'poisonHit', mult: 0.3, turns: 3 } }],
-      [{ name: '磁極女王', hp: 900, atk: 46, mass: 3.5, r: 40, color: '#3d5afe', rules: ['shrink'], ability: { type: 'magnetStop', r: 260, pull: 600, mult: 0.3 } },
-       { name: '冰霜巨獸', hp: 980, atk: 44, mass: 4.5, r: 44, color: '#4fc3f7', rules: ['spikes'], ability: { type: 'freezeHit' } }],
-      [{ name: '分裂巨像', hp: 760, atk: 40, mass: 5, r: 48, color: '#6d4c41', rules: ['spikes', 'shrink'], split: { at: 0.5 } },
-       { name: '雷霆君王', hp: 720, atk: 38, mass: 3.8, r: 44, color: '#fbc02d', rules: ['shrink'], ability: { type: 'chainHit', n: 3, mult: 0.5, r: 260 }, zap: 1.0 }]
+      [{ name: '圓環魔王', hp: 665, atk: 40, mass: 4, r: 42, color: '#b0306e', rules: ['spikes'] },
+       { name: '毒沼領主', hp: 650, atk: 36, mass: 3.5, r: 40, color: '#558b2f', rules: ['swamp'], ability: { type: 'poisonHit', mult: 0.3, turns: 3 } }],
+      [{ name: '磁極女王', hp: 1150, atk: 48, mass: 3.5, r: 40, color: '#3d5afe', rules: ['shrink'], ability: { type: 'magnetStop', r: 260, pull: 600, mult: 0.3 } },
+       { name: '冰霜巨獸', hp: 830, atk: 44, mass: 4.5, r: 44, color: '#4fc3f7', rules: ['spikes'], ability: { type: 'freezeHit' } }],
+      [{ name: '分裂巨像', hp: 670, atk: 40, mass: 5, r: 48, color: '#6d4c41', rules: ['spikes', 'shrink'], split: { at: 0.5 } },
+       { name: '雷霆君王', hp: 690, atk: 38, mass: 3.8, r: 44, color: '#fbc02d', rules: ['shrink'], ability: { type: 'chainHit', n: 3, mult: 0.5, r: 260 }, zap: 1.0 }]
     ],
     ruleText: { spikes: '牆面尖刺：我方撞牆受傷', shrink: '場地縮小：每回合縮圈', swamp: '毒沼：場上有毒池' },
     // ---- 敵人詞綴（參考貨幣戰爭；開局依難度抽，整局生效；tier: soft 較溫和 / hard 較兇）----
