@@ -192,6 +192,12 @@
         if (ut === 'vortex') { fx({ k: 'vortex', x: e.x, y: e.y, r: e.r, life: 1, max: 1 }); for (let k = 0; k < 30; k++) { const a = Math.random() * TAU, d = e.r * (0.5 + Math.random() * 0.5); add({ x: e.x + Math.cos(a) * d, y: e.y + Math.sin(a) * d, vx: -Math.cos(a) * d * 2.2 - Math.sin(a) * 200, vy: -Math.sin(a) * d * 2.2 + Math.cos(a) * 200, life: 0.5, max: 0.5, col: '#c9b3ff', k: 'streak', drag: 0.97, add: true }); } V.shake = Math.max(V.shake, 10); }
         else if (ut === 'plague') { ring(e.x, e.y, e.r, '#8bd346', 0.7, { w: 5 }); for (let k = 0; k < 14; k++) { const a = Math.random() * TAU, s = 60 + Math.random() * 160; add({ x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1.3, max: 1.3, col: '#5e9e22', k: 'smoke', sz: 34 + Math.random() * 20, drag: 0.96 }); } burst(e.x, e.y, '#c5ef8a', 18, 260, { k: 'bubble', life: 1, max: 1, drag: 0.93 }); }
         else { ring(e.x, e.y, e.r, '#6b8cff', 0.45, { inward: true }); ring(e.x, e.y, e.r * 0.7, '#a9b8ff', 0.35, { inward: true, w: 2 }); } }
+      else if (['rampPlaced', 'rampBounce', 'ropePlaced', 'ropeCatch', 'relayEnergy', 'confiscate'].includes(e.t)) {
+        const label = { rampPlaced: '墊角', rampBounce: '斜面反彈', ropePlaced: '浮繩', ropeCatch: '浮繩截停', relayEnergy: `交棒 +${e.amount} 能量`, confiscate: '扣押' }[e.t];
+        const col = e.t.startsWith('ramp') ? '#ffd693' : e.t === 'confiscate' ? '#c2c6db' : '#a4f2ff';
+        V.texts.push({ x: e.x, y: e.y - 20, txt: label, life: 0.85, max: 0.85, col, size: 14, tier: 1, vy: 28 });
+        sparks(e.x, e.y, col, 5, 150);
+      }
       else if (e.t === 'launch') SND('launch');
       else if (e.t === 'freeze') { SND('freeze'); V.texts.push({ x: e.x, y: e.y - 24, txt: '❄ 冰凍', life: 0.9, max: 0.9, col: '#8df', size: 14, tier: 1, vy: 30 }); burst(e.x, e.y, '#dff4ff', 14, 200); ring(e.x, e.y, 34, '#bdf', 0.3); }
       else if (e.t === 'poison') { SND('poison'); burst(e.x, e.y, '#9ccc65', 8, 110, { k: 'bubble', life: 0.8, max: 0.8, drag: 0.92 }); }
@@ -518,8 +524,24 @@
   }
 
   // ---- 地板物件 ----
+  function drawBattleLine(z, b, preview) {
+    const x = CX + z.x * S, y = CY + z.y * S, dx = z.ux * z.len * S / 2, dy = z.uy * z.len * S / 2;
+    const ramp = z.kind === 'ramp', col = ramp ? '#ffd183' : z.team === 0 ? '#95ebff' : '#ffa6aa';
+    ctx.save();
+    ctx.beginPath(); ctx.rect(CX - b.hw * S, CY - b.hh * S, 2 * b.hw * S, 2 * b.hh * S); ctx.clip();
+    ctx.globalAlpha = preview ? 0.55 : 1;
+    ctx.beginPath(); ctx.moveTo(x - dx, y - dy); ctx.lineTo(x + dx, y + dy);
+    ctx.lineWidth = ramp ? 10 : 5; ctx.lineCap = 'round'; ctx.strokeStyle = '#11253e'; ctx.stroke();
+    if (preview || !ramp) ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = col; ctx.lineWidth = ramp ? 6 : 3; ctx.stroke();
+    ctx.fillStyle = col;
+    for (const sign of [-1, 1]) { ctx.beginPath(); ctx.arc(x + sign * dx, y + sign * dy, ramp ? 3 : 4, 0, TAU); ctx.fill(); }
+    ctx.restore();
+  }
+
   function drawZones(b, t) {
     (b.zones || []).forEach((z, zi) => {
+      if (z.kind === 'ramp' || z.kind === 'rope') { if (z.left > 0) drawBattleLine(z, b, false); return; }
       const zx = CX + z.x * S, zy = CY + z.y * S, zr = (z.r || 10) * S;
       if (z.kind === 'mine') {
         const col = z.team === 0 ? '#4fd2ff' : '#ff5a5a', rr = 8;
@@ -668,6 +690,7 @@
         if (!shortAim) { ctx.globalAlpha = 0.5; ctx.setLineDash([3, 5]); line(pr.pts, pr.cut, pr.pts.length - 1); ctx.setLineDash([]); }
         if (!shortAim && pr.hit && pr.hit.length > 1) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; line(pr.hit, 0, pr.hit.length - 1); const e = pr.hit[pr.hit.length - 1]; ctx.beginPath(); ctx.arc(CX + e[0] * S, CY + e[1] * S, 4, 0, TAU); ctx.fillStyle = '#fff'; ctx.fill(); }
         ctx.globalAlpha = 1; ctx.lineCap = 'butt';
+        if (pr.line) drawBattleLine(pr.line, b, true);
       }
       if (!ui.aim.enemy) { // 拉弓線
         const ox = CX + o.x * S, oy = CY + o.y * S, ex = CX + (o.x - Math.cos(ui.aim.angle) * 140 * ui.aim.power) * S, ey = CY + (o.y - Math.sin(ui.aim.angle) * 140 * ui.aim.power) * S;
@@ -758,6 +781,14 @@
       }
       if (o.temp) return;
       if (o.weapon && FA.DATA.weapons[o.weapon]) { if (SP && SP.badge) SP.badge(ctx, FA.DATA.weapons[o.weapon].icon, x + r * 0.9, y - r * 0.05, 7.5); else { ctx.font = `12px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillText(FA.DATA.weapons[o.weapon].icon, x + r * .95, y + r * .2); } }
+      if (o.itemMuted && o.baseItem) {
+        const item = FA.DATA.items[o.baseItem.id];
+        if (item) {
+          ctx.save(); ctx.globalAlpha = 0.48;
+          outTextC(item.icon, x - r * 0.9, y - r * 0.15, 13, '#ddd', 3);
+          ctx.restore();
+        }
+      }
       if (o.stunned) { ctx.font = `13px ${FONT}`; ctx.textAlign = 'center'; ctx.fillText('❄', x + Math.sin(t * 4) * 8, y - r * 1.45 - 6); }
       if (o.poison) { outTextC('☠' + o.poison.turns, x - r * 1.05, y - r * 0.6, 10, '#c5ef8a', 3); }
       if (o.fear) { outTextC('😱', x + r * 1.05, y - r * 0.6, 11, '#b388ff', 3); }

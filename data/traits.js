@@ -52,13 +52,13 @@
   // fx：drop 戰後掉基礎裝備機率 / gold 戰後金幣 / shots 每場多幾發（1 發＝2 動） / firstMul 每場第一發沒先撞牆時的碰撞傷害倍率
   //     rerollOff 商店刷新費 -值 / nodeReroll 每節點免費刷新 / lossRed 戰敗扣血 -值 / winHeal 勝利多回血
   FA.DATA.factions = {
-    workshop: { name: '工坊', icon: '🔧', color: '#ffb74d', members: ['spark', 'barrel', 'ironball', 'turret', 'mine', 'detonator', 'drill', 'sniper', 'javelin', 'rbomb'],
+    workshop: { name: '工坊', icon: '🔧', color: '#ffb74d', members: ['spark', 'barrel', 'ironball', 'turret', 'mine', 'detonator', 'drill', 'sniper', 'javelin', 'rbomb', 'rampmaker', 'salvage'],
       tiers: [{ n: 3, fx: { drop: 0.25 }, desc: '每場戰鬥後 25% 機率得 1 件基礎裝備' }, { n: 5, fx: { drop: 0.5, gold: 1 }, desc: '每場戰鬥後 50% 機率得 1 件基礎裝備，並 +1 金' }] },
-    circus: { name: '馬戲團', icon: '🎪', color: '#f06292', members: ['feather', 'boomer', 'spring', 'splitter', 'thunder', 'curler', 'illusion', 'hawk', 'cue', 'trick'],
+    circus: { name: '馬戲團', icon: '🎪', color: '#f06292', members: ['feather', 'boomer', 'spring', 'splitter', 'thunder', 'curler', 'illusion', 'hawk', 'cue', 'trick', 'relay'],
       tiers: [{ n: 3, fx: { shots: 0.5, firstMul: 0.8 }, desc: '每場多 1 動；但第一發要先撞牆，否則碰撞傷害 -20%' }, { n: 5, fx: { shots: 1, firstMul: 0.8 }, desc: '每場多 2 動；但第一發要先撞牆，否則碰撞傷害 -20%' }] },
     lab: { name: '研究所', icon: '🧪', color: '#4dd0e1', members: ['magnet', 'jelly', 'tesla', 'icy', 'blackhole', 'shroom', 'comet', 'spider', 'eel', 'archer'],
       tiers: [{ n: 3, fx: { rerollOff: 1 }, desc: '商店刷新費 -1' }, { n: 5, fx: { rerollOff: 1, nodeReroll: 1 }, desc: '商店刷新費 -1，每個節點 +1 次免費刷新' }] },
-    guard: { name: '衛隊', icon: '🛡', color: '#aed581', members: ['shield', 'medic', 'captain', 'berserker', 'vampire', 'angel', 'bullet', 'quake', 'shadow', 'nightmare', 'drummer', 'phantom'],
+    guard: { name: '衛隊', icon: '🛡', color: '#aed581', members: ['shield', 'medic', 'captain', 'berserker', 'vampire', 'angel', 'bullet', 'quake', 'shadow', 'nightmare', 'drummer', 'phantom', 'buoykeeper'],
       tiers: [{ n: 3, fx: { lossRed: 2 }, desc: '戰敗扣血 -2' }, { n: 5, fx: { lossRed: 4, winHeal: 1 }, desc: '戰敗扣血 -4，勝利多回 1 血' }] }
   };
   for (const k in FA.DATA.factions) FA.DATA.factions[k].members.forEach(id => { if (FA.DATA.units && FA.DATA.units[id]) FA.DATA.units[id].faction = k; });
