@@ -532,7 +532,7 @@
     if (!ready) ui.ultArmed = false;
     ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！剩 ${Math.max(0, b.moves[0])} 動` : b.phase === 'over' ? (b.winner === 0 ? '勝利！' : '落敗…')
       : b.phase === 'moving' && b.turn === 0 && FA.battle.canTap(b) ? FA.view.tapHint(b)
-      : b.phase === 'aim' ? (b.turn === 0 ? (ui.ultArmed ? '⚡ 拉射發光的棋子放大招（再按大招取消）' : '你的回合：按住棋子往後拉') : '敵方瞄準中…（點空白快轉）') : '';
+      : b.phase === 'aim' ? (b.turn === 0 ? (ui.ultArmed ? '⚡ 拉射發光的棋子放大招（再按大招取消）' : '你的回合：按住棋子往後拉') : ai && (ai.job || ai.preview) ? '敵方思考中…' : '敵方瞄準中…（點空白快轉）') : '';
     const bu = $('bUlt'); bu.classList.toggle('hidden', !ready); bu.classList.toggle('on', !!ui.ultArmed);
     const uh = ui.ultArmed ? '⚡ 大招待命<small>彈發光的棋子・再按取消</small>' : '⚡ 大招<small>能量滿的棋子會發光</small>';
     if (bu.innerHTML !== uh) bu.innerHTML = uh;
@@ -552,15 +552,31 @@
       `<div class="ux-rd">第 ${b.round} 輪・本輪我方未動 <b>${left}</b> 隻${b.deaths && b.deaths[0] ? `・我方被打倒 ${b.deaths[0]}` : ''}</div>`;
   }
   function enemyThink(dt) {
-    if (!ai) ai = { t: 0, c: null };
+    if (!ai || (ai.battle && (ai.battle !== battle || ai.shot !== battle.shotCount))) ai = { t: 0, c: null };
+    ai.battle = battle; ai.shot = battle.shotCount;
     ai.t += dt; if (QF) ai.ff = true;
     if (ai.ff && ai.t < 0.45) ai.t = 0.45;
     if (ai.t >= 0.45 && !ai.c) {
-      const st = mode === 'duel' ? 15 : run.stage + 1 + (run.node === 'encounter' ? RD.encounter[run.encLv].add : 0);
-      ai.c = FA.ai.choose(battle, 1, D.enemies.difficulty(st), battle.rng);
+      if (!ai.job) {
+        const st = mode === 'duel' ? 15 : run.stage + 1 + (run.node === 'encounter' ? RD.encounter[run.encLv].add : 0);
+        ai.job = FA.ai.chooseAsync(battle, 1, D.enemies.difficulty(st), battle.rng);
+      }
+      if (!ai.job.step()) return;
+      ai.c = ai.job.result; ai.job = null;
       if (!ai.c) { ai = null; return; }
-      if (ai.ff) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power, ai.c.ult, ai.c.tap); ui.aim = null; ai = null; return; }
-      ui.aim = { idx: ai.c.idx, angle: ai.c.angle, power: ai.c.power, enemy: true };
+      if (!ai.ff) {
+        const { idx, angle, power } = ai.c;
+        ai.preview = FA.ai.predictAsync(battle, idx, angle, power);
+        return; // 下一幀才開始算路線，選招與預覽不共用這一幀的額外時間。
+      }
+    }
+    if (ai.preview && !ai.ff) {
+      if (!ai.preview.step()) return;
+      const { idx, angle, power } = ai.c;
+      ui.pred = ai.preview.result;
+      ui.predKey = angle.toFixed(3) + '|' + power.toFixed(3) + '|' + idx;
+      ui.aim = ui.pred ? { idx, angle, power, enemy: true } : null;
+      ai.preview = null;
     }
     if (ai.c && (ai.t > 1.25 || ai.ff)) { FA.battle.launch(battle, ai.c.idx, ai.c.angle, ai.c.power, ai.c.ult, ai.c.tap); ui.aim = null; ai = null; }
   }
@@ -649,7 +665,7 @@
       }
       if (battle) { hud(); V.draw(battle, ui, paused || tutOn ? 0 : dt); tutTick(); }
     }
-    if (screen !== 'battle' || !battle) coach(null);
+    if (screen !== 'battle' || !battle) { ai = null; coach(null); }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

@@ -497,17 +497,24 @@
     return !!rec;
   }
   // 權威端：幽靈／離線玩家等一下就由 AI 出手；在線玩家超過 turnSec 秒沒出手也由 AI 代打
-  function aiTick(i, dt) {
+  function aiTick(i, dt, deadline) {
     const x = BS[i]; if (!x || !x.B || x.building || x.B.phase !== 'aim' || x.r !== round()) return;
     const key = x.r + '_' + x.applied; if (key !== x.key) { x.key = key; x.turnT = 0; x.aiT = 0; }
     x.turnT += dt;
-    if (!isAuth(x) || mvAt(x, x.applied) || x.aiBusy) return;
+    if (!isAuth(x) || mvAt(x, x.applied) || x.aiBusy || x.writing) { x.aiJob = null; return; }
     const c = ctrl(x, x.B.turn);
-    if (c !== GH && online(c)) { if (x.turnT < LD.turnSec) return; }
+    if (c !== GH && online(c)) { if (x.turnT < LD.turnSec) { x.aiJob = null; return; } }
     else if ((x.aiT += dt) < AI_DELAY) return;
+    if (performance.now() >= deadline) return;
+    const n = x.applied;
+    if (!x.aiJob || x.aiJob.battle !== x.B || x.aiJob.key !== key || x.aiJob.turn !== x.B.turn) {
+      const rng = { s: (x.pv.seed ^ Math.imul(n + 1, 0x9e3779b1) ^ x.r) | 0 };
+      x.aiJob = { battle: x.B, key, turn: x.B.turn, work: FA.ai.chooseAsync(x.B, x.B.turn, D.enemies.difficulty(AI_LV), rng) };
+    }
+    if (!x.aiJob.work.step(deadline - performance.now())) return;
+    const ch = x.aiJob.work.result; x.aiJob = null;
+    if (!ch) return;
     x.aiBusy = true;
-    const n = x.applied, ch = FA.ai.choose(x.B, x.B.turn, D.enemies.difficulty(AI_LV), { s: (x.pv.seed ^ Math.imul(n + 1, 0x9e3779b1) ^ x.r) | 0 });
-    if (!ch) { x.aiBusy = false; return; }
     writeMove(i, withTap({ r: x.r, n, by: 'ai:' + (c === GH ? 'ghost' : c), idx: ch.idx, angle: ch.angle, power: ch.power, ult: !!ch.ult }, ch.tap)).catch(() => { }).then(() => { x.aiBusy = false; });
   }
 
@@ -627,8 +634,10 @@
         else { acc += dt; let n = 0; while (acc >= C.dt && n++ < 16) { acc -= C.dt; if (BT.step(x.B)) { BT.endShot(x.B); acc = 0; consumeEv(x.B); x.applied++; afterShot(i); pump(i); break; } } }
       } else if (x.B.phase === 'moving') { BT.runShot(x.B); BT.endShot(x.B); x.B.events = []; x.applied++; afterShot(i); pump(i); } // 背景中的那對（例如切走畫面）直接算完
       else pump(i);
-      aiTick(i, dt);
     }
+    // 同一幀的所有配對共用 AI 預算，避免多場代打疊加成長幀。
+    const aiDeadline = performance.now() + 6;
+    for (const k in BS) aiTick(+k, dt, aiDeadline);
     if (overT > 0) { overT -= dt; if (overT <= 0) renderOver(); }
     const x = BS[view];
     if (scr === 'lgb' && x && x.B && !x.building) {

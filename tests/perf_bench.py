@@ -1,5 +1,6 @@
 # 效能量測：PORT=8891 python3 tests/perf_bench.py [CPU 節流倍數=4] [輸出資料夾=/tmp/perf]
 # 先在 repo 根目錄開：python3 -m http.server 8891
+# AI_ONLY=1 只比較固定種子的敵方回合開頭，含 AI、瞄準預覽與繪製。
 # 用 CDP 開 CPU 節流模擬低階手機（390x844、dpr 2），量：
 #  1. 戰鬥：6v6 全 3 星（爆炸、分裂、連鎖閃電、遙控炸彈、幻影…）、開場能量全滿、雙方都放大招；每幀 JS 工作時間＋幀間隔
 #  2. 商店：連續刷新／購買／拖曳時的處理時間（含重排）與幀間隔
@@ -19,10 +20,16 @@ INIT = """
 localStorage.setItem('fa_tut', JSON.stringify({skip: 1}));
 (() => {
   const raf = window.requestAnimationFrame.bind(window), Q = window.__perf = { on: false, work: [], gap: [], ph: [], dr: [], st: [], sn: [], cd: 0, cs: 0, cn: 0, last: 0, cur: 0, tick: 0, timers: 0, intervals: 0 };
-  let pend = [], sched = false;
-  const flush = ts => { sched = false; const list = pend; pend = []; const t0 = performance.now(); Q.cd = Q.cs = Q.cn = 0;
+  let pend = [], sched = false, prevEnemy = false;
+  Q.enemyWork = []; Q.enemyGap = [];
+  const enemyAim = () => {
+    if (!Q.on || !window.FA || !FA.debug) return false;
+    const b = FA.debug().battle;
+    return !!b && b.phase === 'aim' && b.turn === 1;
+  };
+  const flush = ts => { sched = false; const list = pend; pend = []; const t0 = performance.now(), enemy = enemyAim(); Q.cd = Q.cs = Q.cn = 0;
     for (const f of list) { try { f(ts); } catch (e) { setTimeout(() => { throw e; }); } }
-    const w = performance.now() - t0; if (Q.on) { let ph = ''; try { const b = FA.debug().battle; ph = b ? b.phase + b.turn : ''; } catch (e) { } Q.work.push(w); Q.ph.push(ph); Q.dr.push(Q.cd); Q.st.push(Q.cs); Q.sn.push(Q.cn); if (Q.last) Q.gap.push(ts - Q.last); } Q.last = ts; };
+    const w = performance.now() - t0; if (enemy) Q.enemyWork.push(w); if (prevEnemy && Q.on) Q.enemyGap.push(ts - Q.last); prevEnemy = enemy; if (Q.on) { let ph = ''; try { const b = FA.debug().battle; ph = b ? b.phase + b.turn : ''; } catch (e) { } Q.work.push(w); Q.ph.push(ph); Q.dr.push(Q.cd); Q.st.push(Q.cs); Q.sn.push(Q.cn); if (Q.last) Q.gap.push(ts - Q.last); } Q.last = ts; };
   window.requestAnimationFrame = f => { pend.push(f); if (!sched) { sched = true; raf(flush); } return ++Q.tick; };
   const st = window.setTimeout, si = window.setInterval, ct = window.clearTimeout, ci = window.clearInterval, live = new Set(), liveI = new Set();
   window.setTimeout = (f, ms, ...a) => { const id = st(() => { live.delete(id); typeof f === 'function' ? f(...a) : 0; }, ms); live.add(id); return id; };
@@ -83,6 +90,57 @@ def duel(p, code, ult=True, shots=None):
         time.sleep(0.05)
     p.click('#modalBox button.go')
 
+def bench_enemy_turn(p, cdp):
+    cdp.send('Emulation.setCPUThrottlingRate', {'rate': RATE})
+    work, gaps, turns = [], [], []
+    for seed in range(1, 9):
+        p.goto(ROOT)
+        p.wait_for_function('window.FA && FA.debug')
+        p.evaluate('localStorage.removeItem("flick_autochess_save_v2")')
+        p.click('#btnNew')
+        if p.is_visible('#modalBox button.go') and '開新局' in p.locator('#modalBox').inner_text():
+            p.click('#modalBox button.go')
+        while p.is_visible('#modalBox [data-c]'):
+            p.click('#modalBox [data-c="0"]')
+        if p.is_visible('#modalBox button.go'):
+            p.click('#modalBox button.go')
+        p.evaluate("""seed => {
+            const r = FA.debug().run;
+            r.rng.s = seed;
+            r.front.fill(null); r.back.fill(null); r.strats = [];
+        }""", seed)
+        code = p.evaluate(TEAM)
+        p.evaluate("""seed => {
+            const B = FA.battle, create = B.create;
+            B.create = o => {
+              B.create = create;
+              const b = create({ ...o, seed, first: 0 });
+              b.bodies.forEach(x => { x.energy = FA.DATA.config.ult.max; });
+              return b;
+            };
+            FA.settings.speed = 1;
+        }""", seed)
+        p.click('#bDuel'); p.fill('#duelCode', code); p.click('#modalBox button.go')
+        # 先畫出場地與棋子，再由我方原地出手，量進入敵方回合的幀。
+        p.evaluate("""async () => {
+            for (let i = 0; i < 8; i++) await new Promise(requestAnimationFrame);
+            const b = FA.debug().battle, mover = FA.battle.avail(b, 0)[0];
+            window.__perf.on = true;
+            if (!FA.battle.launch(b, mover.i, 0, 0, false)) throw new Error('無法開啟敵方回合量測');
+        }""")
+        p.wait_for_function("""() => {
+            const q = window.__perf, b = FA.debug().battle;
+            return b?.phase === 'moving' && b.turn === 1 && q.enemyWork.length > 0 && q.enemyGap.length === q.enemyWork.length;
+        }""")
+        frame = p.evaluate('() => { const q = window.__perf; q.on = false; return [q.enemyWork, q.enemyGap]; }')
+        work.extend(frame[0]); gaps.extend(frame[1])
+        turns.append({'seed': seed, 'work_max': round(max(frame[0]), 2), 'gap_max': round(max(frame[1]), 2)})
+    result = {'cpu_rate': RATE, 'enemy_work': summ(work), 'enemy_gap': summ(gaps), 'turns': turns}
+    print(f'CPU 節流 {RATE}x｜敵方回合開頭（8 個固定種子）｜每幀 JS', result['enemy_work'], '｜幀間隔', result['enemy_gap'])
+    print('各種子最長幀', turns)
+    with open(f'{OUT}/ai_turn_{int(RATE)}x.json', 'w') as f:
+        json.dump(result, f, ensure_ascii=False, indent=1)
+
 with sync_playwright() as pw:
     br = pw.chromium.launch(executable_path='/usr/bin/google-chrome', headless=os.environ.get('HEADED') != '1',
                             args=['--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--js-flags=--expose-gc'])
@@ -92,6 +150,12 @@ with sync_playwright() as pw:
     p.on('console', lambda m: (m.type == 'error') and errors.append(m.text))
     p.on('pageerror', lambda e: errors.append(f'pageerror: {e}'))
     cdp = ctx.new_cdp_session(p); cdp.send('Performance.enable')
+    if os.environ.get('AI_ONLY') == '1':
+        bench_enemy_turn(p, cdp)
+        br.close()
+        print('console 錯誤：', errors if errors else '無')
+        assert not errors, errors
+        sys.exit(0)
     p.goto(ROOT); p.wait_for_function('window.FA && FA.debug')
     p.evaluate('''() => { const Q = window.__perf, V = FA.view, B = FA.battle, d = V.draw, st = B.step;
       V.draw = function () { const t0 = performance.now(); try { return d.apply(this, arguments); } finally { Q.cd += performance.now() - t0; } };
