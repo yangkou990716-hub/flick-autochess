@@ -15,8 +15,8 @@
       { name: 'A1', desc: '敵人生命/攻擊 -2.5%', threat: -0.025, lossAdd: 0, hp: 80, wrench: 'wrench' },
       { name: 'A2', desc: '敵人 +4.5%，敵人詞綴 1（溫和）', threat: 0.045, lossAdd: 0, hp: 80, affixN: 1, affixSoft: true, wrench: 'wrench' },
       { name: 'A3', desc: '敵人 +9%，戰敗多扣 2 血，敵人詞綴 1', threat: 0.09, lossAdd: 2, hp: 80, affixN: 1, wrench: 'wrench1' },
-      { name: 'A4', desc: '敵人 +3.5%，戰敗多扣 3 血，敵人詞綴 2', threat: 0.035, lossAdd: 3, hp: 80, affixN: 2, wrench: 'wrench1' },
-      { name: 'A5 地獄', desc: '敵人 +7.5%，戰敗多扣 4 血，開局 75 血，敵人詞綴 3', threat: 0.075, lossAdd: 4, hp: 75, affixN: 3, wrench: 'wrench1' }
+      { name: 'A4', desc: '敵人 +11.5%，戰敗多扣 3 血，敵人詞綴 2', threat: 0.115, lossAdd: 3, hp: 80, affixN: 2, wrench: 'wrench1' },
+      { name: 'A5 地獄', desc: '敵人 +11%，戰敗多扣 4 血，開局 75 血，敵人詞綴 3', threat: 0.11, lossAdd: 4, hp: 75, affixN: 3, wrench: 'wrench1' }
     ],
     nodeWeights: { battle: 4, encounter: 3, reward: 2, supply: 1 },
     nodeInfo: {
