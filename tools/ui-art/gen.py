@@ -214,7 +214,7 @@ def logo():
     return paper(im, 0.04)
 
 
-if __name__ == '__main__':
+if __name__ == '__main__' and not (len(sys.argv) > 4 and sys.argv[4] == 'icons'):
     for k in NODES:
         save(node_icon(k), f'ui/node-{k}.png')
     save(button(CORAL, CORAL_D, CORAL_L), 'ui/button-primary-coral.png')
@@ -228,3 +228,83 @@ if __name__ == '__main__':
     save(card_frame(SILV, SILV_D, 0, prism=True), 'ui/strategy-frame-prismatic.png')
     save(panel(), 'ui/panel-bg.png')
     save(logo(), 'ui/title-logo.png')
+
+
+# ---------- 介面小圖示 64×64（取代 emoji）----------
+TRAIT_GLYPH = {  # 羈絆／陣營：彩色圓底＋奶油色剪影
+    'blast': ('unlit-bomb', '#FF6B3D'), 'magnet': ('magnet', '#6B8CFF'), 'wall': ('brick-wall', '#7FBF5A'),
+    'swift': ('whirlwind', '#45B8E0'), 'heavy': ('weight', '#B08D57'), 'toxic': ('poison-bottle', '#8DBB4F'),
+    'mech': ('cog', '#90A4AE'), 'bounce': ('basketball-ball', '#2EC4B6'), 'snipe': ('targeting', '#FF5370'),
+    'shade': ('hood', '#9575CD'), 'finesse': ('sparkles', '#F2B93B'),
+    'workshop': ('spanner', '#FFB74D'), 'circus': ('juggling-clubs', '#F06292'), 'lab': ('test-tubes', '#4DD0E1'),
+    'guard': ('checked-shield', '#AED581'),
+}
+PLAIN_GLYPH = {  # 單色剪影＋外框（放在奶油色按鈕／膠囊上）
+    'refresh': ('anticlockwise-rotation', SEA), 'lock': ('padlock', GOLD), 'unlock': ('padlock-open', CREAM_D),
+    'cart': ('shopping-cart', CORAL), 'wrench': ('spanner', '#8C98A4'), 'book': ('open-book', SEA),
+    'home': ('house', CORAL), 'globe': ('world', SEA), 'medal': ('medal', GOLD), 'swords': ('crossed-swords', CORAL),
+    'xp': ('upgrade', MINT), 'skull': ('crowned-skull', PLUM), 'chest': ('chest', GOLD), 'box': ('life-buoy', SEA),
+    'question': ('uncertainty', MINT),
+}
+
+
+def glyph_icon(g, fill, disc=None):
+    paths = ''.join(f'<path d="{d}"/>' for d in glyph(g))
+    if disc:
+        body = (f'<circle cx="64" cy="68" r="56" fill="{INK}"/><circle cx="64" cy="64" r="56" fill="{disc}"/>'
+                f'<ellipse cx="44" cy="34" rx="20" ry="10" fill="#fff" opacity=".35" transform="rotate(-28 44 34)"/>'
+                f'<circle cx="64" cy="64" r="56" fill="none" stroke="{INK}" stroke-width="8"/>')
+        sc, gf, sw = 0.15, CREAM, 70
+    else:
+        body, sc, gf, sw = '', 0.215, fill, 60
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">{body}
+  <g transform="translate(64 64) scale({sc}) translate(-256 -256)">
+    <g fill="{INK}" stroke="{INK}" stroke-width="{sw}" stroke-linejoin="round">{paths}</g>
+    <g fill="{gf}">{paths}</g></g></svg>'''
+    return render(svg, 64, 64)
+
+
+def custom_icons():
+    out = {}
+    out['coin'] = f'''<circle cx="64" cy="70" r="50" fill="{INK}"/><circle cx="64" cy="64" r="50" fill="{GOLD}" stroke="{INK}" stroke-width="8"/>
+      <circle cx="64" cy="64" r="32" fill="none" stroke="{GOLD_D}" stroke-width="7"/><rect x="56" y="44" width="16" height="40" rx="8" fill="{GOLD_L}" stroke="{INK}" stroke-width="5"/>
+      <ellipse cx="44" cy="40" rx="12" ry="6" fill="#fff" opacity=".6" transform="rotate(-30 44 40)"/>'''
+    heart = 'M64 110 C20 80 8 56 18 36 C28 16 54 16 64 38 C74 16 100 16 110 36 C120 56 108 80 64 110 Z'
+    out['heart'] = f'''<path d="{heart}" fill="{INK}" transform="translate(0 6)"/><path d="{heart}" fill="{CORAL}" stroke="{INK}" stroke-width="8" stroke-linejoin="round"/>
+      <ellipse cx="38" cy="44" rx="12" ry="7" fill="#fff" opacity=".55" transform="rotate(-35 38 44)"/>'''
+    shield = 'M64 12 L108 28 C108 70 92 98 64 116 C36 98 20 70 20 28 Z'
+    out['shield'] = f'''<path d="{shield}" fill="{INK}" transform="translate(0 5)"/><path d="{shield}" fill="{SEA_L}" stroke="{INK}" stroke-width="8" stroke-linejoin="round"/>
+      <path d="M64 24 L96 36 C96 68 84 90 64 104 Z" fill="{SEA}" opacity=".6"/>'''
+    pts = ' '.join(f'{64+52*math.cos(math.radians(-90+i*36))*(1 if i%2==0 else .45):.1f},{66+52*math.sin(math.radians(-90+i*36))*(1 if i%2==0 else .45):.1f}' for i in range(10))
+    out['star'] = f'''<polygon points="{pts}" fill="{INK}" transform="translate(0 5)"/><polygon points="{pts}" fill="{GOLD}" stroke="{INK}" stroke-width="8" stroke-linejoin="round"/>
+      <ellipse cx="54" cy="46" rx="8" ry="5" fill="#fff" opacity=".7"/>'''
+    out['menu'] = ''.join(f'<rect x="20" y="{y}" width="88" height="18" rx="9" fill="{CREAM}" stroke="{INK}" stroke-width="7"/>' for y in (22, 55, 88))
+    out['bolt'] = f'''<path d="M74 8 L28 72 H60 L50 120 L100 50 H68 Z" fill="{GOLD}" stroke="{INK}" stroke-width="8" stroke-linejoin="round"/>'''
+    for k, v in out.items():
+        out[k] = render(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">{v}</svg>', 64, 64)
+    # 站位標：照貨幣戰爭——上下兩格，亮上格＝前台、亮下格＝後台、兩格都亮＝前後台皆可
+    for k, (top, bot) in {'pos-front': (True, False), 'pos-back': (False, True), 'pos-both': (True, True)}.items():
+        tf = CORAL if top else CREAM
+        bf = SEA if bot else CREAM
+        out[k] = render(f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+          <rect x="22" y="12" width="84" height="110" rx="18" fill="{INK}"/>
+          <rect x="22" y="6" width="84" height="110" rx="18" fill="{INK}"/>
+          <rect x="32" y="16" width="64" height="40" rx="10" fill="{tf}"/>
+          <rect x="32" y="66" width="64" height="40" rx="10" fill="{bf}"/>
+          {'<rect x="40" y="22" width="30" height="8" rx="4" fill="#fff" opacity=".55"/>' if top else ''}
+          {'<rect x="40" y="72" width="30" height="8" rx="4" fill="#fff" opacity=".55"/>' if bot else ''}
+        </svg>''', 64, 64)
+    return out
+
+
+def all_icons():
+    for k, (g, col) in TRAIT_GLYPH.items():
+        save(glyph_icon(g, None, disc=col), f'icons/t-{k}.png')
+    for k, (g, col) in PLAIN_GLYPH.items():
+        save(glyph_icon(g, col), f'icons/{k}.png')
+    for k, im in custom_icons().items():
+        save(im, f'icons/{k}.png')
+
+
+if __name__ == '__main__' and len(sys.argv) > 4 and sys.argv[4] == 'icons':
+    all_icons()

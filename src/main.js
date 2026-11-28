@@ -81,7 +81,8 @@
   const FAC = D.factions || {};
   // 色盲友善：每個羈絆配圖示，介面不只靠顏色區分（新羈絆沒列到就用 ◆）
   const TRAIT_IC = { blast: '💥', magnet: '🧲', wall: '🧱', swift: '💨', heavy: '🪨', toxic: '🦠', mech: '⚙️', bounce: '🏀', snipe: '🎯', shade: '🌑', finesse: '✨' };
-  const tIc = k => TRAIT_IC[k] || (D.traits[k] && D.traits[k].icon) || '◆';
+  const TRAIT_IMG = new Set(['blast', 'magnet', 'wall', 'swift', 'heavy', 'toxic', 'mech', 'bounce', 'snipe', 'shade', 'finesse', 'workshop', 'circus', 'lab', 'guard']);
+  const tIc = k => TRAIT_IMG.has(k) && FA.gi ? FA.gi('t-' + k, 'tg') : TRAIT_IC[k] || (D.traits[k] && D.traits[k].icon) || '◆';
   const facName = id => { const U = D.units[id], F = U && U.faction && FAC[U.faction]; return F ? `<span style="color:${F.color}">${F.icon}${F.name}</span>` : ''; };
   const teamEmb = () => FA.battle.emblemMap(RUN.teamUnits(run));
   const weaponText = id => `${D.weapons[id].icon}${D.weapons[id].name}：${D.weapons[id].desc}`;
@@ -192,7 +193,7 @@
   // ---------- 商店畫面（橫向，照《貨幣戰爭》配置：docs/ui/currency-wars-ui.md）----------
   const COST_COL = ['#9aa5b1', '#3fb950', '#3a8dde', '#a35ce0', '#f0a000'];
   const roleOf = id => (D.units[id] || {}).role || 'front';
-  const posIc = role => `<span class="posic p-${role}" aria-label="${{ front: '前台', back: '後台', both: '前後台' }[role]}"><i></i><i></i></span>`;
+  const posIc = role => `<img class="posic gi p-${role}" src="assets/art/icons/pos-${role}.png" alt="${{ front: '前台', back: '後台', both: '前後台' }[role]}" title="${{ front: '前台', back: '後台', both: '前後台皆可' }[role]}" draggable="false">`;
   // 第幾級才解鎖這格（給鎖住的格子顯示「Lv5」）
   function lvNeed(z, i) {
     const s = RUN.sfx(run), k = C.levels.findIndex(L => (z === 'front' ? Math.min(C.maxFront, L.front + (s.frontAdd || 0)) : L.back) > i);
@@ -251,7 +252,7 @@
     else if (sel && sel.fa) info = facInfo(sel.fa);
     else if (sel && sel.st) { const S = RD.strategies[sel.st]; info = `<b>${S.name}</b>（${RD.tiers[S.tier].name}）<br>${S.desc}`; }
     else if (sel && sel.env && env) info = `<b>🌐 ${env.name}</b>（投資環境，整局生效）<br>${env.desc}`;
-    else info = `<span class="lbl shop-hint">點卡片購買、點角色看詳情；<b>長按拖曳</b>換位置，拖到<b>左下／右下</b>出售。3 隻同星自動升星。佈好陣按「出發」選路線。</span>`;
+    else info = '';
     $('info').innerHTML = info;
     // 底部商店抽屜：標題列＝等級機率、備戰區空位；卡片＝費用、羈絆、站位、能否升星
     const odds = (C.odds || [])[run.level - 1] || [], benchFree = run.bench.filter(x => !x).length;
@@ -295,7 +296,9 @@
     });
     return h;
   }
-  const icon = (id, star, px) => { try { return FA.sprites && FA.sprites.icon ? FA.sprites.icon(id, star, px) : null; } catch (e) { return null; } };
+  // 頭像：用 assets/art/units/ 的手繪圖（星級另外畫在底部）；找不到時退回程式繪製
+  const ART = new Set(Object.keys(D.units));
+  const icon = (id, star, px) => { if (ART.has(id)) return 'assets/art/units/s/' + id + '.png'; try { return FA.sprites && FA.sprites.icon ? FA.sprites.icon(id, star, px) : null; } catch (e) { return null; } };
   // 棋子：右上站位圖示、底部星級、下方最多 3 件裝備（貨幣戰爭的角色卡）、右側武器
   function unitHTML(u) {
     const U = D.units[u.id], ic = icon(u.id, u.star, 64);
@@ -965,7 +968,11 @@
       if (e.perNodeAtk && run.evoN) bits.push(`🧬進化 攻擊 +${Math.round(e.perNodeAtk * run.evoN * 100)}%`);
       if (run.bondQ) bits.push(`🤝人脈進階：啟動 ${run.bondQ.need} 個羈絆 → +${run.bondQ.gold} 金`);
       const sc = run.shopCons, X = sc && CS[sc.id];
-      if (X) bits.push(`<button data-econ="cons" ${run.gold < sc.price ? 'disabled' : ''}>${X.icon}${X.name} ${sc.price}💰</button>`);
+      // 商店道具格：照貨幣戰爭放在商店列最後一張卡（原本放右側資訊欄，不容易發現）
+      $('shopRow').classList.toggle('has-cons', !!X);
+      $('shopRow').querySelectorAll('.consc').forEach(n => n.remove());
+      if (X) $('shopRow').insertAdjacentHTML('beforeend', `<div class="card consc${run.gold < sc.price ? ' poor' : ''}" data-econ="cons" role="button" aria-label="買${X.name}"><span class="cc">${sc.price}<i>💰</i></span>` +
+        `<span class="cico">${X.icon}</span><div class="cbody"><div class="cn">${X.name}</div><div class="t">${X.desc || '道具'}</div></div></div>`);
       if (bits.length) $('enemyInfo').innerHTML += `<div class="lbl econ-bar">${bits.join('　')}</div>`;
       const notes = RUN.takeNotes(run); if (notes.length) $('info').innerHTML = `<b style="color:#ffc531">${notes.join('<br>')}</b>`;
       // ---- 連線自走棋 ----：標題、準備鍵；不提供匯出／代碼對戰
