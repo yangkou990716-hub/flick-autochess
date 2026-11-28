@@ -55,8 +55,8 @@
   <section id="lgb" class="screen hidden">
     <canvas id="lgcv"></canvas>
     <div id="lgHud" class="bhud nethud"></div>
-    <button id="lgMenu" class="pausebtn">☰</button>
-    <button id="lgUlt" class="ultbtn hidden">⚡ 大招</button>
+    <button id="lgMenu" class="pausebtn" aria-label="選單">${FA.gi('menu')}</button>
+    <button id="lgUlt" class="ultbtn hidden">${FA.gi('bolt')} 大招</button>
     <div id="lgOver" class="netover hidden"></div>
     <div id="lgSpec" class="lgspec hidden"></div>
   </section>`);
@@ -548,13 +548,19 @@
   $('lgMenu').onclick = () => { menu = true; show('lg'); };
 
   function hud() {
-    const x = BS[view]; if (!x || !x.B || !x.pv) { $('lgHud').innerHTML = `第 ${round()} 回合｜等待對戰…`; return; }
+    const x = BS[view];
+    if (!x || !x.B || !x.pv) {
+      const panel = $('lgHud'), text = `第 ${round()} 回合｜等待對戰…`;
+      if (panel._h !== text) { panel._h = text; panel.textContent = text; }
+      return;
+    }
     const b = x.B, s = mySeat(x), me0 = s === 1 ? 1 : 0, op = 1 - me0, nm = t => esc(x.pv.names[t]);
     const st = t => { const id = ctrl(x, t); return id === GH ? '<span class="netoff">AI</span>' : online(id) ? '' : '<span class="netoff">離線－AI 代打</span>'; };
-    const hp = t => { const id = ctrl(x, t); return id === GH || !R.players[id] ? '' : ' ❤' + R.players[id].hp; };
-    $('lgHud').innerHTML = `🏆 第 ${round()}/${LD.maxRounds} 回合${isHost() ? '　👑' : ''}${s < 0 ? '　👀 觀戰' : ''}<br>` +
-      `<span style="color:#5cf">${nm(me0)}${s >= 0 ? '（你）' : ''}${hp(me0)} 動數 ${Math.max(0, b.moves[me0])}/${b.movesMax[me0]}</span> ${st(me0)}<br>` +
-      `<span style="color:#f77">${nm(op)}${hp(op)} 動數 ${Math.max(0, b.moves[op])}/${b.movesMax[op]}</span> ${st(op)}`;
+    const hp = t => { const id = ctrl(x, t); return id === GH || !R.players[id] ? '' : ' ' + FA.gi('heart') + R.players[id].hp; };
+    const panel = $('lgHud'), html = `${FA.gi('medal')} 第 ${round()}/${LD.maxRounds} 回合${isHost() ? '　' + FA.gi('skull') : ''}${s < 0 ? '　觀戰' : ''}<br>` +
+      `<span class="battle-ally">${nm(me0)}${s >= 0 ? '（你）' : ''}${hp(me0)} 動數 ${Math.max(0, b.moves[me0])}/${b.movesMax[me0]}</span> ${st(me0)}<br>` +
+      `<span class="battle-foe">${nm(op)}${hp(op)} 動數 ${Math.max(0, b.moves[op])}/${b.movesMax[op]}</span> ${st(op)}`;
+    if (panel._h !== html) { panel._h = html; panel.innerHTML = html; }
     const c = ctrl(x, b.turn), turnName = x.pv.names[b.turn], left = LD.turnSec - x.turnT;
     ui.msg = x.pre ? (!x.pre.sent && BT.canTap(x.pre.P) ? V.tapHint(x.pre.P) : '') : b.phase === 'over' ? (s < 0 ? x.pv.names[b.winner] + ' 獲勝' : b.winner === s ? '勝利！' : '落敗…') : b.phase !== 'aim' ? '' :
       b.turn === s ? (x.writing || mvAt(x, x.applied) ? '傳送中…' : '輪到你：按住棋子往後拉' + (left < 10 ? `（${Math.max(0, Math.ceil(left))} 秒後自動出手）` : '')) :
@@ -563,7 +569,8 @@
     const ready = myTurn() && BT.avail(b, s).some(o => o.energy >= C.ult.max);
     if (!ready) ui.ultArmed = false;
     $('lgUlt').classList.toggle('hidden', !ready); $('lgUlt').classList.toggle('on', !!ui.ultArmed);
-    $('lgUlt').textContent = ui.ultArmed ? '⚡ 大招就緒（彈發光的棋子）' : '⚡ 大招';
+    const ult = $('lgUlt'), label = ui.ultArmed ? '大招就緒（彈發光的棋子）' : '大招';
+    if (ult.textContent.trim() !== label) ult.innerHTML = FA.gi('bolt') + ' ' + label;
   }
   // 對戰結束（或淘汰觀戰）時的面板：等待其他對戰、觀戰切換
   function renderOver() {

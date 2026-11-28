@@ -580,23 +580,26 @@
   }
   function hideBInfo() { $('uxBinfo').classList.add('hidden'); binfoT = 0; }
 
-  let hudHTML = '';
+  const ultButton = FA.gi('bolt') + ' 大招';
+  const guideHud = '<div class="ux-hl">' + FA.gi('swords') + ' 練習關｜把木樁全部撞倒</div>';
+  const setBattleHTML = (el, html) => {
+    if (el._h !== html) { el._h = html; el.innerHTML = html; }
+  };
   function hud() {
-    const b = battle, hp = t => Math.round(FA.battle.hpSum(b, t));
-    if (mode === 'guide') { $('bhud').innerHTML = '<div class="ux-hl">🎯 練習關｜把木樁全部撞倒</div>' + movesHUD(b); $('bUlt').classList.add('hidden'); ui.msg = ''; return; } // 練習關的說明在下方提示列（coach）
+    const b = battle;
+    if (mode === 'guide') { setBattleHTML($('bhud'), guideHud + movesHUD(b)); $('bUlt').classList.add('hidden'); ui.msg = ''; return; } // 練習關的說明在下方提示列（coach）
     if (mode === 'duel') run.enemy = { name: '對戰：' + duelName };
-    const env = run.env && mode !== 'duel' ? '🌐' + RD.envs[run.env].name : '';
+    const env = run.env && mode !== 'duel' ? FA.gi('globe') + ' ' + RD.envs[run.env].name : '';
     let hh = `<div class="ux-hl">位面${run.plane}｜${run.enemy.name}${b.rules.length ? '｜' + b.rules.map(r => D.enemies.ruleText[r]).join('、') : ''}　${env}</div>` + movesHUD(b);
-    if (b.affix && mode !== 'duel') hh += `<div style="color:#f8a;font-size:12px">☠ ${b.affix.ids.map(id => D.enemies.affixes[id].name).join('・')}</div>`; // ---- 敵人詞綴 ----
-    if (hh !== hudHTML) { hudHTML = hh; $('bhud').innerHTML = hh; } // 每幀都會呼叫：內容沒變就不重設（省 DOM 解析與重排）
+    if (b.affix && mode !== 'duel') hh += `<div class="battle-affix">${FA.gi('skull')} ${b.affix.ids.map(id => D.enemies.affixes[id].name).join('・')}</div>`; // ---- 敵人詞綴 ----
+    setBattleHTML($('bhud'), hh); // 每幀都會呼叫：內容沒變就不重設（省 DOM 解析與重排）
     const ready = b.phase === 'aim' && b.turn === 0 && FA.battle.avail(b, 0).some(o => o.energy >= UC.max);
     if (!ready) ui.ultArmed = false;
     ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！剩 ${Math.max(0, b.moves[0])} 動` : b.phase === 'over' ? (b.winner === 0 ? '勝利！' : '落敗…')
       : b.phase === 'moving' && b.turn === 0 && FA.battle.canTap(b) ? FA.view.tapHint(b)
       : b.phase === 'aim' ? (b.turn === 0 ? (ui.ultArmed ? '⚡ 拉射發光的棋子放大招（再按大招取消）' : '你的回合：按住棋子往後拉') : ai && (ai.job || ai.preview) ? '敵方思考中…' : '敵方瞄準中…（點空白快轉）') : '';
     const bu = $('bUlt'); bu.classList.toggle('hidden', !ready); bu.classList.toggle('on', !!ui.ultArmed);
-    const uh = ui.ultArmed ? '⚡ 大招待命<small>彈發光的棋子・再按取消</small>' : '⚡ 大招<small>能量滿的棋子會發光</small>';
-    if (bu.innerHTML !== uh) bu.innerHTML = uh;
+    setBattleHTML(bu, ultButton + (ui.ultArmed ? '待命<small>彈發光的棋子・再按取消</small>' : '<small>能量滿的棋子會發光</small>'));
     ui.msgCol = b.turn === 0 ? '#ffe066' : '#f99';
     FA.sound.edge('turn', b.phase === 'aim' && b.turn === 0 && !tutOn && !paused);
   }
@@ -609,7 +612,7 @@
       return `<div class="ux-mv${b.turn === t && b.phase !== 'over' ? ' cur' : ''}"><span class="l" style="color:${col}">${lbl}</span><span class="ux-mvb"><i style="width:${Math.round(n / mx * 100)}%;background:${col}"></i></span><span class="n">${n}/${mx}</span></div>`;
     };
     const left = FA.battle.avail(b, 0).length;
-    return `<div class="ux-mvs">${bar(0, '#4ea0ff', '我方')}${bar(1, '#ff5a5a', '敵方')}</div>` +
+    return `<div class="ux-mvs">${bar(0, '#1e5e96', '我方')}${bar(1, '#a83f32', '敵方')}</div>` +
       `<div class="ux-rd">第 ${b.round} 輪・本輪我方未動 <b>${left}</b> 隻${b.deaths && b.deaths[0] ? `・我方被打倒 ${b.deaths[0]}` : ''}</div>`;
   }
   function enemyThink(dt) {
@@ -736,10 +739,11 @@
   function pause() {
     if (screen !== 'battle' || paused) return;
     paused = true; ui.aim = null; drag = null; save();
-    modal('<h2>⏸ 暫停</h2>', [{ t: '繼續', cls: 'go', f: () => { paused = false; last = performance.now(); } }, { t: `音效：${FA.sound.on ? '開' : '關'}`, f: () => { FA.sound.toggle(); setBtns(); paused = false; pause(); } }, { t: `音樂：${FA.sound.musicOn ? '開' : '關'}`, f: () => { FA.sound.toggleMusic(); setBtns(); paused = false; pause(); } },
+    modal('<h2>' + FA.gi('pause') + ' 暫停</h2>', [{ t: '繼續', cls: 'go', f: () => { paused = false; last = performance.now(); } }, { t: `音效：${FA.sound.on ? '開' : '關'}`, f: () => { FA.sound.toggle(); setBtns(); paused = false; pause(); } }, { t: `音樂：${FA.sound.musicOn ? '開' : '關'}`, f: () => { FA.sound.toggleMusic(); setBtns(); paused = false; pause(); } },
       { t: `震動：${FA.settings.vibrate ? '開' : '關'}`, f: () => { toggleVib(); paused = false; pause(); } }, { t: `播放速度：${FA.settings.speed > 1 ? '2x' : '1x'}`, f: () => { $('uxSpeed').click(); paused = false; pause(); } },
-      { t: '回標題（進度已存）', f: () => { paused = false; toTitle(); } }]);
+      { t: '回標題（進度已存）', f: () => { paused = false; toTitle(); } }], 'battle-pause');
   }
+  $('bPause').innerHTML = FA.gi('pause');
   $('bPause').onclick = pause;
   document.addEventListener('visibilitychange', () => { if (document.hidden) { save(); pause(); } });
   addEventListener('pagehide', save);

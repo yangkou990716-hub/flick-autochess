@@ -56,8 +56,8 @@
   <section id="netb" class="screen hidden">
     <canvas id="netcv"></canvas>
     <div id="netHud" class="bhud nethud"></div>
-    <button id="netMenu" class="pausebtn">☰</button>
-    <button id="netUlt" class="ultbtn hidden">⚡ 大招</button>
+    <button id="netMenu" class="pausebtn" aria-label="選單">${FA.gi('menu')}</button>
+    <button id="netUlt" class="ultbtn hidden">${FA.gi('bolt')} 大招</button>
     <div id="netOver" class="netover hidden"></div>
   </section>`);
   const btn = document.createElement('button');
@@ -422,9 +422,10 @@
     const b = B, bv = R.battle; if (!b || !bv) return;
     const me = mySeat >= 0 ? mySeat : 0, op = 1 - me, opId = bv.seats[op], opP = R.players[opId];
     const st = !opP ? '<span class="netoff">已離開－AI 代打</span>' : opP.online ? '<span class="neton">在線</span>' : '<span class="netoff">離線－AI 代打</span>';
-    $('netHud').innerHTML = `房號 ${esc(R.code)}｜第 ${b.round} 輪${isHost() ? '　👑' : ''}<br>` +
-      `<span style="color:#5cf">${esc(bv.names[me])}${mySeat >= 0 ? '（你）' : ''} 動數 ${Math.max(0, b.moves[me])}/${b.movesMax[me]}</span><br>` +
-      `<span style="color:#f77">${esc(bv.names[op])} 動數 ${Math.max(0, b.moves[op])}/${b.movesMax[op]}</span>　${st}`;
+    const panel = $('netHud'), html = `房號 ${esc(R.code)}｜第 ${b.round} 輪${isHost() ? '　' + FA.gi('skull') : ''}<br>` +
+      `<span class="battle-ally">${esc(bv.names[me])}${mySeat >= 0 ? '（你）' : ''} 動數 ${Math.max(0, b.moves[me])}/${b.movesMax[me]}</span><br>` +
+      `<span class="battle-foe">${esc(bv.names[op])} 動數 ${Math.max(0, b.moves[op])}/${b.movesMax[op]}</span>　${st}`;
+    if (panel._h !== html) { panel._h = html; panel.innerHTML = html; }
     const opOff = !online(opId);
     ui.msg = pre ? (!pre.sent && BT.canTap(pre.P) ? V.tapHint(pre.P) : '') : b.phase === 'over' ? (b.winner === mySeat ? '勝利！' : '落敗…') : b.phase !== 'aim' ? '' :
       b.turn === mySeat ? (writing || mv(applied) ? '傳送中…' : '輪到你：按住棋子往後拉' + (TURN_LIMIT - turnT < 10 ? `（${Math.max(0, Math.ceil(TURN_LIMIT - turnT))} 秒後自動出手）` : '')) : opOff ? `${bv.names[b.turn]} 離線，AI 代打中…` : `輪到 ${bv.names[b.turn]}…`;
@@ -433,7 +434,8 @@
     const ready = myTurn() && BT.avail(b, mySeat).some(o => o.energy >= C.ult.max);
     if (!ready) ui.ultArmed = false;
     $('netUlt').classList.toggle('hidden', !ready); $('netUlt').classList.toggle('on', !!ui.ultArmed);
-    $('netUlt').textContent = ui.ultArmed ? '⚡ 大招就緒（彈發光的棋子）' : '⚡ 大招';
+    const ult = $('netUlt'), label = ui.ultArmed ? '大招就緒（彈發光的棋子）' : '大招';
+    if (ult.textContent.trim() !== label) ult.innerHTML = FA.gi('bolt') + ' ' + label;
   }
   function showOver() { if (!B || B.phase !== 'over') return; overShown = true; if (FA.sound && mySeat >= 0) FA.sound.music(B.winner === mySeat ? 'win' : 'lose'); renderOver(); }
   function renderOver() {
