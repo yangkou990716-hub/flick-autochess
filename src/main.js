@@ -126,21 +126,21 @@
     if (type === 'supply') { const o = RD.supplies[id]; return `<b>📦 ${o.name}</b><br>${o.desc}`; }
     if (type === 'encounter') {
       const e = RD.encounter[id], w = e.reward;
-      return `<b>❗ ${e.name}</b>${e.add ? `<span class="tier" style="color:#f88">敵人 +${e.add} 關${e.extra ? `、多 ${e.extra} 隻` : ''}</span>` : ''}<br>勝利獎勵：${[w.gold ? w.gold + ' 金' : '', w.item ? '裝備' : '', w.weapon ? '武器' : '', w.emblem ? '徽章' : '', w.cons ? consNames(w.cons) : '', w.consOne ? w.consOne.map(k => consNames({ [k]: 1 })).join('或') : '', w.strategy ? RD.tiers[w.strategy].name + '投資策略' : ''].filter(Boolean).join('＋')}`;
+      return `<b>❗ ${e.name}</b>${e.add ? `<span class="tier threat">敵人 +${e.add} 關${e.extra ? `、多 ${e.extra} 隻` : ''}</span>` : ''}<br>勝利獎勵：${[w.gold ? w.gold + ' 金' : '', w.item ? '裝備' : '', w.weapon ? '武器' : '', w.emblem ? '徽章' : '', w.cons ? consNames(w.cons) : '', w.consOne ? w.consOne.map(k => consNames({ [k]: 1 })).join('或') : '', w.strategy ? RD.tiers[w.strategy].name + '投資策略' : ''].filter(Boolean).join('＋')}`;
     }
-    if (type === 'path') { const o = RD.nodeInfo[id], ic = NODE_IC[id]; return `<span class="node-ic" style="--nc:${ic ? ic[1] : '#39c6ff'}">${ic && FA.ti ? FA.ti(ic[0]) : o.icon}</span><div><b>${o.name}</b><br>${o.desc}</div>`; }
+    if (type === 'path') { const o = RD.nodeInfo[id]; return `${nodeIcon(id, 'node-ic', '')}<div><b>${o.name}</b><br>${o.desc}</div>`; }
     if (type === 'strategy') {
       const o = RD.strategies[id], T = RD.tiers[o.tier];
-      return `<span class="tier" style="color:${T.color}">${T.name}</span><b>${o.name}</b><br>${o.desc}` +
-        (T.threat ? `<br><span style="color:#f88">之後敵人生命/攻擊 +${pct(T.threat)}${T.extraEnemy ? `、多 ${T.extraEnemy} 隻` : ''}</span>` : '');
+      return `<span class="tier">${T.name}</span><b>${o.name}</b><br>${o.desc}` +
+        (T.threat ? `<br><span class="threat">之後敵人生命/攻擊 +${pct(T.threat)}${T.extraEnemy ? `、多 ${T.extraEnemy} 隻` : ''}</span>` : '');
     }
   }
-  // ---- 畫面 ----：節點圖示（Tabler Icons）、位面地圖列、選擇卡材質
-  const NODE_IC = { battle: ['swords', '#ff6a4d'], encounter: ['alert-hexagon', '#f0a030'], reward: ['pig-money', '#ee6fa0'], supply: ['package', '#2fa8e0'], boss: ['crown', '#a04dff'] };
+  // ---- 畫面 ----：節點圖示、位面地圖列、選擇卡材質
+  const nodeIcon = (type, cls = '', alt = RD.nodeInfo[type]?.name) => RD.nodeInfo[type]
+    ? `<img class="${cls}" src="assets/art/ui/node-${type}.png" alt="${alt}" draggable="false">` : '?';
   function planeMap() {
     const st = RUN.steps(run);
-    return '<div class="pmap">' + st.map((x, k) => { const ic = x && NODE_IC[x];
-      return (k ? `<b class="${k <= run.step ? 'done' : ''}"></b>` : '') + `<i class="${k < run.step ? 'done' : k === run.step ? 'now' : ''}${x === 'boss' ? ' boss' : ''}">${ic && FA.ti ? FA.ti(ic[0]) : '?'}</i>`; }).join('') + '</div>';
+    return '<div class="pmap">' + st.map((x, k) => (k ? `<b class="${k <= run.step ? 'done' : ''}"></b>` : '') + `<i class="${k < run.step ? 'done' : k === run.step ? 'now' : ''}${x === 'boss' ? ' boss' : ''}">${nodeIcon(x)}</i>`).join('') + '</div>';
   }
   const choiceCls = (type, id) => 'm-' + (type === 'strategy' ? RD.strategies[id].tier : type);
   const choiceTitle = { opener: '選擇開局詞綴', env: '投資環境（持續整局）', path: '選擇路線', supply: '補給 3 選 1', encounter: '遭遇：選擇難度', strategy: '投資策略' };
@@ -675,7 +675,7 @@
   function movesRes(b) {
     if (!b.moves) return '';
     const n = t => Math.max(0, b.moves[t]);
-    return `<div class="ux-stats"><div><b style="color:#4ea0ff">${n(0)}/${b.movesMax[0]}</b>我方剩餘動數</div><div><b style="color:#ff5a5a">${b.movesMax[1] ? n(1) + '/' + b.movesMax[1] : '—'}</b>敵方剩餘動數</div></div>` +
+    return `<div class="ux-stats"><div><b class="ally">${n(0)}/${b.movesMax[0]}</b>我方剩餘動數</div><div><b class="enemy">${b.movesMax[1] ? n(1) + '/' + b.movesMax[1] : '—'}</b>敵方剩餘動數</div></div>` +
       `<div class="lbl">我方被打倒 ${(b.deaths || [0])[0]} 次（每次 -${C.deathCost} 動）・敵方被打倒 ${(b.deaths || [0, 0])[1]} 次</div>`;
   }
   function lossText(b, res) {
@@ -745,7 +745,7 @@
   addEventListener('pagehide', save);
 
   // ---- 敵人詞綴 ----
-  const affixCard = id => { const X = D.enemies.affixes[id]; return `<div class="choice m-affix"><span class="tier" style="color:${X.tier === 'hard' ? '#ff6b6b' : '#ffb74d'}">${X.tier === 'hard' ? '兇猛' : '溫和'}</span><b>☠ ${X.name}</b><br>${X.desc}</div>`; };
+  const affixCard = id => { const X = D.enemies.affixes[id]; return `<div class="choice m-affix"><span class="tier${X.tier === 'hard' ? ' threat' : ''}">${X.tier === 'hard' ? '兇猛' : '溫和'}</span><b>☠ ${X.name}</b><br>${X.desc}</div>`; };
   function affixChips() {
     if (!run || !run.affixes || !run.affixes.length) return '';
     return '<br>' + run.affixes.map(id => `<span class="st-chip" style="border-color:#f77;color:#f99" data-af="${id}">☠${D.enemies.affixes[id].name}</span>`).join('');
@@ -772,7 +772,7 @@
     徽章: () => '<div class="lbl">徽章佔 1 格裝備：穿上的角色多 1 個該羈絆（羈絆計數 +1，原本就有的不重複算）。取得：補給、遭遇難度 3+、白銀策略「買彩票」</div>' + Object.keys(D.emblems).map(k => `<div class="choice">${itemText({ id: k, rolls: Object.fromEntries(Object.entries(D.emblems[k].affix).map(([m, v]) => [m, v[0]])) })}</div>`).join(''),
     裝備: () => Object.values(D.items).filter(I => I.tier !== 'emblem').map(I => `<div class="choice"><b>${I.icon}${I.name}</b>${I.recipe ? `（${I.recipe.map(x => D.items[x].name).join('＋')}）` : '（基礎）'}<br>${Object.entries(I.affix).map(([k, v]) => D.modText[k] ? D.modText[k](v[0]) + (v[0] !== v[1] ? '～' + D.modText[k](v[1]).replace(/^[^\d+-]*/, '') : '') : '').join('、')}</div>`).join(''),
     武器: () => Object.keys(D.weapons).map(id => `<div class="choice">${weaponText(id)}</div>`).join(''),
-    策略: () => ['silver', 'gold', 'prism'].map(t => Object.values(RD.strategies).filter(S => S.tier === t).map(S => `<div class="choice m-${t}"><span class="tier" style="color:${RD.tiers[t].color}">${RD.tiers[t].name}</span><b>${S.name}</b><br>${S.desc}</div>`).join('')).join(''),
+    策略: () => ['silver', 'gold', 'prism'].map(t => Object.values(RD.strategies).filter(S => S.tier === t).map(S => `<div class="choice m-${t}"><span class="tier">${RD.tiers[t].name}</span><b>${S.name}</b><br>${S.desc}</div>`).join('')).join(''),
     環境: () => '<div class="lbl">投資環境：開局選一次，整局都生效</div>' + Object.values(RD.envs).map(E => `<div class="choice"><b>🌐${E.name}</b><br>${E.desc}</div>`).join('') + '<h3>開局詞綴</h3>' + Object.values(RD.openers).map(E => `<div class="choice"><b>${E.name}</b><br>${E.desc}</div>`).join(''),
     節點: () => `<div class="choice"><b>⚔ 戰鬥規則</b><br>・直式場地，雙方輪流：每場隨機決定先手，一輪內交替出手，每隻都動過一次才換下一輪<br>・雙方各 ${C.movesEach} 動（首領戰 ${C.movesEach + C.bossMovesAdd}），每彈一次 -1<br>・被打倒在出生點滿血復活，但該方動數再 -${C.deathCost}<br>・<b>對方動數先歸零就贏</b>；擊倒首領直接獲勝<br>・🛟泳圈柱：加速且本發攻擊 +20%；🌵尖刺柱：撞到受傷<br>・⚡大招：${ultCharge}（見「大招」分頁）<br>・落敗扣小隊血：基礎 ${C.lossDamage.base}＋敵方每剩 ${C.deathCost} 動 +${C.lossDamage.perEnemy}＋關卡加成（首領 +4）</div>` + Object.values(RD.nodeInfo).map(N => `<div class="choice"><b>${N.icon} ${N.name}</b><br>${N.desc}</div>`).join('') + '<div class="lbl">投資策略：開局 1 次、位面 1、2 首領後各 1 次，部分策略會延後再給（期貨）。黃金讓敵人 +6%、稜彩 +20% 且多 1 隻。</div>' +
       '<h3>補給內容</h3>' + Object.values(RD.supplies).map(E => `<div class="choice"><b>${E.name}</b>：${E.desc}</div>`).join(''),
@@ -786,7 +786,7 @@
   function codex(tab) {
     tab = tab || '角色';
     $('modalBox').className = 'box codex';
-    $('modalBox').innerHTML = `<h2>📖 圖鑑</h2><div class="traits">${Object.keys(CODEX).map(k => `<span class="tr ${k === tab ? 'act' : ''}" style="${k === tab ? 'background:#ffc531' : ''}" data-tab="${k}">${k}</span>`).join('')}</div><div class="choices">${CODEX[tab]()}</div><button data-close="1">關閉</button>`;
+    $('modalBox').innerHTML = `<h2>📖 圖鑑</h2><div class="traits">${Object.keys(CODEX).map(k => `<span class="tr ${k === tab ? 'act' : ''}" data-tab="${k}">${k}</span>`).join('')}</div><div class="choices">${CODEX[tab]()}</div><button data-close="1">關閉</button>`;
     $('modal').classList.remove('hidden'); $('modalBox').scrollTop = 0;
     $('modalBox').onclick = e => { if (e.target.dataset.tab) codex(e.target.dataset.tab); else if (e.target.dataset.close) $('modal').classList.add('hidden'); };
   }

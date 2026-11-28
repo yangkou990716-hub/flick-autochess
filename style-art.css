@@ -105,8 +105,6 @@ img.gi.tg{width:1.35em;height:1.35em}
 #shop .card .ux-syn.near{background:#4E2A2E14;color:var(--ink);border:0}
 #shop .card .cx{color:var(--co2)}
 
-/* 選卡視窗（環境、策略、路線）也換成奶油色 */
-#modal .box{font-family:Huninn,system-ui,sans-serif}
 #shop .card .t span{display:inline-flex;align-items:center;gap:2px;margin-right:4px}
 #shop .card .cn{font-size:15px}
 #shop .card img:not(.gi){margin-top:0;filter:drop-shadow(0 3px 0 #0003)}
@@ -124,3 +122,94 @@ img.gi.tg{width:1.35em;height:1.35em}
 #shop .card.consc{flex-direction:column;justify-content:center;gap:0;padding-top:8px}
 #shop .card.consc .t{display:none}
 #shop .card.consc .cn{font-size:14px;text-align:center}
+
+/* ---------- 共用面板與按鈕 ---------- */
+#title,#modal .box,#uxBubble,#uxRotate{font-family:Huninn,system-ui,sans-serif;color:var(--ink)}
+#modal,#uxTut.dim{background:#4E2A2E99}
+#modal .box,#uxTut #uxBubble,#shop #shopMenu,#uxRotate>div{
+  background:var(--cr);color:var(--ink);border:3px solid var(--ink);border-image:none;border-radius:18px;
+  box-shadow:0 4px 0 var(--ink),0 12px 24px #4E2A2E40
+}
+:is(#modal,#uxBubble,#title) button,#title .row button{
+  font-family:inherit;color:var(--ink);background:var(--cr);border:3px solid var(--ink);border-radius:16px;
+  box-shadow:0 4px 0 var(--ink);text-shadow:none;border-image:none
+}
+:is(#modal,#uxBubble,#title) button:active{
+  transform:translateY(3px);box-shadow:0 1px 0 var(--ink);filter:none
+}
+:is(#modal,#uxBubble,#title) button.go,#title #btnNew{
+  color:#fff;text-shadow:0 2px 0 #0005;
+  background:linear-gradient(180deg,#FFA88C 0 18%,var(--co) 19% 78%,var(--co2) 79%)
+}
+:is(#modal,#uxBubble) button.go::after{content:none}
+#modal button.on{
+  background:linear-gradient(180deg,#FFE08A 0 18%,var(--go) 19% 78%,var(--go2) 79%)
+}
+#modal button.danger{background:var(--ink);color:var(--cr)}
+#modal .box :is(.lbl,h3),#uxTut #uxBubble :is(.n,.lbl),#uxRotate span{color:#76504D}
+#modal .box h2,#modal .ux-stats b{text-shadow:none}
+#modal .box :is(.k,.threat){color:#963B2D}
+#modal .box :is(input,textarea,select),#title select{
+  background:#FFFBF1;color:var(--ink);border:2px solid var(--ink);border-radius:10px
+}
+
+/* ---------- 選卡、路線、結算、圖鑑 ---------- */
+#modal .choice{
+  background:#FFFBF1;color:var(--ink);border:3px solid var(--ink);box-shadow:0 4px 0 var(--ink)
+}
+#modal .choice[data-c]:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+#modal .pick .tier{background:var(--cr2)}
+#modal .pick .threat{margin-top:auto;font-size:12px}
+#modal .choice:is(.m-silver,.m-gold,.m-prism){
+  background:none;border:12px solid transparent;border-radius:0;box-shadow:none;
+  border-image:var(--strategy-frame) 96 fill / 12px stretch
+}
+#modal .choice.m-silver{--strategy-frame:url(assets/art/ui/strategy-frame-silver.png)}
+#modal .choice.m-gold{--strategy-frame:url(assets/art/ui/strategy-frame-gold.png)}
+#modal .choice.m-prism{--strategy-frame:url(assets/art/ui/strategy-frame-prismatic.png);animation-name:dealIn}
+#modal .choice:is(.m-gold,.m-prism)::after{content:none}
+#modal .choice:is(.m-silver,.m-gold,.m-prism)[data-c]:active{box-shadow:none}
+#modal .node-ic{background:none;border-radius:0;box-shadow:none;object-fit:contain}
+#modal .pmap i{background:none;border:0;color:var(--ink)}
+#modal .pmap img{width:100%;height:100%;object-fit:contain}
+#modal .pmap i.done{opacity:.7}
+#modal .pmap i.now{outline:2px solid var(--ink);outline-offset:1px;box-shadow:0 0 0 5px var(--go)}
+#modal .pmap b{background:repeating-linear-gradient(90deg,#4E2A2E66 0 4px,transparent 4px 7px)}
+#modal .pmap b.done{background:var(--se)}
+#modal :is(.ux-res,.ux-stats div,.res-h,.codex>.traits .tr){
+  color:var(--ink);background:var(--cr2);border:2px solid var(--ink);box-shadow:0 2px 0 var(--ink);text-shadow:none
+}
+#modal .ux-stats b{color:var(--ink)}
+#modal .ux-stats .ally{color:var(--se2)}
+#modal .ux-stats .enemy{color:#963B2D}
+#modal .codex>.traits{gap:4px}
+#modal .codex>.traits .tr{border-radius:10px}
+#modal :is(.res-h.win,.codex>.traits .tr.act){background:var(--go);outline:none}
+#modal .res-h.lose{background:var(--co)}
+#modal .cx-u img.gi{margin-top:0;filter:none}
+#modal .codex b[style^="color:"],#modal .codex span[style^="color:"]{color:var(--ink)!important}
+#modal :is(.setrow,.setfooter){border-color:#4E2A2E40}
+
+/* ---------- 教學泡泡與直向提示 ---------- */
+#uxTut #uxRing{
+  border:3px solid var(--ink);
+  box-shadow:0 0 0 2px var(--cr),0 0 0 9999px #4E2A2E99
+}
+#uxBubble .bt{margin-bottom:4px}
+@media (orientation:portrait) and (max-width:600px){
+  #uxRotate{background:var(--se)}
+  #uxRotate>div{padding:20px 24px}
+}
+
+/* ---------- 標題 ---------- */
+#title{background:var(--se) url(assets/art/ui/title-bg.png) center/cover no-repeat}
+#title h1{width:min(100%,440px);filter:none}
+#title h1 img{display:block;width:100%;height:auto;max-height:44dvh;object-fit:contain}
+#title :is(.sub,.hint,.asc){
+  background:var(--cr);color:var(--ink);border:2px solid var(--ink);border-radius:16px;
+  box-shadow:0 2px 0 var(--ink);padding:3px 10px
+}
+
+@media (orientation:landscape){
+  #title .trow button{padding-inline:2px}
+}

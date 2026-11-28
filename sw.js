@@ -1,6 +1,9 @@
 // 離線快取：改版時把 VERSION +1
-const VERSION = 'fa-v36';
+const VERSION = 'fa-v37';
 const FILES = ['./', 'index.html', 'style.css', 'style-art.css', 'src/ui/icons.js', 'manifest.json', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
+  'assets/fonts/jf-openhuninn-2.1.woff2', 'assets/art/ui/title-bg.png', 'assets/art/ui/title-logo.png',
+  'assets/art/ui/strategy-frame-silver.png', 'assets/art/ui/strategy-frame-gold.png', 'assets/art/ui/strategy-frame-prismatic.png',
+  'assets/art/ui/node-battle.png', 'assets/art/ui/node-encounter.png', 'assets/art/ui/node-reward.png', 'assets/art/ui/node-supply.png', 'assets/art/ui/node-boss.png',
   'data/config.js', 'data/units.js', 'data/traits.js', 'data/items.js', 'data/enemies.js', 'data/run.js', 'data/league.js',
   'src/core/battle.js', 'src/core/ai.js', 'src/core/run.js', 'src/core/league.js', 'vendor/zzfx.js', 'src/ui/sound.js', 'vendor/tabler-icons.js', 'src/ui/sprites.js', 'src/ui/sprites_new.js', 'src/ui/sprites_r8.js', 'src/ui/render.js', 'src/main.js', 'src/ui/settings.js', 'src/ui/title.js', 'src/ui/mobile.js',
   'vendor/firebase-app-compat.js', 'vendor/firebase-database-compat.js', 'data/netconfig.js', 'src/online.js', 'src/netmock.js', 'src/league.js'];

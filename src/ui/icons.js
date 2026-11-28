@@ -5,7 +5,7 @@
   const BASE = 'assets/art/icons/';
   const MAP = {
     '💰': 'coin', '❤': 'heart', '🛡': 'shield', '🔄': 'refresh', '🔒': 'lock', '🔓': 'unlock', '🛒': 'cart',
-    '⚡': 'bolt', '📖': 'book', '☰': 'menu', '🏠': 'home', '🌐': 'globe', '⚔': 'swords', '🔧': 'wrench',
+    '⚡': 'bolt', '📖': 'book', '📘': 'book', '☰': 'menu', '🏠': 'home', '🌐': 'globe', '⚔': 'swords', '⚙': 'wrench', '🔧': 'wrench',
     '🎖': 'medal', '☠': 'skull', '👑': 'skull', '📦': 'box', '❗': 'question', '🐷': 'chest', '🎁': 'chest'
   };
   const RE = new RegExp('(' + Object.keys(MAP).join('|') + ')\\uFE0F?', 'g');
