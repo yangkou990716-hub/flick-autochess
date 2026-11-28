@@ -1,23 +1,25 @@
 # art-a batch 4 UI 九宮格切線建議
 
 方向 A：手繪水粉、地中海度假泳池。
+
+Logo、節點圖示、按鈕、膠囊、卡框、面板由 `tools/ui-art/gen.py` 繪製（規則見 `docs/art/ui-art-direction.md`），場地與標題背景為生圖。
 以下為建議的 9-slice（九宮格）切線，以像素表示：`left, top, right, bottom`。
 這些值保守地避開外框花飾、金邊與角落裝飾，適合在 UI 中做縮放。
 
 ## 建議切線
 
-- `panel-bg.png` — `96, 96, 96, 96`
-- `button-primary-coral.png` — `96, 32, 96, 32`
-- `button-secondary-sea.png` — `96, 32, 96, 32`
-- `synergy-capsule.png` — `72, 24, 72, 24`
-- `shop-frame-1.png` — `84, 84, 84, 108`
-- `shop-frame-2.png` — `84, 84, 84, 108`
-- `shop-frame-3.png` — `84, 84, 84, 108`
-- `shop-frame-4.png` — `84, 84, 84, 108`
-- `shop-frame-5.png` — `84, 84, 84, 108`
-- `strategy-frame-silver.png` — `84, 84, 84, 108`
-- `strategy-frame-gold.png` — `84, 84, 84, 108`
-- `strategy-frame-prismatic.png` — `84, 84, 84, 108`
+- `panel-bg.png` — `64, 100, 64, 64`
+- `button-primary-coral.png` — `72, 64, 72, 64`
+- `button-secondary-sea.png` — `72, 64, 72, 64`
+- `synergy-capsule.png` — `110, 56, 60, 56`（左側圓點不拉伸）
+- `shop-frame-1.png` — `96, 96, 96, 96`
+- `shop-frame-2.png` — `96, 96, 96, 96`
+- `shop-frame-3.png` — `96, 96, 96, 96`
+- `shop-frame-4.png` — `96, 96, 96, 96`
+- `shop-frame-5.png` — `96, 96, 96, 96`
+- `strategy-frame-silver.png` — `96, 96, 96, 96`
+- `strategy-frame-gold.png` — `96, 96, 96, 96`
+- `strategy-frame-prismatic.png` — `96, 96, 96, 96`
 
 ## 不建議做九宮格的素材
 
@@ -28,9 +30,9 @@
 - `assets/art/arena/pillar-swim-ring.png`
 - `assets/art/arena/pillar-spikes.png`
 - `node-battle.png`
-- `node-shop.png`
-- `node-treasure.png`
-- `node-rest.png`
+- `node-encounter.png`
+- `node-reward.png`
+- `node-supply.png`
 - `node-boss.png`
 - `title-bg.png`
 - `title-logo.png`
@@ -53,9 +55,9 @@
 - `strategy-frame-prismatic.png` — 512×640（透明）
 - `synergy-capsule.png` — 360×128（透明）
 - `node-battle.png` — 128×128（透明）
-- `node-shop.png` — 128×128（透明）
-- `node-treasure.png` — 128×128（透明）
-- `node-rest.png` — 128×128（透明）
+- `node-encounter.png` — 128×128（透明）
+- `node-reward.png` — 128×128（透明）
+- `node-supply.png` — 128×128（透明）
 - `node-boss.png` — 128×128（透明）
 - `title-bg.png` — 1080×1920
 - `title-logo.png` — 1024×512（透明）
