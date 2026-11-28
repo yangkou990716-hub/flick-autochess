@@ -22,7 +22,7 @@
       [[0, -0.2, 0.07, 'ring'], [0, 0.2, 0.07, 'ring'], [-0.65, 0, 0.06, 'spike'], [0.65, 0, 0.06, 'spike']]
     ],
     // 大招：能量滿 100 可發動（彈射時、撞到敵人、被撞都會充能）
-    ult: { max: 100, start: 80, gainLaunch: 40, gainHit: 15, gainHurt: 30 }, // start 開場能量
+    ult: { max: 100, start: 38, gainLaunch: 32, gainHit: 11, gainHurt: 21 }, // start 開場能量
     squadHp: 80, winHeal: 2, lastStand: 1, // 開局 80 血；贏 +2（上限 80）；一次鎖一血免死
     startGold: 8, baseIncome: 5, interestPer: 10, interestMax: 5,
     streak: [[2, 1], [4, 2], [6, 3]],
