@@ -2,10 +2,12 @@
 (function (g) {
   const FA = g.FA = g.FA || {}; FA.DATA = FA.DATA || {};
   FA.DATA.config = {
-    arenaR: 300, dt: 1 / 120, friction: 0.75, linDecel: 35, stopV: 6, maxSimSec: 12,
+    arenaR: 300, dt: 1 / 120, friction: 0.62, linDecel: 28, stopV: 6, maxSimSec: 12,
     maxLaunch: 1000, dmgSpeedRef: 400, hpMul: 1.6, minHitSpeed: 60, wallBonusPer: 0.25, baseBounces: 2,
     // hpMul：全體（含首領）生命倍率，拉長每場發數
-    restitution: 0.97, wallRest: 0.95,
+    restitution: 1.0, wallRest: 0.97,
+    // 碰撞手感（v1.4）：完全彈性＋動量守恆；massExp 壓縮輕重差距（有效質量＝m^massExp），輕棋子撞重棋子也推得動，被撞的飛得更遠
+    massExp: 0.6,
     fullPowerAt: 0.95, fullPowerBonus: 0.15, // 力道：拉滿 95% 以上為「全力」，速度 +15%
     turnsEach: 5, roundsEach: 2, bossRoundsAdd: 1,
     // 戰鬥規則（參考豹豹碰碰大作戰）：一輪內雙方交替、每隻都動一次才換輪；雙方各有總動數，每彈一次 -1，

@@ -621,7 +621,7 @@
           const pa = a.pierceLeft > 0 && sa > 200 ? a : c.pierceLeft > 0 && sc > 200 ? c : null;
           if (pa) { const pv = hyp(pa.vx, pa.vy); pa.preSp = pv; pa.hitCos = pv > 1 ? (pa === a ? sa : sc) / pv : 0; pa.pierceLeft--; b.ghost[key] = 1; const t = pa === a ? c : a; onHit(b, pa, t, pa === a ? sa : sc); b.events.push({ t: 'pierce', x: t.x, y: t.y }); continue; }
         }
-        const ia = 1 / a.m, ic = 1 / c.m, ov = rr - d;
+        const me = cfg.massExp || 1, ia = 1 / Math.pow(a.m, me), ic = 1 / Math.pow(c.m, me), ov = rr - d; // 有效質量（見 config.massExp）
         a.x -= nx * ov * ia / (ia + ic); a.y -= ny * ov * ia / (ia + ic);
         c.x += nx * ov * ic / (ia + ic); c.y += ny * ov * ic / (ia + ic);
         if (rv >= 0) continue;
