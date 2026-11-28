@@ -1,11 +1,11 @@
-// 戰鬥畫面：Canvas 向量繪製＋爽感回饋（頓幀、震動、粒子、分級傷害數字、層次爆炸、連鎖計數、牆面閃光）
-// 角色外觀在 src/ui/sprites.js（FA.sprites），沒載入時退回簡易圓形
+// 戰鬥畫面：Canvas 手繪素材＋爽感回饋（頓幀、震動、粒子、分級傷害數字、層次爆炸、連鎖計數、牆面閃光）
+// 手繪棋子載入失敗時用 FA.sprites 當備援
 (function (g) {
   const FA = g.FA = g.FA || {};
   const SND = (n, k) => n && FA.sound && FA.sound.play(n, k);
   const TAU = Math.PI * 2, FONT = '-apple-system,"PingFang TC","Noto Sans TC",sans-serif';
   const V = FA.view = { trails: {}, bolts: [], parts: [], texts: [], rings: [], flashes: [], decals: [], walls: [], fx: [], ripples: [], shake: 0, hitstop: 0, banner: null, cutin: null, edge: null, shrinkT: 0, chainShow: 0, chainN: 0, chainPulse: 0, screenFlash: 0 };
-  let cv, ctx, W, H, RW, RH, VW, VH, dpr, S, CX, CY, bgCache = null, lastB = null, causA = null, pillarCache = {};
+  let cv, ctx, W, H, RW, RH, VW, VH, dpr, S, CX, CY, bgCache = null, lastB = null, pillarCache = {}, artReady = false;
   const dead = {}, hpLag = {}, spawnIn = {}, ghosts = {}, ripT = {}, pHit = {}, emitT = {}, vis = {}; // vis：棋子的視覺變形（壓扁回彈、跳起高度），不影響物理
   const BGP = 12; // 背景快取外擴（震動時不露邊）
   // 9 種大招的配色／圖示
@@ -27,7 +27,7 @@
   V.init = c => { cv = c; ctx = c.getContext('2d'); V.resize(); addEventListener('resize', V.resize); };
   V.resize = () => {
     dpr = Math.min(2, devicePixelRatio || 1); W = RW = innerWidth; H = RH = innerHeight;
-    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); pillarCache = {}; causA = null;
+    cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); pillarCache = {};
     const A = FA.DATA.config.arena;
     // 橫向：世界座標不變，畫面層把場地轉 90°（我方在左、敵方在右）；VW×VH 是轉回直式後的虛擬畫布
     V.rot = RW > RH;
@@ -50,6 +50,9 @@
   V.tapHint = b => { const mv = b.bodies[b.mover], k = FA.battle.tapAbility(mv); return k === 'boom' ? '👆 點畫面任一處：引爆！' : k === 'split' ? '👆 點想讓幻影衝去的位置！' : ''; };
   V.toWorld = (x, y) => V.rot ? { x: (y - CX) / S, y: (RW - x - CY) / S } : { x: (x - CX) / S, y: (y - CY) / S };
   V.reset = () => {
+    artReady = false;
+    lastB = null;
+    if (ctx) ctx.clearRect(0, 0, RW, RH);
     V.trails = {}; V.bolts = []; V.parts = []; V.texts = []; V.rings = []; V.flashes = []; V.decals = []; V.walls = []; V.fx = []; V.ripples = [];
     V.shake = 0; V.hitstop = 0; V.banner = null; V.cutin = null; V.edge = null; V.shrinkT = 0; V.chainN = 0; V.chainShow = 0; V.chainPulse = 0; V.screenFlash = 0;
     [dead, hpLag, spawnIn, ghosts, ripT, pHit, emitT, vis].forEach(o => { for (const k in o) delete o[k]; });
@@ -60,7 +63,7 @@
   V._vis = vis; // 測試用：視覺變形狀態
 
   // ---- 粒子 ----
-  // 粒子上限：一般 420；低階手機（lowFx，見 V.draw）降到 220，水面焦散改半解析度、4 幀更新一次
+  // 粒子上限：一般 420；低階手機（lowFx，見 V.draw）降到 220
   const MAXP = 420, MAXP_LOW = 220, MAXT = 32; // MAXT：同時顯示的飄字上限
   V.lowFx = false; V.drawMs = 0;
   const add = p => { if (V.parts.length < (V.lowFx ? MAXP_LOW : MAXP)) V.parts.push(p); };
@@ -331,55 +334,128 @@
     return pts;
   };
 
-  // ---- 場地背景（快取）：水上擂台 ----
-  const mix = (a, c, k) => FA.sprites ? FA.sprites.mix(a, c, k) : a;
-  function theme(b) {
-    const boss = b.bodies.find(o => o.boss);
-    if (boss) return { key: 'boss' + boss.color, w1: mix('#7a2350', boss.color, 0.2), w2: '#4a1233', w3: '#22071a', tile: '#3b2532', tile2: '#47303d', grout: '#1f1119', rim: '#ffb3c4', glow: '#ff1f4a', bg1: '#24060f', bg2: '#0b0307', buoy: ['#ff4d6d', '#ffe0e6'] };
-    return { key: 'n', w1: '#2a9fd6', w2: '#1670ad', w3: '#0c4a7e', tile: '#2f5568', tile2: '#376074', grout: '#1a3040', rim: '#e9fbff', glow: '#39c6ff', bg1: '#13233a', bg2: '#070e18', buoy: ['#ffd54f', '#ffffff'] };
-  }
-  function buildBg(b, th) {
-    const P = BGP, c = document.createElement('canvas'); c.width = (W + P * 2) * dpr; c.height = (H + P * 2) * dpr; const x = c.getContext('2d'); x.scale(dpr, dpr); x.translate(P, P);
-    const hw = b.hw * S, hh = b.hh * S, hw0 = b.hw0 * S, hh0 = b.hh0 * S, L = CX - hw, T = CY - hh, L0 = CX - hw0, T0 = CY - hh0, rad = 18, D = 20;
-    const rr = (xx, yy, w, h, r) => { x.beginPath(); x.moveTo(xx + r, yy); x.arcTo(xx + w, yy, xx + w, yy + h, r); x.arcTo(xx + w, yy + h, xx, yy + h, r); x.arcTo(xx, yy + h, xx, yy, r); x.arcTo(xx, yy, xx + w, yy, r); x.closePath(); };
-    const bg = x.createRadialGradient(CX, CY, hw0, CX, CY, Math.max(W, H)); bg.addColorStop(0, th.bg1); bg.addColorStop(1, th.bg2); x.fillStyle = bg; x.fillRect(-P, -P, W + P * 2, H + P * 2);
-    let sd = 7; const rnd = () => (sd = (sd * 9301 + 49297) % 233280) / 233280;
-    // 池邊磁磚
-    x.save(); x.shadowColor = th.glow; x.shadowBlur = 26; rr(L0 - D, T0 - D, hw0 * 2 + D * 2, hh0 * 2 + D * 2, rad + D * 0.6); x.fillStyle = th.grout; x.fill(); x.restore();
-    x.save(); rr(L0 - D, T0 - D, hw0 * 2 + D * 2, hh0 * 2 + D * 2, rad + D * 0.6); x.clip();
-    const ts = 10;
-    for (let yy = T0 - D; yy < T0 + hh0 * 2 + D; yy += ts) for (let xx = L0 - D; xx < L0 + hw0 * 2 + D; xx += ts) {
-      x.fillStyle = (Math.round((xx - L0) / ts) + Math.round((yy - T0) / ts)) & 1 ? th.tile : th.tile2; x.fillRect(xx + 0.6, yy + 0.6, ts - 1.2, ts - 1.2);
-      if (rnd() < 0.5) { x.fillStyle = 'rgba(255,255,255,0.05)'; x.fillRect(xx + 0.6, yy + 0.6, ts - 1.2, 1.4); }
+  const ART = 'assets/art/';
+  // 戰鬥資料的首領共用 id: 'boss'，以 data/enemies.js 的名稱區分。
+  const BOSS_ART = new Map([
+    ['圓環魔王', 'ring-lord'], ['毒沼領主', 'swamp-lord'],
+    ['磁極女王', 'magnet-queen'], ['冰霜巨獸', 'frost-beast'],
+    ['分裂巨像', 'split-colossus'], ['雷霆君王', 'thunder-king']
+  ]);
+  const BOLT_ART = 'icons/bolt.png', BOSS_ICON = 'icons/skull.png';
+  const PILLAR_ART = { ring: 'arena/pillar-swim-ring.png', spike: 'arena/pillar-spikes.png' };
+  const arenaArt = boss => 'arena/' + (boss ? 'arena-boss-dusk' : 'arena-riviera') + '.png';
+  const images = new Map();
+
+  function bodyArt(o) {
+    if (o.id === 'boss') {
+      const name = BOSS_ART.get(o.name.replace(/分身$/, ''));
+      return name && 'bosses/' + name + '.png';
     }
-    x.restore();
-    rr(L0 - D, T0 - D, hw0 * 2 + D * 2, hh0 * 2 + D * 2, rad + D * 0.6); x.lineWidth = 2; x.strokeStyle = '#0007'; x.stroke();
-    // 水
-    x.save(); rr(L0, T0, hw0 * 2, hh0 * 2, rad); x.clip();
-    const wg = x.createRadialGradient(CX, CY - hh0 * 0.2, 0, CX, CY, Math.hypot(hw0, hh0)); wg.addColorStop(0, th.w1); wg.addColorStop(0.6, th.w2); wg.addColorStop(1, th.w3); x.fillStyle = wg; x.fillRect(L0, T0, hw0 * 2, hh0 * 2);
-    // 池底格線
-    x.strokeStyle = 'rgba(255,255,255,0.07)'; x.lineWidth = 1; x.beginPath(); const gs = 26;
-    for (let k = -Math.ceil(hw0 / gs); k <= Math.ceil(hw0 / gs); k++) { x.moveTo(CX + k * gs, T0); x.lineTo(CX + k * gs, T0 + hh0 * 2); }
-    for (let k = -Math.ceil(hh0 / gs); k <= Math.ceil(hh0 / gs); k++) { x.moveTo(L0, CY + k * gs); x.lineTo(L0 + hw0 * 2, CY + k * gs); }
-    x.stroke();
-    // 池底泳道標線（T 字）
-    x.fillStyle = 'rgba(0,25,60,0.22)';
-    [-0.5, 0.5].forEach(f => { const lx = CX + f * hw0; x.fillRect(lx - 3, T0 + 34, 6, hh0 * 2 - 68); x.fillRect(lx - 14, T0 + 34, 28, 5); x.fillRect(lx - 14, T0 + hh0 * 2 - 39, 28, 5); });
-    // 雙方半場色
-    const h0 = x.createLinearGradient(0, CY, 0, T0 + hh0 * 2); h0.addColorStop(0, 'rgba(80,210,255,0.05)'); h0.addColorStop(1, 'rgba(80,210,255,0.2)'); x.fillStyle = h0; x.fillRect(L0, CY, hw0 * 2, hh0);
-    const h1 = x.createLinearGradient(0, CY, 0, T0); h1.addColorStop(0, 'rgba(255,90,100,0.05)'); h1.addColorStop(1, 'rgba(255,90,100,0.22)'); x.fillStyle = h1; x.fillRect(L0, T0, hw0 * 2, hh0);
-    // 中圈
-    x.strokeStyle = 'rgba(255,255,255,0.2)'; x.lineWidth = 2; x.beginPath(); x.arc(CX, CY, hw0 * 0.28, 0, TAU); x.stroke();
-    x.fillStyle = 'rgba(255,255,255,0.12)'; x.beginPath(); x.arc(CX, CY, 4, 0, TAU); x.fill();
-    // 池壁內陰影
-    const edge = (x0, y0, x1, y1, rx, ry, rw, rh) => { const g = x.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, 'rgba(0,15,35,0.45)'); g.addColorStop(1, 'rgba(0,15,35,0)'); x.fillStyle = g; x.fillRect(rx, ry, rw, rh); };
-    edge(0, T0, 0, T0 + 22, L0, T0, hw0 * 2, 22); edge(0, T0 + hh0 * 2, 0, T0 + hh0 * 2 - 16, L0, T0 + hh0 * 2 - 16, hw0 * 2, 16);
-    edge(L0, 0, L0 + 18, 0, L0, T0, 18, hh0 * 2); edge(L0 + hw0 * 2, 0, L0 + hw0 * 2 - 18, 0, L0 + hw0 * 2 - 18, T0, 18, hh0 * 2);
-    x.restore();
+    return Object.prototype.hasOwnProperty.call(FA.DATA.units, o.id) ? 'units/s/' + o.id + '.png' : null;
+  }
+
+  function loadArt(path) {
+    let entry = images.get(path);
+    if (entry) return entry;
+    entry = { ready: false, image: null, flash: null };
+    images.set(path, entry);
+    const img = new Image();
+    const finish = image => {
+      clearTimeout(timeout);
+      if (entry.ready) return;
+      entry.image = image;
+      entry.ready = true;
+    };
+    const timeout = setTimeout(() => finish(null), 4000);
+    img.src = ART + path;
+    img.decode().then(() => finish(img), () => finish(null));
+    return entry;
+  }
+
+  function preloadBattleArt(b) {
+    const boss = b.bodies.some(o => o.boss);
+    const paths = [BOLT_ART, arenaArt(boss), ...b.bodies.map(bodyArt)];
+    if (boss) paths.push(BOSS_ICON);
+    for (const p of b.pillars || []) paths.push(PILLAR_ART[p.kind]);
+    // 先啟動所有請求，再檢查有沒有仍在載入的圖片。
+    return paths.filter(Boolean).map(loadArt).every(entry => entry.ready);
+  }
+
+  function drawPiece(o, x, y, r, t, deadK) {
+    const entry = images.get(bodyArt(o));
+    if (!entry || !entry.image) {
+      if (FA.sprites) FA.sprites.draw(ctx, o, x, y, r, t, deadK);
+      else plainBody(o, x, y, r);
+      return;
+    }
+    const width = r * (o.id === 'boss' ? 2.3 : 2.5);
+    const hurt = Math.max(0, o.hurt || 0);
+    ctx.save();
+    ctx.translate(x, y);
+    if (deadK != null) {
+      ctx.globalAlpha *= 1 - deadK;
+      const scale = 1 + deadK * 0.5;
+      ctx.scale(scale, scale);
+      ctx.rotate(deadK * 0.6 * (o.i % 2 ? 1 : -1));
+      ctx.translate(0, -deadK * r * 0.6);
+    } else {
+      if (o.stunned) ctx.translate(Math.sin(t * 40 + o.i) * r * 0.03, 0);
+      if (hurt > 0) {
+        const squash = 0.18 * Math.sin(hurt * 14) * hurt;
+        ctx.scale(1 + squash, 1 - squash);
+      }
+    }
+    ctx.drawImage(entry.image, -width / 2, -width / 2, width, width);
+    if (deadK == null && o.poison) {
+      ctx.fillStyle = `rgba(110,200,40,${0.22 + Math.sin(t * 4) * 0.06})`;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+    }
+    if (deadK == null && o.stunned) {
+      ctx.fillStyle = '#b3e5fc66'; ctx.strokeStyle = '#e1f5fe'; ctx.lineWidth = Math.max(1.5, r * 0.07);
+      ctx.beginPath(); ctx.arc(0, 0, r * 1.08, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#ffffffaa'; ctx.lineWidth = Math.max(1, r * 0.04);
+      ctx.beginPath(); ctx.moveTo(-r * 0.6, -r * 0.6); ctx.lineTo(-r * 0.2, -r * 0.1);
+      ctx.lineTo(-r * 0.45, r * 0.3); ctx.moveTo(r * 0.5, -r * 0.7); ctx.lineTo(r * 0.3, -r * 0.3); ctx.stroke();
+    }
+    if (deadK == null && hurt > 0.4) {
+      if (!entry.flash) {
+        const c = document.createElement('canvas');
+        c.width = c.height = 160;
+        const mask = c.getContext('2d');
+        mask.drawImage(entry.image, 0, 0, c.width, c.height);
+        mask.globalCompositeOperation = 'source-in';
+        mask.fillStyle = '#fff';
+        mask.fillRect(0, 0, c.width, c.height);
+        entry.flash = c;
+      }
+      ctx.globalAlpha *= Math.min(1, (hurt - 0.4) * 1.3);
+      ctx.drawImage(entry.flash, -width / 2, -width / 2, width, width);
+    }
+    ctx.restore();
+  }
+
+  // 場地繪在直式世界座標的快取，再由 drawFrame 一起旋轉。
+  function buildBg(b, boss) {
+    const P = BGP, c = document.createElement('canvas'); c.width = (W + P * 2) * dpr; c.height = (H + P * 2) * dpr; const x = c.getContext('2d'); x.scale(dpr, dpr); x.translate(P, P);
+    const hw = b.hw * S, hh = b.hh * S, hw0 = b.hw0 * S, hh0 = b.hh0 * S, L = CX - hw, T = CY - hh, L0 = CX - hw0, T0 = CY - hh0, rad = 18;
+    const rr = (xx, yy, w, h, r) => { x.beginPath(); x.moveTo(xx + r, yy); x.arcTo(xx + w, yy, xx + w, yy + h, r); x.arcTo(xx + w, yy + h, xx, yy + h, r); x.arcTo(xx, yy + h, xx, yy, r); x.arcTo(xx, yy, xx + w, yy, r); x.closePath(); };
+    x.fillStyle = boss ? '#352232' : '#eed6b1';
+    x.fillRect(-P, -P, W + P * 2, H + P * 2);
+    const art = images.get(arenaArt(boss))?.image;
+    if (art) {
+      // 素材的池面約佔 x=8%–92%、y=18%–87%，其餘是池畔。
+      const aw = hw0 * 2 / 0.84, ah = hh0 * 2 / 0.69;
+      x.drawImage(art, CX - aw / 2, T0 - ah * 0.18, aw, ah);
+    } else {
+      rr(L0, T0, hw0 * 2, hh0 * 2, rad);
+      x.fillStyle = boss ? '#553854' : '#56b5cb';
+      x.fill();
+    }
+    const buoy = boss ? ['#ff4d6d', '#ffe0e6'] : ['#f2b93b', '#fff3dc'];
     // 中線：浮標水道繩
     x.strokeStyle = '#0005'; x.lineWidth = 2; x.beginPath(); x.moveTo(L0, CY + 1); x.lineTo(L0 + hw0 * 2, CY + 1); x.stroke();
     const nb = Math.max(10, Math.round(hw0 * 2 / 13)), bs = hw0 * 2 / nb;
-    for (let k = 0; k < nb; k++) { const px = L0 + (k + 0.5) * bs, c0 = th.buoy[(k >> 1) & 1];
+    for (let k = 0; k < nb; k++) { const px = L0 + (k + 0.5) * bs, c0 = buoy[(k >> 1) & 1];
       x.fillStyle = '#0004'; x.beginPath(); x.ellipse(px + 1, CY + 3, bs * 0.42, 3.6, 0, 0, TAU); x.fill();
       x.fillStyle = c0; x.beginPath(); x.ellipse(px, CY, bs * 0.42, 3.6, 0, 0, TAU); x.fill();
       x.fillStyle = '#ffffff99'; x.beginPath(); x.ellipse(px - bs * 0.1, CY - 1.4, bs * 0.18, 1.1, 0, 0, TAU); x.fill(); }
@@ -392,8 +468,7 @@
     }
     // 擂台邊（目前範圍）
     rr(L - 1, T - 1, hw * 2 + 2, hh * 2 + 2, rad); x.lineWidth = 7; x.strokeStyle = '#0007'; x.stroke();
-    const rg = x.createLinearGradient(0, T, 0, T + hh * 2); rg.addColorStop(0, th.rim); rg.addColorStop(1, mix(th.rim, th.glow, 0.5));
-    x.lineWidth = 3.5; x.strokeStyle = rg; x.stroke();
+    x.lineWidth = 2; x.strokeStyle = boss ? '#ffb3c4' : '#fff3dc'; x.stroke();
     if (b.rules.includes('spikes')) { // 牆面尖刺
       x.fillStyle = '#f6a';
       const tooth = (px, py, dx, dy) => { x.beginPath(); x.moveTo(px - dy * 6, py + dx * 6); x.lineTo(px + dx * 10, py + dy * 10); x.lineTo(px + dy * 6, py - dx * 6); x.fill(); };
@@ -402,52 +477,15 @@
     }
     return c;
   }
-  // 水面焦散紋理（可平鋪，建一次）
-  const CS = 150;
-  function buildCaus() {
-    const c = document.createElement('canvas'); c.width = c.height = CS; const x = c.getContext('2d');
-    let sd = 3; const rnd = () => (sd = (sd * 9301 + 49297) % 233280) / 233280;
-    x.strokeStyle = '#fff'; x.lineJoin = 'round';
-    for (let i = 0; i < 18; i++) {
-      const cx = rnd() * CS, cy = rnd() * CS, r = 10 + rnd() * 22, n = 7, ph = rnd() * TAU, lw = 0.8 + rnd() * 1.4, pts = [];
-      for (let k = 0; k < n; k++) { const a = ph + k / n * TAU, q = r * (0.7 + rnd() * 0.5); pts.push([Math.cos(a) * q, Math.sin(a) * q]); }
-      x.lineWidth = lw; x.globalAlpha = 0.5 + rnd() * 0.5;
-      for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
-        x.beginPath(); pts.forEach((p, k) => { const q = pts[(k + 1) % n], mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2; k ? x.quadraticCurveTo(cx + ox * CS + p[0], cy + oy * CS + p[1], cx + ox * CS + mx, cy + oy * CS + my) : x.moveTo(cx + ox * CS + mx, cy + oy * CS + my); });
-        const p = pts[0], q = pts[1]; x.quadraticCurveTo(cx + ox * CS + p[0], cy + oy * CS + p[1], cx + ox * CS + (p[0] + q[0]) / 2, cy + oy * CS + (p[1] + q[1]) / 2); x.stroke();
-      }
-    }
-    const wc = document.createElement('canvas');
-    return { c, wc, wx: wc.getContext('2d'), pat: null, n: 0 };
-  }
-  // 每幀水面：焦散兩層＋反光帶畫在離屏（裝置解析度、圓角遮罩先烘進去，隔幀更新），再 1:1 疊到擂台（不縮放、不用 clip：低階手機省最多）；波紋直接畫
-  function drawWater(b, th, t) {
+  function drawRipples(b) {
+    if (!V.ripples.length) return;
     const L = CX - b.hw * S, T = CY - b.hh * S, w = b.hw * S * 2, h = b.hh * S * 2;
-    if (!causA) causA = buildCaus();
-    const A = causA, ww = Math.ceil(w), hh = Math.ceil(h), x = A.wx, q = V.waterRes || (V.lowFx ? 0.5 : 1), pw = Math.ceil(ww * q), ph = Math.ceil(hh * q);
-    if (A.wc.width !== pw || A.wc.height !== ph) { A.wc.width = pw; A.wc.height = ph; A.pat = null; A.n = 0; }
-    if (!A.pat) A.pat = x.createPattern(A.c, 'repeat');
-    if ((A.n++ % (V.waterEvery || (V.lowFx ? 4 : 3))) === 0) {
-      const pat = A.pat; x.setTransform(q, 0, 0, q, 0, 0); x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, ww, hh); x.fillStyle = pat;
-      if (pat.setTransform) {
-        const M = A.m || (A.m = new DOMMatrix());
-        M.a = 1; M.b = 0; M.c = 0; M.d = 1; M.e = Math.round((t * 9) % CS); M.f = Math.round((t * 6) % CS); pat.setTransform(M); x.globalAlpha = th.key === 'n' ? 0.075 : 0.045; x.fillRect(0, 0, ww, hh);
-        M.a = M.d = 1.4; M.e = Math.round(40 - (t * 7) % (CS * 1.4)); M.f = Math.round(17 + (t * 10) % (CS * 1.4)); pat.setTransform(M); x.globalAlpha = th.key === 'n' ? 0.05 : 0.03; x.fillRect(0, 0, ww, hh);
-      } else { x.globalAlpha = 0.06; x.fillRect(0, 0, ww, hh); }
-      const sx = -160 + ((t * 38) % (ww + 320)), g = x.createLinearGradient(sx - 70, 0, sx + 70, 140);
-      g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, 'rgba(255,255,255,0.05)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.globalAlpha = 1; x.fillStyle = g; x.fillRect(Math.max(0, sx - 260), 0, 520, hh);
-      // 圓角遮罩
-      x.globalCompositeOperation = 'destination-in'; x.fillStyle = '#fff'; x.beginPath(); x.moveTo(18, 0); x.arcTo(w, 0, w, h, 18); x.arcTo(w, h, 0, h, 18); x.arcTo(0, h, 0, 0, 18); x.arcTo(0, 0, w, 0, 18); x.closePath(); x.fill(); x.globalCompositeOperation = 'source-over';
-    }
-    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(A.wc, L, T, ww, hh); ctx.globalCompositeOperation = 'source-over';
-    // 波紋（裁在擂台內）
-    if (V.ripples.length) {
-      rrect(L, T, w, h, 18); ctx.clip(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#dff8ff';
-      for (const r of V.ripples) {
-        const k = 1 - r.life / r.max, e = 1 - Math.pow(1 - k, 2), rad = Math.max(1, (0.25 + 0.75 * e) * r.r * S), px = CX + r.x * S, py = CY + r.y * S;
-        ctx.globalAlpha = r.a * (1 - k); ctx.beginPath(); ctx.ellipse(px, py, rad, rad * 0.86, 0, 0, TAU); ctx.stroke();
-        if (k < 0.7) { ctx.globalAlpha *= 0.6; ctx.beginPath(); ctx.ellipse(px, py, rad * 0.62, rad * 0.53, 0, 0, TAU); ctx.stroke(); }
-      }
+    ctx.save();
+    rrect(L, T, w, h, 18); ctx.clip(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#dff8ff';
+    for (const r of V.ripples) {
+      const k = 1 - r.life / r.max, e = 1 - Math.pow(1 - k, 2), rad = Math.max(1, (0.25 + 0.75 * e) * r.r * S), px = CX + r.x * S, py = CY + r.y * S;
+      ctx.globalAlpha = r.a * (1 - k); ctx.beginPath(); ctx.ellipse(px, py, rad, rad * 0.86, 0, 0, TAU); ctx.stroke();
+      if (k < 0.7) { ctx.globalAlpha *= 0.6; ctx.beginPath(); ctx.ellipse(px, py, rad * 0.62, rad * 0.53, 0, 0, TAU); ctx.stroke(); }
     }
     ctx.restore();
   }
@@ -469,6 +507,14 @@
   function pillarSprite(kind, r) {
     const key = kind + '|' + Math.round(r * 4); if (pillarCache[key]) return pillarCache[key];
     const sz = Math.ceil(r * 3.2), c = document.createElement('canvas'); c.width = c.height = Math.ceil(sz * dpr); const x = c.getContext('2d'); x.scale(dpr, dpr); x.translate(sz / 2, sz / 2);
+    const art = images.get(PILLAR_ART[kind])?.image;
+    if (art) {
+      // 裁掉透明邊，讓手繪柱身維持比例並以碰撞點為中心。
+      const sw = kind === 'ring' ? 124 : 156, sh = kind === 'ring' ? 192 : 198;
+      const h = r * 2.65, w = h * sw / sh;
+      x.drawImage(art, (256 - sw) / 2, (256 - sh) / 2, sw, sh, -w / 2, -h / 2, w, h);
+      return pillarCache[key] = { c, sz };
+    }
     if (kind === 'ring') { // 泳圈：紅白相間、中空透出水面
       const ri = r * 0.5;
       for (let s = 0; s < 8; s++) { x.fillStyle = s % 2 ? '#fbfbff' : '#ff4f63'; x.beginPath(); x.arc(0, 0, r, s / 8 * TAU, (s + 1) / 8 * TAU); x.arc(0, 0, ri, (s + 1) / 8 * TAU, s / 8 * TAU, true); x.closePath(); x.fill(); }
@@ -639,7 +685,7 @@
     return L;
   }
   function rrect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
-  // 棋子身上的小標（⚡、👆、♪3、☠2…）：內容少、每幀都畫，快取成小圖（emoji 文字描邊在低階手機特別貴）
+  // 棋子身上的小標（👆、♪3、☠2…）：內容少、每幀都畫，快取成小圖（emoji 文字描邊在低階手機特別貴）
   const otCache = new Map();
   function outTextC(txt, x, y, size, col, lw) {
     const k = txt + '|' + size + '|' + col + '|' + lw + '|' + dpr; let L = otCache.get(k);
@@ -663,24 +709,35 @@
   }
   function outText(txt, x, y, size, col, lw) { ctx.font = `900 ${size}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#000'; ctx.lineWidth = lw || Math.max(3, size / 5); ctx.strokeText(txt, x, y); ctx.fillStyle = col; ctx.fillText(txt, x, y); }
 
-  V.draw = (b, ui, dt) => { const t0 = performance.now(); drawFrame(b, ui, dt);
-    // 低階手機自動降特效：繪製時間移動平均 > 12ms 就開 lowFx（粒子上限減半、水面半解析度），< 5ms 再關（遲滯避免來回切）
+  V.draw = (b, ui, dt) => {
+    if (!artReady) {
+      if (!preloadBattleArt(b)) return;
+      artReady = true;
+    }
+    const t0 = performance.now(); drawFrame(b, ui, dt);
+    // 低階手機自動降特效：繪製時間移動平均 > 12ms 就開 lowFx（粒子上限降低），< 5ms 再關（遲滯避免來回切）
     const ms = performance.now() - t0; V.drawMs = V.drawMs * (ms > V.drawMs ? 0.85 : 0.97) + ms * (ms > V.drawMs ? 0.15 : 0.03); // 變慢反應快、變快反應慢
     if (!V.lowFx && V.drawMs > 12) V.lowFx = true; else if (V.lowFx && V.drawMs < 5) V.lowFx = false;
   };
   function drawFrame(b, ui, dt) {
     lastB = b;
-    const t = performance.now() / 1000, th = theme(b), bgKey = th.key + '|' + b.hw + 'x' + b.hh + '|' + b.rules.join() + '|' + W + 'x' + H;
+    const t = performance.now() / 1000, bossArena = b.bodies.some(o => o.boss);
+    const bgKey = bossArena + '|' + b.hw0 + 'x' + b.hh0 + '|' + b.hw + 'x' + b.hh + '|' + b.rules.join();
     W = VW; H = VH; // 場地層用虛擬（直式）座標
     ctx.clearRect(0, 0, RW, RH);
     ctx.save();
     if (V.shake > 0.5) ctx.translate((Math.random() - .5) * V.shake, (Math.random() - .5) * V.shake);
     if (V.rot) { ctx.translate(RW / 2, RH / 2); ctx.rotate(Math.PI / 2); ctx.translate(-VW / 2, -VH / 2); }
-    if (!bgCache || bgCache.key !== bgKey) bgCache = { key: bgKey, c: buildBg(b, th) };
+    if (!bgCache || bgCache.key !== bgKey) bgCache = { key: bgKey, c: buildBg(b, bossArena) };
     ctx.drawImage(bgCache.c, -BGP, -BGP, W + BGP * 2, H + BGP * 2); // 外擴，避免震動露邊
-    drawWater(b, th, t);
+    drawRipples(b);
     // 首領戰：外框脈動
-    ctx.globalAlpha = th.key === 'n' ? 0.25 : 0.35 + Math.sin(t * 2.5) * 0.15; ctx.strokeStyle = th.glow; ctx.lineWidth = 3; rrect(CX - b.hw * S - 4, CY - b.hh * S - 4, b.hw * S * 2 + 8, b.hh * S * 2 + 8, 20); ctx.stroke(); ctx.globalAlpha = 1;
+    if (bossArena) {
+      ctx.globalAlpha = 0.35 + Math.sin(t * 2.5) * 0.15;
+      ctx.strokeStyle = '#ff1f4a'; ctx.lineWidth = 3;
+      rrect(CX - b.hw * S - 4, CY - b.hh * S - 4, b.hw * S * 2 + 8, b.hh * S * 2 + 8, 20);
+      ctx.stroke(); ctx.globalAlpha = 1;
+    }
     drawShrinkWarn(b, t);
     // 焦痕
     V.decals.forEach(d => { const gr = ctx.createRadialGradient(CX + d.x * S, CY + d.y * S, 0, CX + d.x * S, CY + d.y * S, d.r * S); gr.addColorStop(0, `rgba(10,5,5,${0.45 * Math.min(1, d.life / 1.5)})`); gr.addColorStop(1, 'rgba(10,5,5,0)'); ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(CX + d.x * S, CY + d.y * S, d.r * S, 0, TAU); ctx.fill(); });
@@ -735,9 +792,17 @@
     // 棋子：先更新視覺變形，再畫地面投影（跳越高影子越小越淡、越偏；速度越快影子沿速度拉長）
     const shC = shadowSprite();
     b.bodies.forEach(o => { if (!o.alive) return; const v = deform(o, dt), x = CX + o.x * S, y = CY + o.y * S, r = o.r * S, z = v.z * S, k = 1 / (1 + z / (r * 1.1)), sp = Math.hypot(o.vx, o.vy);
-      ctx.save(); up(x, y); ctx.translate(x + r * 0.26 + z * 0.4, y + r * 0.92 + z * 0.55);
+      ctx.save(); up(x, y);
+      ctx.save(); ctx.translate(x + r * 0.26 + z * 0.4, y + r * 0.92 + z * 0.55);
       if (sp > 60) { const a = Math.atan2(o.vy * 0.36, o.vx) + RA(), st = Math.min(0.3, sp / 3500); ctx.rotate(a); ctx.scale(1 + st, 1 - st * 0.3); ctx.rotate(-a); }
-      const w = r * 1.18 * k * (1 + Math.max(0, v.q) * 0.5), h = r * 0.46 * k; ctx.globalAlpha = 0.8 * k; ctx.drawImage(shC, -w, -h, w * 2, h * 2); ctx.restore(); });
+      const w = r * 1.18 * k * (1 + Math.max(0, v.q) * 0.5), h = r * 0.46 * k;
+      ctx.globalAlpha = 0.8 * k; ctx.drawImage(shC, -w, -h, w * 2, h * 2); ctx.restore();
+      ctx.strokeStyle = o.team === 0 ? '#4ebcff' : '#ff685c';
+      ctx.fillStyle = o.team === 0 ? '#2f86c66b' : '#ef514f6b';
+      ctx.lineWidth = Math.max(2, r * 0.11);
+      ctx.beginPath(); ctx.ellipse(x, y + r * 0.72, r * 1.08, r * 0.47, 0, 0, TAU);
+      ctx.fill(); ctx.stroke(); ctx.restore();
+    });
     ctx.globalAlpha = 1;
     const SP = FA.sprites, canSel = b.phase === 'aim' && b.turn === 0 ? FA.battle.avail(b, 0) : null;
     b.bodies.forEach(o => { ctx.save(); up(CX + o.x * S, CY + o.y * S); drawBody(o); ctx.restore(); });
@@ -746,7 +811,7 @@
       const x = CX + o.x * S, y = CY + o.y * S; let r = o.r * S;
       if (!o.alive) { // 陣亡：淡出飄起（之後到復活前不畫）
         if (dead[o.i] == null) dead[o.i] = 0; dead[o.i] += dt;
-        if (dead[o.i] < 0.55 && SP && !o.temp) SP.draw(ctx, o, x, y, r, t, dead[o.i] / 0.55);
+        if (dead[o.i] < 0.55 && !o.temp) drawPiece(o, x, y, r, t, dead[o.i] / 0.55);
         return;
       }
       const si = spawnIn[o.i]; if (si) { const k = 1 - si / 0.7, q = k - 1; r = Math.max(1, r * (1 + 2.70158 * q * q * q + 1.70158 * q * q)); }
@@ -771,16 +836,16 @@
       const UM = FA.DATA.config.ult.max, en = Math.min(1, (o.energy || 0) / UM), full = en >= 1 && !o.temp && !o.ultOn, foe = o.team !== 0, pul = 0.5 + 0.5 * Math.sin(t * 7 + o.i);
       const ecol = foe ? '255,70,90' : '255,215,80';
       if (full) { const R2 = r * (1.8 + pul * 0.3); ctx.globalAlpha = (0.3 + pul * 0.3) / 0.6; ctx.drawImage(glowSprite(ecol), x - R2, y - R2, R2 * 2, R2 * 2); ctx.globalAlpha = 1; }
-      if (o.ultOn === 'phase' && SP) { const tr = V.trails[o.i] || []; ctx.save(); for (let j = tr.length - 3, n = 0; j >= 0 && n < 3; j -= 3, n++) { ctx.globalAlpha = 0.28 - n * 0.08; const q = upPt(x, y, CX + tr[j][0] * S, CY + tr[j][1] * S); SP.draw(ctx, o, q[0], q[1], r, t); } ctx.restore(); ctx.globalAlpha = 1; }
+      if (o.ultOn === 'phase') { const tr = V.trails[o.i] || []; ctx.save(); for (let j = tr.length - 3, n = 0; j >= 0 && n < 3; j -= 3, n++) { ctx.globalAlpha = 0.28 - n * 0.08; const q = upPt(x, y, CX + tr[j][0] * S, CY + tr[j][1] * S); drawPiece(o, q[0], q[1], r, t); } ctx.restore(); ctx.globalAlpha = 1; }
       if (o.ultOn) ultAura(o, x, y, r, t, dt);
-      if (SP) { // 2.5D：跳起位移＋速度拉伸＋碰撞壓扁回彈（只是畫面，碰撞判定不變）
+      { // 2.5D：跳起位移＋速度拉伸＋碰撞壓扁回彈（只是畫面，碰撞判定不變）
         const v = vis[o.i] || { q: 0, z: 0, ang: 0 }, lift = Math.min(r * 0.3, v.z * S);
         ctx.save(); ctx.translate(x, y - lift);
         if (sp0 > 60) { const a = Math.atan2(o.vy, o.vx) + RA(), k = Math.min(0.09, sp0 / 10000); ctx.rotate(a); ctx.scale(1 + k, 1 - k * 0.7); ctx.rotate(-a); }
-        if (Math.abs(v.q) > 0.004) { ctx.rotate(v.ang + RA()); ctx.scale(1 - v.q, 1 + v.q * 0.65); ctx.rotate(-v.ang); }
+        if (Math.abs(v.q) > 0.004) { ctx.rotate(v.ang + RA()); ctx.scale(1 - v.q, 1 + v.q * 0.65); ctx.rotate(-v.ang - RA()); }
         const r0 = o.r * S; if (r !== r0) ctx.scale(r / r0, r / r0); // 復活彈出：縮放畫固定半徑（sprites 依半徑快取，半徑每幀變會一直重建）
-        SP.draw(ctx, o, 0, 0, r0, t); ctx.restore();
-      } else plainBody(o, x, y, r);
+        drawPiece(o, 0, 0, r0, t); ctx.restore();
+      }
       if (si) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = si / 0.7; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); ctx.restore(); }
       if (!o.temp && !o.boss || o.boss) { // 能量環
         ctx.lineWidth = 2.5; ctx.strokeStyle = '#0008'; ctx.beginPath(); ctx.arc(x, y, r + 3, 0, TAU); ctx.stroke();
@@ -790,7 +855,9 @@
           ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineJoin = 'round'; const sd = Math.floor(t * 12) * 13 + o.i * 7;
           for (let j = 0; j < 2; j++) { const a = (sd * 0.37 + j * 3.1) % TAU, a2 = a + 0.9, R1 = r + 3; ctx.strokeStyle = `rgba(${ecol},0.6)`; ctx.lineWidth = 3; lightning(x + Math.cos(a) * R1, y + Math.sin(a) * R1, x + Math.cos(a2) * R1, y + Math.sin(a2) * R1, sd + j * 31, r * 0.5); ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2; ctx.stroke(); }
           ctx.restore();
-          const by = y - r - 10 + Math.sin(t * 5 + o.i) * 2; outTextC(foe ? '⚡大招' : '⚡', x, by, foe ? 11 : 14, foe ? '#ff8a9a' : '#ffe066', 3);
+          const by = y - r - 10 + Math.sin(t * 5 + o.i) * 2, bolt = images.get(BOLT_ART)?.image;
+          if (bolt) ctx.drawImage(bolt, x - (foe ? 18 : 9), by - 9, 18, 18);
+          if (foe) outTextC('大招', x + (bolt ? 8 : 0), by, 11, '#ff8a9a', 3);
         } else { ctx.strokeStyle = o.ultOn ? (ULT[o.ultOn] || ULT0).col : foe ? '#ff9a7a' : '#7fd8ff'; ctx.beginPath(); ctx.arc(x, y, r + 3, -Math.PI / 2, -Math.PI / 2 + TAU * (o.ultOn ? 1 : en)); ctx.stroke(); }
       }
       if (o.shield > 0) { // 護盾泡泡
@@ -905,8 +972,10 @@
     const boss = b.bodies.find(o => o.boss && o.alive && !o.temp);
     const topY = V.rot ? 64 : CY - b.hh0 * S;
     if (boss) { // 首領大血條
-      const bw = Math.min(300, W - 60), bx = W / 2 - bw / 2, by = topY - 50, hp = Math.max(0, boss.hp / boss.maxHp), lag = hpLag[boss.i] != null ? hpLag[boss.i] : hp;
-      outText('👑 ' + boss.name, W / 2, by - 6, 14, '#ffd0dc', 3);
+      const bw = Math.min(300, W - 60), bx = W / 2 - bw / 2, by = Math.max(28, topY - 50), hp = Math.max(0, boss.hp / boss.maxHp), lag = hpLag[boss.i] != null ? hpLag[boss.i] : hp;
+      const icon = images.get(BOSS_ICON)?.image;
+      outText(boss.name, W / 2 + (icon ? 9 : 0), by - 6, 14, '#ffd0dc', 3);
+      if (icon) ctx.drawImage(icon, W / 2 - ctx.measureText(boss.name).width / 2 - 11, by - 22, 17, 17);
       rrect(bx - 2, by - 2, bw + 4, 14, 7); ctx.fillStyle = '#000d'; ctx.fill(); ctx.strokeStyle = '#ff4d6d'; ctx.lineWidth = 1.5; ctx.stroke();
       ctx.save(); rrect(bx, by, bw, 10, 5); ctx.clip(); ctx.fillStyle = '#fff8'; ctx.fillRect(bx, by, bw * lag, 10);
       const gr = ctx.createLinearGradient(bx, 0, bx + bw, 0); gr.addColorStop(0, '#ff1f4a'); gr.addColorStop(1, '#ff8a3d'); ctx.fillStyle = gr; ctx.fillRect(bx, by, bw * hp, 10); ctx.fillStyle = '#ffffff40'; ctx.fillRect(bx, by, bw * hp, 4); ctx.restore();
