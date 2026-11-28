@@ -343,7 +343,7 @@
   ]);
   const BOLT_ART = 'icons/bolt.png', BOSS_ICON = 'icons/skull.png';
   const PILLAR_ART = { ring: 'arena/pillar-swim-ring.png', spike: 'arena/pillar-spikes.png' };
-  const arenaArt = boss => 'arena/' + (boss ? 'arena-boss-dusk' : 'arena-riviera') + '.png';
+  const arenaArt = boss => 'arena/' + (boss ? 'arena-boss-dusk-top' : 'arena-riviera-top') + '.png'; // 正上方俯視版：戰場轉 90° 也不會歪
   const images = new Map();
 
   function bodyArt(o) {
