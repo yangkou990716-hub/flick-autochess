@@ -29,16 +29,6 @@
 .ultbtn.on small{color:#4a3800}
 .ultbtn:not(.hidden)~#uxBinfo{bottom:calc(env(safe-area-inset-bottom) + 82px)}
 @keyframes ultPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
-/* 戰鬥 HUD 動數條 */
-.ux-hl{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ux-mvs{display:flex;flex-direction:column;gap:3px;margin-top:4px;max-width:250px}
-.ux-mv{display:flex;align-items:center;gap:6px;font-size:12px;opacity:.8}
-.ux-mv.cur{opacity:1}.ux-mv.cur .l::before{content:'▶';font-size:9px;margin-right:2px}
-.ux-mv .l{width:42px;text-align:right;font-weight:800}
-.ux-mvb{flex:1;height:9px;border-radius:5px;background:#0008;border:1px solid #fff3;overflow:hidden}
-.ux-mvb i{display:block;height:100%;border-radius:4px;transition:width .3s}
-.ux-mv .n{width:38px;font-variant-numeric:tabular-nums;font-weight:800}
-.ux-rd{font-size:12px;margin-top:3px;color:#ddd}.ux-rd b{color:#ffe066}
 /* 操作體驗（main.js）：拖曳、長按、教學、戰鬥資訊、加速 */
 .slot,.card{touch-action:none;-webkit-touch-callout:none}
 .card{position:relative}

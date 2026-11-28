@@ -3,6 +3,7 @@
 (function (g) {
   const FA = g.FA = g.FA || {};
   const SND = (n, k) => n && FA.sound && FA.sound.play(n, k);
+  const PIECE_SCALE = 1.3; // 只放大渲染，物理半徑維持 o.r。
   const TAU = Math.PI * 2, FONT = '-apple-system,"PingFang TC","Noto Sans TC",sans-serif';
   const V = FA.view = { trails: {}, bolts: [], parts: [], texts: [], rings: [], flashes: [], decals: [], walls: [], fx: [], ripples: [], shake: 0, hitstop: 0, banner: null, cutin: null, edge: null, shrinkT: 0, chainShow: 0, chainN: 0, chainPulse: 0, screenFlash: 0 };
   let cv, ctx, W, H, RW, RH, VW, VH, dpr, S, CX, CY, bgCache = null, lastB = null, pillarCache = {}, artFor = null;
@@ -810,7 +811,8 @@
     b.bodies.forEach(o => { ctx.save(); up(CX + o.x * S, CY + o.y * S); drawBody(o); ctx.restore(); });
     function drawBody(o) {
       if (o.hurt > 0) o.hurt -= dt * 3;
-      const x = CX + o.x * S, y = CY + o.y * S; let r = o.r * S;
+      const x = CX + o.x * S, y = CY + o.y * S, baseR = o.r * S * PIECE_SCALE;
+      let r = baseR;
       if (!o.alive) { // 陣亡：淡出飄起（之後到復活前不畫）
         if (dead[o.i] == null) dead[o.i] = 0; dead[o.i] += dt;
         if (dead[o.i] < 0.55 && !o.temp) drawPiece(o, x, y, r, t, dead[o.i] / 0.55);
@@ -845,8 +847,8 @@
         ctx.save(); ctx.translate(x, y - lift);
         if (sp0 > 60) { const a = Math.atan2(o.vy, o.vx) + RA(), k = Math.min(0.09, sp0 / 10000); ctx.rotate(a); ctx.scale(1 + k, 1 - k * 0.7); ctx.rotate(-a); }
         if (Math.abs(v.q) > 0.004) { ctx.rotate(v.ang + RA()); ctx.scale(1 - v.q, 1 + v.q * 0.65); ctx.rotate(-v.ang - RA()); }
-        const r0 = o.r * S; if (r !== r0) ctx.scale(r / r0, r / r0); // 復活彈出：縮放畫固定半徑（sprites 依半徑快取，半徑每幀變會一直重建）
-        drawPiece(o, 0, 0, r0, t); ctx.restore();
+        if (r !== baseR) ctx.scale(r / baseR, r / baseR); // 復活彈出：縮放畫固定半徑（sprites 依半徑快取，半徑每幀變會一直重建）
+        drawPiece(o, 0, 0, baseR, t); ctx.restore();
       }
       if (si) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = si / 0.7; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); ctx.restore(); }
       if (!o.temp && !o.boss || o.boss) { // 能量環
@@ -883,14 +885,15 @@
       if (o.veil) { ctx.save(); ctx.globalAlpha = 0.5 + 0.2 * Math.sin(t * 5 + o.i); ctx.strokeStyle = '#d1c4e9'; ctx.lineWidth = 2; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.arc(x, y, r + 6, 0, TAU); ctx.stroke(); ctx.restore(); }
       // 血條（含延遲白條）
       const hp = Math.max(0, o.hp / o.maxHp); if (hpLag[o.i] == null || hpLag[o.i] < hp) hpLag[o.i] = hp; else hpLag[o.i] = Math.max(hp, hpLag[o.i] - dt * 0.6);
-      const bw = Math.max(26, r * 2.1), bh = o.boss ? 6 : 4, bx = x - bw / 2, by = y + r + 5;
+      const bw = Math.max(26 * PIECE_SCALE, r * 2.1), bh = (o.boss ? 6 : 4) * PIECE_SCALE, bx = x - bw / 2, by = y + r + 5;
       rrect(bx - 1, by - 1, bw + 2, bh + 2, 3); ctx.fillStyle = '#000b'; ctx.fill();
       ctx.fillStyle = '#fff9'; ctx.fillRect(bx, by, bw * hpLag[o.i], bh);
       const hc = o.team === 0 ? (hp > 0.3 ? '#5fe36a' : '#ffcf3a') : '#ff5a5a'; ctx.fillStyle = hc; ctx.fillRect(bx, by, bw * hp, bh);
       ctx.fillStyle = '#ffffff40'; ctx.fillRect(bx, by, bw * hp, bh / 2);
       if (!o.boss) {
         const nm = o.name + (o.star > 1 ? '★'.repeat(o.star) : ''), lb = labelSprite(nm, o.star >= 3 ? '#ffe066' : o.star === 2 ? '#e3f2fd' : '#fff');
-        ctx.drawImage(lb.c, x - lb.w / 2, by + bh - 1, lb.w, lb.h);
+        const w = lb.w * PIECE_SCALE, h = lb.h * PIECE_SCALE;
+        ctx.drawImage(lb.c, x - w / 2, by + bh - 1, w, h);
       }
     }
 
@@ -952,7 +955,7 @@
     ctx.globalAlpha = 1;
     // 力道條（畫在棋子上方）
     if (aimO && ui.aim && !ui.aim.enemy) {
-      const o = aimO, fp = FA.DATA.config.fullPowerAt, pw = ui.aim.power, full = pw >= fp, bw = 76, bx = CX + o.x * S - bw / 2, by = CY + o.y * S - o.r * S * 1.6 - 30;
+      const o = aimO, fp = FA.DATA.config.fullPowerAt, pw = ui.aim.power, full = pw >= fp, bw = 76, bx = CX + o.x * S - bw / 2, by = CY + o.y * S - o.r * S * PIECE_SCALE * 1.6 - 30;
       ctx.save(); up(CX + o.x * S, CY + o.y * S);
       rrect(bx - 3, by - 3, bw + 6, 14, 7); ctx.fillStyle = '#000c'; ctx.fill(); ctx.strokeStyle = full ? '#ff5a3c' : '#ffffff44'; ctx.lineWidth = 1.5; ctx.stroke();
       const gr = ctx.createLinearGradient(bx, 0, bx + bw, 0); gr.addColorStop(0, '#7cf05a'); gr.addColorStop(0.6, '#ffb347'); gr.addColorStop(1, '#ff3b3b');
