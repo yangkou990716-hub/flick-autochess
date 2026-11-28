@@ -194,7 +194,8 @@ with sync_playwright() as pw:
             assert not p.is_visible('#uxTut'), '教學關不掉'
             p.evaluate("document.getElementById('modal').classList.add('hidden'); localStorage.setItem('fa_tut', '{}'); localStorage.setItem('fa_a2hs', '1')")
             p.reload(); p.wait_for_function('window.FA && FA.debug')
-            if p.is_visible('#uxTut'): p.evaluate(TUTNEXT)
+            # 標題教學延遲顯示，等泡泡出現再關閉，避免蓋住新遊戲按鈕。
+            p.click('#uxTutNext')
             p.click('#btnNew'); s = scr(p)
             if s['modal'] and '開新局' in s['head']: p.click('#modalBox button.go')
             seen = set(); bubbles = 0
