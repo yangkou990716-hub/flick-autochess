@@ -342,7 +342,7 @@
     ['分裂巨像', 'split-colossus'], ['雷霆君王', 'thunder-king']
   ]);
   const BOLT_ART = 'icons/bolt.png', BOSS_ICON = 'icons/skull.png';
-  const PILLAR_ART = { ring: 'arena/pillar-swim-ring.png', spike: 'arena/pillar-spikes.png' };
+  const PILLAR_ART = { ring: 'arena/pillar-swim-ring-top.png', spike: 'arena/pillar-spikes-top.png' }; // 俯視版
   const arenaArt = boss => 'arena/' + (boss ? 'arena-boss-dusk-top' : 'arena-riviera-top') + '.png'; // 正上方俯視版：戰場轉 90° 也不會歪
   const images = new Map();
 
@@ -511,9 +511,9 @@
     const art = images.get(PILLAR_ART[kind])?.image;
     if (art) {
       // 裁掉透明邊，讓手繪柱身維持比例並以碰撞點為中心。
-      const sw = kind === 'ring' ? 124 : 156, sh = kind === 'ring' ? 192 : 198;
-      const h = r * 2.65, w = h * sw / sh;
-      x.drawImage(art, (256 - sw) / 2, (256 - sh) / 2, sw, sh, -w / 2, -h / 2, w, h);
+      // 俯視圓形：泳圈外圈＝碰撞圓；尖刺座的尖刺略超出碰撞圓
+      const d = r * (kind === 'ring' ? 2.25 : 2.6);
+      x.drawImage(art, -d / 2, -d / 2, d, d);
       return pillarCache[key] = { c, sz };
     }
     if (kind === 'ring') { // 泳圈：紅白相間、中空透出水面

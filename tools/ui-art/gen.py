@@ -329,3 +329,37 @@ def item_icons():
 
 if __name__ == '__main__' and len(sys.argv) > 4 and sys.argv[4] == 'items':
     item_icons()
+
+
+# ---------- 俯視柱子（256×256 透明）----------
+def pillars():
+    seg = ''
+    for i in range(8):
+        a0, a1 = math.radians(i * 45 - 90), math.radians(i * 45 - 45)
+        col = CORAL if i % 2 == 0 else CREAM
+        R, r = 112, 66
+        p = [(128 + R * math.cos(a0), 128 + R * math.sin(a0)), (128 + R * math.cos(a1), 128 + R * math.sin(a1)),
+             (128 + r * math.cos(a1), 128 + r * math.sin(a1)), (128 + r * math.cos(a0), 128 + r * math.sin(a0))]
+        seg += f'<path d="M{p[0][0]:.1f} {p[0][1]:.1f} A{R} {R} 0 0 1 {p[1][0]:.1f} {p[1][1]:.1f} L{p[2][0]:.1f} {p[2][1]:.1f} A{r} {r} 0 0 0 {p[3][0]:.1f} {p[3][1]:.1f} Z" fill="{col}"/>'
+    ring = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">{seg}
+      <circle cx="128" cy="128" r="112" fill="none" stroke="{INK}" stroke-width="9"/><circle cx="128" cy="128" r="66" fill="none" stroke="{INK}" stroke-width="7"/>
+      <circle cx="128" cy="128" r="46" fill="{CREAM}" stroke="{INK}" stroke-width="7"/>
+      <path d="M128 92 L140 128 L128 164 L116 128 Z M92 128 L128 116 L164 128 L128 140 Z" fill="{SEA}" stroke="{INK}" stroke-width="4" stroke-linejoin="round"/>
+      <circle cx="128" cy="128" r="7" fill="{GOLD}" stroke="{INK}" stroke-width="3"/>
+      <path d="M58 70 A90 90 0 0 1 100 40" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" opacity=".6"/></svg>'''
+    spikes = ''
+    for i in range(10):
+        a = math.radians(i * 36 - 90); b1, b2 = a - math.radians(13), a + math.radians(13)
+        spikes += (f'<path d="M{128+122*math.cos(a):.1f} {128+122*math.sin(a):.1f} L{128+74*math.cos(b1):.1f} {128+74*math.sin(b1):.1f} '
+                   f'L{128+74*math.cos(b2):.1f} {128+74*math.sin(b2):.1f} Z" fill="{GOLD}" stroke="{INK}" stroke-width="7" stroke-linejoin="round"/>')
+    bolts = ''.join(f'<circle cx="{128+60*math.cos(math.radians(i*45)):.1f}" cy="{128+60*math.sin(math.radians(i*45)):.1f}" r="6" fill="{GOLD_L}" stroke="{INK}" stroke-width="3"/>' for i in range(8))
+    spike = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">{spikes}
+      <circle cx="128" cy="128" r="80" fill="#8A5A3C" stroke="{INK}" stroke-width="9"/><circle cx="128" cy="128" r="70" fill="{GOLD_D}"/>
+      {bolts}<circle cx="128" cy="128" r="42" fill="{GOLD}" stroke="{INK}" stroke-width="7"/><circle cx="128" cy="128" r="16" fill="{GOLD_L}" stroke="{INK}" stroke-width="5"/>
+      <ellipse cx="112" cy="108" rx="14" ry="7" fill="#fff" opacity=".6" transform="rotate(-30 112 108)"/></svg>'''
+    save(paper(render(ring, 256, 256), 0.05), 'arena/pillar-swim-ring-top.png')
+    save(paper(render(spike, 256, 256), 0.05), 'arena/pillar-spikes-top.png')
+
+
+if __name__ == '__main__' and len(sys.argv) > 4 and sys.argv[4] == 'pillars':
+    pillars()
