@@ -6,7 +6,11 @@
   const MAP = {
     '💰': 'coin', '❤': 'heart', '🛡': 'shield', '🔄': 'refresh', '🔒': 'lock', '🔓': 'unlock', '🛒': 'cart',
     '⚡': 'bolt', '📖': 'book', '📘': 'book', '☰': 'menu', '🏠': 'home', '🌐': 'globe', '⚔': 'swords', '⚙': 'wrench', '🔧': 'wrench',
-    '🎖': 'medal', '☠': 'skull', '👑': 'skull', '📦': 'box', '❗': 'question', '🐷': 'chest', '🎁': 'chest'
+    '🎖': 'medal', '☠': 'skull', '👑': 'skull', '📦': 'box', '❗': 'question', '🐷': 'chest', '🎁': 'i-armory',
+    // 道具／裝備／武器（i-<id>.png）
+    '✊': 'i-fist', '🧿': 'i-charm', '👟': 'i-boots', '🩸': 'i-vampfist', '🚀': 'i-jetboots', '🦇': 'i-vampboots', '🌀': 'i-spring',
+    '🦔': 'i-spikes', '🛞': 'i-ring', '🧨': 'i-dynamite', '🪶': 'i-featherW', '💉': 'i-needle', '🧊': 'i-icepick', '🔨': 'i-hammer',
+    '🛹': 'i-hover', '🪛': 'i-breaker', '📽': 'i-projector', '🎞': 'i-projectorX', '🪚': 'i-wrench1', '💎': 'i-armoryP', '🔥': 'i-furnace'
   };
   const RE = new RegExp('(' + Object.keys(MAP).join('|') + ')\\uFE0F?', 'g');
   FA.gi = (name, cls, alt) => `<img class="gi${cls ? ' ' + cls : ''}" src="${BASE}${name}.png" alt="${alt || ''}" draggable="false">`;
@@ -29,6 +33,13 @@
     }
   }
   FA.iconize = iconize;
+  // 給 canvas 用：emoji → 已載入的圖示 Image（還沒載好回傳 null，並開始載）；不在對照表回傳 undefined
+  const imgs = {};
+  FA.emojiImg = txt => {
+    const k = MAP[String(txt).replace(/\uFE0F/g, '')]; if (!k) return undefined;
+    let e = imgs[k]; if (!e) { e = imgs[k] = { ok: false, im: new Image() }; e.im.onload = () => { e.ok = true; }; e.im.src = BASE + k + '.png'; }
+    return e.ok ? e.im : null;
+  };
   function watch() {
     const roots = ['shop', 'modal', 'uxTut', 'title'].map(id => document.getElementById(id)).filter(Boolean);
     roots.forEach(r => iconize(r));

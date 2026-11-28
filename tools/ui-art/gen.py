@@ -214,7 +214,7 @@ def logo():
     return paper(im, 0.04)
 
 
-if __name__ == '__main__' and not (len(sys.argv) > 4 and sys.argv[4] == 'icons'):
+if __name__ == '__main__' and len(sys.argv) <= 4:
     for k in NODES:
         save(node_icon(k), f'ui/node-{k}.png')
     save(button(CORAL, CORAL_D, CORAL_L), 'ui/button-primary-coral.png')
@@ -308,3 +308,24 @@ def all_icons():
 
 if __name__ == '__main__' and len(sys.argv) > 4 and sys.argv[4] == 'icons':
     all_icons()
+
+
+# ---------- 道具／裝備／武器圖示（i-<id>.png）----------
+ITEM_GLYPH = {
+    'fist': ('fist', '#C9A06A'), 'spring': ('spring', '#8C98A4'), 'charm': ('third-eye', SEA), 'boots': ('boots', '#B07A4A'),
+    'blastspring': ('explosion-rays', CORAL), 'vampfist': ('blood', '#C0392B'), 'jetboots': ('rocket', CORAL), 'vampboots': ('bat-wing', PLUM),
+    'spikes': ('spiked-shell', '#B08D57'), 'ring': ('car-wheel', SEA), 'glove': ('magnet', '#6B8CFF'), 'dynamite': ('dynamite', CORAL),
+    'featherW': ('feather', '#F3E2C2'), 'needle': ('syringe', '#8DBB4F'), 'icepick': ('ice-spear', SEA_L), 'rod': ('lightning-saber', GOLD),
+    'hammer': ('claw-hammer', '#8C98A4'), 'hover': ('skateboard', MINT), 'breaker': ('drill', '#8C98A4'),
+    'projector': ('film-projector', SEA), 'projectorX': ('film-strip', GOLD), 'wrench': ('spanner', '#8C98A4'), 'wrench1': ('hand-saw', '#B07A4A'),
+    'armory': ('present', CORAL), 'armoryP': ('cut-diamond', SEA_L), 'furnace': ('anvil-impact', CORAL),
+}
+
+
+def item_icons():
+    for k, (g, col) in ITEM_GLYPH.items():
+        save(glyph_icon(g, col), f'icons/i-{k}.png')
+
+
+if __name__ == '__main__' and len(sys.argv) > 4 and sys.argv[4] == 'items':
+    item_icons()

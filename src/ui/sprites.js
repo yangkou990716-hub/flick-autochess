@@ -417,7 +417,11 @@
   // 裝備/武器小徽章（圓底＋金邊＋圖示），快取
   const badgeCache = {};
   function badge(c, txt, x, y, s) {
-    const k = txt + '|' + Math.round(s) + '|' + dpr; let b = badgeCache[k];
+    const gi = FA.emojiImg ? FA.emojiImg(txt) : undefined; // 手繪圖示；還在載入時先用 emoji（另一個快取鍵，載好後改畫圖示）
+    const k = txt + '|' + Math.round(s) + '|' + dpr + (gi === null ? '|e' : ''); let b = badgeCache[k];
+    if (!b && gi) { const px = Math.ceil(s * 2 + 4), cv = document.createElement('canvas'); cv.width = cv.height = Math.ceil(px * dpr); const q = cv.getContext('2d'); q.scale(dpr, dpr); q.translate(px / 2, px / 2);
+      q.fillStyle = '#FFF3DC'; q.beginPath(); q.arc(0, 0, s, 0, TAU); q.fill(); q.lineWidth = Math.max(1.2, s * 0.16); q.strokeStyle = '#4E2A2E'; q.stroke();
+      q.drawImage(gi, -s * 0.8, -s * 0.8, s * 1.6, s * 1.6); b = badgeCache[k] = { cv, px }; }
     if (!b) { const px = Math.ceil(s * 2 + 4), cv = document.createElement('canvas'); cv.width = cv.height = Math.ceil(px * dpr); const q = cv.getContext('2d'); q.scale(dpr, dpr); q.translate(px / 2, px / 2);
       const gr = q.createLinearGradient(0, -s, 0, s); gr.addColorStop(0, '#3a3358'); gr.addColorStop(1, '#141020'); q.fillStyle = gr; q.beginPath(); q.arc(0, 0, s, 0, TAU); q.fill();
       q.lineWidth = Math.max(1.2, s * 0.16); const g2 = q.createLinearGradient(0, -s, 0, s); g2.addColorStop(0, '#fff3a0'); g2.addColorStop(1, '#b07800'); q.strokeStyle = g2; q.stroke();
