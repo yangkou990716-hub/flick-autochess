@@ -38,7 +38,7 @@
     odds: [[75, 25, 0, 0, 0], [60, 30, 10, 0, 0], [45, 33, 20, 2, 0], [30, 38, 25, 7, 0], [20, 30, 33, 15, 2], [15, 22, 30, 25, 8], [10, 15, 25, 32, 18]],
     maxBack: 4, // ---- 經濟擴充 ----：後台格數（舊存檔 back 只有 3 格，lv() 會補齊）
     // ---- 經濟擴充 ----：商店道具格（每節點 chance 機率出現 1 格，pool：道具 id → 價格）
-    shopCons: { chance: 0.1, pool: { furnace: 3 } },
+    shopCons: null, // 商店道具格（原本 10% 出冶金爐 3 金）：使用者決定不在商店賣；要恢復改回 { chance: 0.1, pool: { furnace: 3 } }
     // 升星生命沿用 starMult，攻擊可用 starAtk 覆蓋；舊設定兩者共用 starMult。
     starMult: [1, 1.23, 1.42], starAtk: [1, 1.23, 1.44],
     shopSize: 5, benchSize: 6, maxItems: 3, maxFront: 7,

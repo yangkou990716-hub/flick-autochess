@@ -737,7 +737,7 @@
     r.timed.forEach(t => { if (t.unit && !D().units[t.unit]) delete t.unit; });
     r.futures = r.futures.filter(f => !f.tier || (Rd.tiers || {})[f.tier]);
     if (!r.lvPaid || typeof r.lvPaid !== 'object') r.lvPaid = {};
-    if (r.shopCons && !(r.shopCons.id && CD()[r.shopCons.id])) r.shopCons = null;
+    if (r.shopCons && (!C().shopCons || !(r.shopCons.id && CD()[r.shopCons.id]))) r.shopCons = null;
     if (r.node && !((Rd.nodeInfo || {})[r.node] || r.node === 'boss')) r.node = null;
     if (r.over && r.over !== 'win' && r.over !== 'lose') r.over = null;
     // 待選擇：類型或選項失效就清掉（玩家回到商店按「前進」重新選路線）
