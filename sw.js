@@ -1,5 +1,5 @@
 // 離線快取：改版時把 VERSION +1
-const VERSION = 'fa-v46';
+const VERSION = 'fa-v47';
 const FILES = ['./', 'index.html', 'style.css', 'style-art.css', 'src/ui/icons.js', 'assets/art/icons/pause.png', 'manifest.json', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
   'assets/fonts/jf-openhuninn-2.1.woff2', 'assets/art/ui/title-bg.png', 'assets/art/ui/title-logo.png',
   'assets/art/ui/strategy-frame-silver.png', 'assets/art/ui/strategy-frame-gold.png', 'assets/art/ui/strategy-frame-prismatic.png',

@@ -77,9 +77,41 @@ img.gi.tg{width:1.35em;height:1.35em}
 #shop .c-shop{background:linear-gradient(180deg,#FFE08A 0 18%,var(--go) 19% 78%,var(--go2) 79%)}
 #shop .c-lock.on{background:linear-gradient(180deg,#FFE08A 0 18%,var(--go) 19% 78%,var(--go2) 79%)}
 
-/* 商店抽屜：打開時停在備戰區上面，不蓋住備戰區 */
+/* 抽屜排在備戰區下方，跟棋盤與羈絆面板各自佔位。 */
 #shop .drawer{background:var(--cr);border:3px solid var(--ink);border-radius:18px;box-shadow:0 4px 0 var(--ink)}
-#shop.dr-open .drawer{bottom:calc(56px + var(--cell) + 20px)}
+#shop.dr-open{
+  --cell:clamp(32px,min(calc((100vw - var(--trw) - var(--sidew) - var(--zlw) - 80px) / 7),calc((100dvh - 270px) / 3)),66px);
+  --shop-sides:var(--trw) minmax(0,1fr) var(--sidew);
+  grid-template-columns:var(--shop-sides);
+  grid-template-areas:"hud hud hud" "traits board info" "traits bench info" "drawer drawer drawer" "controls controls controls";
+  grid-template-rows:auto minmax(0,1fr) auto auto auto
+}
+.fa-left #shop.dr-open{
+  --shop-sides:var(--sidew) minmax(0,1fr) var(--trw);
+  grid-template-areas:"hud hud hud" "info board traits" "info bench traits" "drawer drawer drawer" "controls controls controls"
+}
+#shop.dr-open :is(.mid,.dock){display:contents}
+#shop.dr-open .hud-top{grid-area:hud}
+#shop.dr-open .trpanel{grid-area:traits}
+#shop.dr-open .side{grid-area:info}
+#shop.dr-open .board{grid-area:board}
+#shop.dr-open .zbench{grid-area:bench;justify-self:center;--cell:clamp(32px,9dvh,58px);padding-block:2px}
+#shop.dr-open .ctrls{grid-area:controls}
+#shop.dr-open .drawer{grid-area:drawer;position:static;max-height:calc(50dvh - 62px);overflow:auto}
+@media (max-height:450px){
+  #shop.dr-open .zone .zh{display:none}
+  #shop.dr-open .zone .zl{padding-block:2px}
+  #shop.dr-open .zone .zt{line-height:1}
+  #shop.dr-open .board{gap:4px}
+}
+#shop.dr-open .trpanel .traits{padding-bottom:4px}
+#shop.dr-open .card{min-height:0;border-image-width:10px 10px!important;border-width:10px 10px 7px!important;padding:2px}
+#shop.dr-open .card img:not(.gi){width:clamp(34px,10dvh,54px);height:clamp(34px,10dvh,54px)}
+#shop.dr-open .card .cc{top:-8px;left:-8px}
+#shop.dr-open .card .posic{top:-8px;right:-6px}
+#shop.dr-open .card .cbody{line-height:1.1}
+#shop.dr-open .card .t{gap:0 3px;font-size:10px;line-height:1.2}
+#shop.dr-open .card .t span{margin-right:0}
 #shop .dr-h{background:none;color:var(--ink)}
 #shop .dr-h b{color:var(--ink)}
 #shop .dr-h .odds i{background:#4E2A2E14;border-radius:8px;padding:0 6px;color:var(--ink)}
@@ -100,7 +132,6 @@ img.gi.tg{width:1.35em;height:1.35em}
 #shop .card .cc i{font-size:15px}
 #shop .card .posic{top:-12px;right:-8px;width:22px;height:22px}
 #shop .card.poor{filter:grayscale(.7);opacity:.75}
-#shop .card.empty{border-image:none!important;border:2.5px dashed #4E2A2E40!important;border-radius:14px;background:#4E2A2E0a!important;color:#4E2A2E80;opacity:1}
 #shop .card .ux-own{color:#2E8F73}
 #shop .card .ux-syn.near{background:#4E2A2E14;color:var(--ink);border:0}
 #shop .card .cx{color:var(--co2)}
@@ -172,6 +203,11 @@ img.gi.tg{width:1.35em;height:1.35em}
 #modal .node-ic{background:none;border-radius:0;box-shadow:none;object-fit:contain}
 #modal .pmap i{background:none;border:0;color:var(--ink)}
 #modal .pmap img{width:100%;height:100%;object-fit:contain}
+#modal .pick-path .pmap{margin:12px 0;gap:4px}
+#modal .pick-path .pmap i{width:clamp(30px,6vw,46px);height:clamp(30px,6vw,46px);font-size:19px}
+#modal .pick-path .pmap i.next{background:var(--cr2)}
+#modal .pick-path .choices.n1 .m-path{flex:0 1 240px;min-height:0;flex-direction:row;gap:12px;padding:10px 14px;text-align:left}
+#modal .pick-path .choices.n1 .node-ic{width:44px;height:44px}
 #modal .pmap i.done{opacity:.7}
 #modal .pmap i.now{outline:2px solid var(--ink);outline-offset:1px;box-shadow:0 0 0 5px var(--go)}
 #modal .pmap b{background:repeating-linear-gradient(90deg,#4E2A2E66 0 4px,transparent 4px 7px)}
@@ -221,11 +257,16 @@ img.gi.tg{width:1.35em;height:1.35em}
   text-shadow:none;box-shadow:0 3px 0 var(--ink)
 }
 .screen .bhud{padding:7px 8px}
-#bhud .ux-rd,#bhud .ux-rd b,.screen .ultbtn small{color:var(--ink)}
-#bhud .ux-mv .l,#bhud .ux-mv .n{width:auto;min-width:2.8em;text-align:right}
-#bhud .ux-mvb{background:var(--cr2);border-color:var(--ink)}
-#bhud .battle-affix,.bhud .battle-foe,.bhud .netoff{color:#a83f32}
-#bhud .battle-affix{font-size:12px}
+.screen .ultbtn small{color:var(--ink)}
+.bhud .battle-foe,.bhud .netoff{color:#a83f32}
+.screen #bhud{right:auto;width:max-content;font-size:12px}
+#bhud .move-score{display:flex;align-items:baseline;gap:5px;white-space:nowrap;font-size:clamp(10px,1.5vw,13px)}
+#bhud .move-team{--team:var(--se2);color:var(--team);padding-bottom:4px;font-variant-numeric:tabular-nums;
+  background:linear-gradient(90deg,var(--team) var(--moves),var(--cr2) var(--moves)) bottom left/100% 3px no-repeat}
+#bhud .move-team.foe{--team:#a83f32}
+#bhud .move-team.current{font-weight:900}
+#bhud .move-round{margin-top:4px}
+#modalBox.battle-pause .pause-details{font-size:13px;line-height:1.45}
 .bhud .battle-ally{color:var(--se2)}
 .bhud .neton{color:#25694e}
 .screen .pausebtn .gi{width:24px;height:24px;vertical-align:middle}

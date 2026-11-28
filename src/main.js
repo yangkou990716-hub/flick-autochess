@@ -138,9 +138,14 @@
   // ---- 畫面 ----：節點圖示、位面地圖列、選擇卡材質
   const nodeIcon = (type, cls = '', alt = RD.nodeInfo[type]?.name) => RD.nodeInfo[type]
     ? `<img class="${cls}" src="assets/art/ui/node-${type}.png" alt="${alt}" draggable="false">` : '?';
-  function planeMap() {
+  function planeMap(options) {
     const st = RUN.steps(run);
-    return '<div class="pmap">' + st.map((x, k) => (k ? `<b class="${k <= run.step ? 'done' : ''}"></b>` : '') + `<i class="${k < run.step ? 'done' : k === run.step ? 'now' : ''}${x === 'boss' ? ' boss' : ''}">${nodeIcon(x)}</i>`).join('') + '</div>';
+    return '<div class="pmap">' + st.map((step, k) => {
+      const current = k === run.step, next = k === run.step + 1;
+      const node = current && options.length === 1 ? options[0] : step;
+      const connector = k ? `<b class="${k <= run.step ? 'done' : ''}"></b>` : '';
+      return connector + `<i class="${k < run.step ? 'done' : current ? 'now' : next ? 'next' : ''}"${current ? ' aria-current="step"' : ''}>${nodeIcon(node)}</i>`;
+    }).join('') + '</div>';
   }
   const choiceCls = (type, id) => 'm-' + (type === 'strategy' ? RD.strategies[id].tier : type);
   const choiceTitle = { opener: '選擇開局詞綴', env: '投資環境（持續整局）', path: '選擇路線', supply: '補給 3 選 1', encounter: '遭遇：選擇難度', strategy: '投資策略' };
@@ -170,7 +175,7 @@
     if (p) {
       const sub = p.type === 'env' ? '開局選一次，整局都生效' : p.type === 'path' ? `第 ${run.plane} 位面・節點 ${run.step + 1}/${RUN.steps(run).length}` : p.type === 'strategy' ? (p.tier ? RD.tiers[p.tier].name + '投資策略' : '黃金、稜彩越強，之後敵人也越強') : '';
       $('modalBox').className = 'box pick pick-' + p.type;
-      $('modalBox').innerHTML = `<div class="pk-h"><h2>${choiceTitle[p.type]}</h2>${sub ? `<div class="lbl">${sub}</div>` : ''}</div>${p.type === 'path' ? planeMap() : ''}<div class="choices n${p.options.length}">` +
+      $('modalBox').innerHTML = `<div class="pk-h"><h2>${choiceTitle[p.type]}</h2>${sub ? `<div class="lbl">${sub}</div>` : ''}</div>${p.type === 'path' ? planeMap(p.options) : ''}<div class="choices n${p.options.length}">` +
         p.options.map((id, i) => `<div class="choice ${choiceCls(p.type, id)}" data-c="${i}">${choiceCard(p.type, id)}</div>`).join('') + '</div>' +
         ((p.type === 'path' || p.type === 'encounter' || p.type === 'carrier') ? `<div class="mbtns">${p.type === 'carrier' ? carrierBtn(p) : ''}${p.type === 'path' || p.type === 'encounter' ? '<button data-back="1">↩ 先回商店</button>' : ''}</div>` : '');
       $('modal').classList.remove('hidden'); setTimeout(() => tutPending(p.type), 60);
@@ -258,7 +263,7 @@
     const odds = (C.odds || [])[run.level - 1] || [], benchFree = run.bench.filter(x => !x).length;
     $('shopHead').innerHTML = `<b>🛒 商店</b><span class="odds">${odds.map((v, k) => v ? `<i style="--cc:${COST_COL[k]}">${k + 1}費 ${v}%</i>` : '').join('')}</span><span class="bf ${benchFree ? '' : 'full'}">備戰空位 ${benchFree}</span>`;
     setHTML($('shopRow'), run.shop.map((id, i) => {
-      if (!id) return `<div class="card empty"><span>已購買</span></div>`;
+      if (!id) return '';
       const U = D.units[id], cost = RUN.unitCost(run, id), c = owned(id), canStar = c[0] === 2;
       const poor = run.gold < cost, full = !benchFree && !canStar, ic = icon(id, 1, 64);
       return `<div class="card cost-${U.cost}${poor ? ' poor' : ''}${full ? ' full' : ''}${canStar ? ' up' : ''}" data-b="${i}" style="--cc:${COST_COL[U.cost - 1]}">` +
@@ -581,18 +586,14 @@
   function hideBInfo() { $('uxBinfo').classList.add('hidden'); binfoT = 0; }
 
   const ultButton = FA.gi('bolt') + ' 大招';
-  const guideHud = '<div class="ux-hl">' + FA.gi('swords') + ' 練習關｜把木樁全部撞倒</div>';
   const setBattleHTML = (el, html) => {
     if (el._h !== html) { el._h = html; el.innerHTML = html; }
   };
   function hud() {
     const b = battle;
-    if (mode === 'guide') { setBattleHTML($('bhud'), guideHud + movesHUD(b)); $('bUlt').classList.add('hidden'); ui.msg = ''; return; } // 練習關的說明在下方提示列（coach）
+    setBattleHTML($('bhud'), movesHUD(b));
+    if (mode === 'guide') { $('bUlt').classList.add('hidden'); ui.msg = ''; return; } // 練習關的說明在下方提示列（coach）
     if (mode === 'duel') run.enemy = { name: '對戰：' + duelName };
-    const env = run.env && mode !== 'duel' ? FA.gi('globe') + ' ' + RD.envs[run.env].name : '';
-    let hh = `<div class="ux-hl">位面${run.plane}｜${run.enemy.name}${b.rules.length ? '｜' + b.rules.map(r => D.enemies.ruleText[r]).join('、') : ''}　${env}</div>` + movesHUD(b);
-    if (b.affix && mode !== 'duel') hh += `<div class="battle-affix">${FA.gi('skull')} ${b.affix.ids.map(id => D.enemies.affixes[id].name).join('・')}</div>`; // ---- 敵人詞綴 ----
-    setBattleHTML($('bhud'), hh); // 每幀都會呼叫：內容沒變就不重設（省 DOM 解析與重排）
     const ready = b.phase === 'aim' && b.turn === 0 && FA.battle.avail(b, 0).some(o => o.energy >= UC.max);
     if (!ready) ui.ultArmed = false;
     ui.msg = run.enemy && run.enemy.reward && b.phase !== 'over' ? `打破撲滿！剩 ${Math.max(0, b.moves[0])} 動` : b.phase === 'over' ? (b.winner === 0 ? '勝利！' : '落敗…')
@@ -604,16 +605,13 @@
     FA.sound.edge('turn', b.phase === 'aim' && b.turn === 0 && !tutOn && !paused);
   }
 
-  // 動數條：我方藍、敵方紅（剩餘/總數）＋第幾輪、本輪我方還沒動幾隻
   function movesHUD(b) {
-    const bar = (t, col, lbl) => {
-      const mx = b.movesMax[t] || 0, n = Math.max(0, b.moves[t]);
-      if (!mx) return `<div class="ux-mv"><span class="l">${lbl}</span><span class="ux-mvb"></span><span class="n">—</span></div>`;
-      return `<div class="ux-mv${b.turn === t && b.phase !== 'over' ? ' cur' : ''}"><span class="l" style="color:${col}">${lbl}</span><span class="ux-mvb"><i style="width:${Math.round(n / mx * 100)}%;background:${col}"></i></span><span class="n">${n}/${mx}</span></div>`;
+    const bar = (team, label) => {
+      const max = b.movesMax[team] || 0, left = Math.max(0, b.moves[team]);
+      const width = max ? Math.min(100, Math.round(left / max * 100)) : 0;
+      return `<span class="move-team${team ? ' foe' : ''}${b.turn === team && b.phase !== 'over' ? ' current' : ''}" style="--moves:${width}%">${label} ${max ? `${left}/${max}` : '—'}</span>`;
     };
-    const left = FA.battle.avail(b, 0).length;
-    return `<div class="ux-mvs">${bar(0, '#1e5e96', '我方')}${bar(1, '#a83f32', '敵方')}</div>` +
-      `<div class="ux-rd">第 ${b.round} 輪・本輪我方未動 <b>${left}</b> 隻${b.deaths && b.deaths[0] ? `・我方被打倒 ${b.deaths[0]}` : ''}</div>`;
+    return `<div class="move-score">${bar(0, '我方')} <span>vs</span> ${bar(1, '敵方')} <span>動數</span></div><div class="move-round">第 ${b.round} 輪</div>`;
   }
   function enemyThink(dt) {
     if (!ai || (ai.battle && (ai.battle !== battle || ai.shot !== battle.shotCount))) ai = { t: 0, c: null };
@@ -736,12 +734,28 @@
   requestAnimationFrame(frame);
 
   // ---------- 暫停／切出 ----------
+  function pauseDetails() {
+    if (mode === 'guide') return ['練習關｜把木樁全部撞倒'];
+    if (mode === 'duel') return ['對戰：' + duelName];
+    const details = [`位面 ${run.plane}｜${run.enemy.name}`];
+    if (run.env) details.push('環境：' + RD.envs[run.env].name);
+    if (run.strats.length) details.push('投資策略：' + run.strats.map(id => RD.strategies[id].name).join('、'));
+    if (battle.rules.length) details.push('規則：' + battle.rules.map(id => D.enemies.ruleText[id]).join('、'));
+    if (battle.affix) details.push('敵人詞綴：' + battle.affix.ids.map(id => D.enemies.affixes[id].name).join('、'));
+    return details;
+  }
   function pause() {
     if (screen !== 'battle' || paused) return;
     paused = true; ui.aim = null; drag = null; save();
-    modal('<h2>' + FA.gi('pause') + ' 暫停</h2>', [{ t: '繼續', cls: 'go', f: () => { paused = false; last = performance.now(); } }, { t: `音效：${FA.sound.on ? '開' : '關'}`, f: () => { FA.sound.toggle(); setBtns(); paused = false; pause(); } }, { t: `音樂：${FA.sound.musicOn ? '開' : '關'}`, f: () => { FA.sound.toggleMusic(); setBtns(); paused = false; pause(); } },
+    modal('<h2>' + FA.gi('pause') + ' 暫停</h2><div class="pause-details"></div>', [{ t: '繼續', cls: 'go', f: () => { paused = false; last = performance.now(); } }, { t: `音效：${FA.sound.on ? '開' : '關'}`, f: () => { FA.sound.toggle(); setBtns(); paused = false; pause(); } }, { t: `音樂：${FA.sound.musicOn ? '開' : '關'}`, f: () => { FA.sound.toggleMusic(); setBtns(); paused = false; pause(); } },
       { t: `震動：${FA.settings.vibrate ? '開' : '關'}`, f: () => { toggleVib(); paused = false; pause(); } }, { t: `播放速度：${FA.settings.speed > 1 ? '2x' : '1x'}`, f: () => { $('uxSpeed').click(); paused = false; pause(); } },
       { t: '回標題（進度已存）', f: () => { paused = false; toTitle(); } }], 'battle-pause');
+    const details = $('modalBox').querySelector('.pause-details');
+    pauseDetails().forEach(text => {
+      const row = document.createElement('div');
+      row.textContent = text;
+      details.append(row);
+    });
   }
   $('bPause').innerHTML = FA.gi('pause');
   $('bPause').onclick = pause;
