@@ -11,7 +11,7 @@
     vampfist: { name: '吸血拳', tier: 'adv', icon: '🩸', recipe: ['fist', 'charm'],
       affix: { atkPct: [0.15, 0.22], lifesteal: [0.15, 0.25] } },
     jetboots: { name: '彈射靴', tier: 'adv', icon: '🚀', recipe: ['spring', 'boots'],
-      affix: { speedPct: [0.15, 0.22], wallAdd: [0.1, 0.18], bounces: [1, 1] } },
+      affix: { speedPct: [0.14, 0.20], wallAdd: [0.09, 0.16], bounces: [1, 1] } },
     vampboots: { name: '吸血疾靴', tier: 'adv', icon: '🦇', recipe: ['charm', 'boots'],
       affix: { speedPct: [0.12, 0.2], lifesteal: [0.12, 0.2], hpPct: [0.1, 0.15] } }
   };
@@ -32,7 +32,7 @@
   FA.DATA.weapons = {
     spikes: { name: '尖刺殼', icon: '🦔', mods: { atkPct: 0.1 }, fx: { shieldPierce: true }, desc: '攻擊+10%，撞擊無視護盾' },
     ring: { name: '彈力圈', icon: '🛞', mods: { bounces: 1 }, fx: { noWallLoss: true }, desc: '撞牆不減速，撞牆加成可疊+1' },
-    glove: { name: '磁鐵手套', icon: '🧲', mods: { atkPct: 0.12 }, fx: { hitPull: { r: 120, pull: 450 } }, desc: '攻擊+12%，撞到敵人時把附近敵人拉過來' },
+    glove: { name: '磁鐵手套', icon: '🧲', mods: { atkPct: 0.09 }, fx: { hitPull: { r: 120, pull: 450 } }, desc: '攻擊+9%，撞到敵人時把附近敵人拉過來' },
     dynamite: { name: '炸藥包', icon: '🧨', mods: {}, fx: { everyN: { n: 3, r: 110, mult: 1.05 } }, desc: '每第 3 次碰撞大爆炸' },
     featherW: { name: '輕羽', icon: '🪶', mods: { massPct: -0.3, speedPct: 0.16 }, fx: {}, desc: '重量-30%，速度+16%' },
     needle: { name: '毒針', icon: '💉', mods: {}, fx: { poisonHit: { mult: 0.3, turns: 3 } }, desc: '撞到敵人下毒 3 回合' },

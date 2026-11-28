@@ -26,7 +26,7 @@
     bounce: { name: '彈跳', color: '#2ec4b6', tiers: [{ n: 2, mods: { wallAdd: 0.15 }, lottery: LOT.bounce2 }, { n: 4, mods: { wallAdd: 0.15, bounces: 1 }, lottery: LOT.bounce4 }] },
     // ---- 第七輪擴充 ----：beats 剋制／weakTo 被剋（圖鑑顯示），why 說明
     snipe: { name: '狙擊', color: '#ff5370', beats: ['wall'], weakTo: ['magnet', 'shade'], why: '長距離助跑的高額單發能壓過護盾與減傷；被吸到身邊就沒助跑距離，單發大傷害也怕被閃避',
-      tiers: [{ n: 2, mods: { farDmg: 0.02 } }, { n: 4, mods: { farDmg: 0.035, atkPct: 0.03 } }] },
+      tiers: [{ n: 2, mods: { farDmg: 0.02 } }, { n: 4, mods: { farDmg: 0.025, atkPct: 0.025 } }] },
     shade: { name: '幽影', color: '#9575cd', beats: ['snipe', 'heavy'], weakTo: ['blast', 'toxic'], why: '閃避只對碰撞有效，專克靠單發撞擊的流派；爆炸、中毒、電擊等範圍與持續傷害閃不掉',
       tiers: [{ n: 2, mods: { dodge: 0.07 } }, { n: 4, mods: { dodge: 0.07, hpPct: 0.02 } }] },
     // ---- 第八輪擴充 ----：神技（高操作上限）：只有「技巧觸發」（甜蜜點、正中、花式、節奏 4 層、引爆、分身）時才有加成
