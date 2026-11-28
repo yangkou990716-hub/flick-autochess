@@ -5,7 +5,7 @@
   const SND = (n, k) => n && FA.sound && FA.sound.play(n, k);
   const TAU = Math.PI * 2, FONT = '-apple-system,"PingFang TC","Noto Sans TC",sans-serif';
   const V = FA.view = { trails: {}, bolts: [], parts: [], texts: [], rings: [], flashes: [], decals: [], walls: [], fx: [], ripples: [], shake: 0, hitstop: 0, banner: null, cutin: null, edge: null, shrinkT: 0, chainShow: 0, chainN: 0, chainPulse: 0, screenFlash: 0 };
-  let cv, ctx, W, H, RW, RH, VW, VH, dpr, S, CX, CY, bgCache = null, lastB = null, pillarCache = {}, artReady = false;
+  let cv, ctx, W, H, RW, RH, VW, VH, dpr, S, CX, CY, bgCache = null, lastB = null, pillarCache = {}, artFor = null;
   const dead = {}, hpLag = {}, spawnIn = {}, ghosts = {}, ripT = {}, pHit = {}, emitT = {}, vis = {}; // vis：棋子的視覺變形（壓扁回彈、跳起高度），不影響物理
   const BGP = 12; // 背景快取外擴（震動時不露邊）
   // 9 種大招的配色／圖示
@@ -50,7 +50,7 @@
   V.tapHint = b => { const mv = b.bodies[b.mover], k = FA.battle.tapAbility(mv); return k === 'boom' ? '👆 點畫面任一處：引爆！' : k === 'split' ? '👆 點想讓幻影衝去的位置！' : ''; };
   V.toWorld = (x, y) => V.rot ? { x: (y - CX) / S, y: (RW - x - CY) / S } : { x: (x - CX) / S, y: (y - CY) / S };
   V.reset = () => {
-    artReady = false;
+    artFor = null;
     lastB = null;
     if (ctx) ctx.clearRect(0, 0, RW, RH);
     V.trails = {}; V.bolts = []; V.parts = []; V.texts = []; V.rings = []; V.flashes = []; V.decals = []; V.walls = []; V.fx = []; V.ripples = [];
@@ -372,6 +372,7 @@
     return entry;
   }
 
+  setTimeout(() => { try { Object.keys(FA.DATA.units).forEach(id => loadArt('units/s/' + id + '.png')); } catch (e) {} }, 1500);
   function preloadBattleArt(b) {
     const boss = b.bodies.some(o => o.boss);
     const paths = [BOLT_ART, arenaArt(boss), ...b.bodies.map(bodyArt)];
@@ -710,9 +711,10 @@
   function outText(txt, x, y, size, col, lw) { ctx.font = `900 ${size}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#000'; ctx.lineWidth = lw || Math.max(3, size / 5); ctx.strokeText(txt, x, y); ctx.fillStyle = col; ctx.fillText(txt, x, y); }
 
   V.draw = (b, ui, dt) => {
-    if (!artReady) {
+    // 每場戰鬥（雙方陣容不同）都要確認用到的圖載好；原本只檢查第一場，之後新出現的角色會退回舊的程式繪製
+    if (artFor !== b) {
       if (!preloadBattleArt(b)) return;
-      artReady = true;
+      artFor = b;
     }
     const t0 = performance.now(); drawFrame(b, ui, dt);
     // 低階手機自動降特效：繪製時間移動平均 > 12ms 就開 lowFx（粒子上限降低），< 5ms 再關（遲滯避免來回切）

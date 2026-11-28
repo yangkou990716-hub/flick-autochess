@@ -34,6 +34,12 @@
     }
     waves.forEach(w => w.t += dt); waves = waves.filter(w => w.t < 0.9);
   }
+  const arts = {};
+  function art(id) {
+    let a = arts[id];
+    if (!a) { a = arts[id] = { ok: false, im: new Image() }; a.im.onload = () => { a.ok = true; }; a.im.src = 'assets/art/units/s/' + id + '.png'; }
+    return a.ok ? a.im : null;
+  }
   function draw(t) {
     ctx.clearRect(0, 0, W, H);
     ctx.lineWidth = 2; waves.forEach(w => { const k = w.t / 0.9; ctx.strokeStyle = `rgba(190,240,255,${0.5 * (1 - k)})`; ctx.beginPath(); ctx.ellipse(w.x, w.y, 10 + k * 50, (10 + k * 50) * 0.55, 0, 0, TAU); ctx.stroke(); });
@@ -42,7 +48,9 @@
     }
     for (const o of bodies) {
       ctx.save(); ctx.translate(o.x, o.y); if (Math.abs(o.q) > 0.004) { ctx.rotate(o.ang); ctx.scale(1 - o.q, 1 + o.q * 0.65); ctx.rotate(-o.ang); }
-      SP.draw(ctx, o, 0, 0, o.r, t); ctx.restore();
+      const im = art(o.id); // 方向 A 手繪圖；沒載好時退回程式繪製
+      if (im) ctx.drawImage(im, -o.r * 1.25, -o.r * 1.25, o.r * 2.5, o.r * 2.5); else SP.draw(ctx, o, 0, 0, o.r, t);
+      ctx.restore();
     }
   }
   function loop(now) {
